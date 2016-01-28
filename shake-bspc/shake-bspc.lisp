@@ -1,8 +1,3 @@
-(in-package #:cl-user)
-
-(defpackage #:shake-bspc
-  (:use #:cl))
-
 (in-package #:shake-bspc)
 
 (defun v2 (x y)
@@ -35,8 +30,8 @@
   (t-end 1d0 :type double-float))
 
 (defun line-intersect-ratio (splitter line)
-  "Returns numerator and denominator values for calculating the parameter T of
-  the intersection."
+  "Takes a SPLITTER and LINE linedefs. Returns numerator and denominator values
+  for calculating the parameter T of the intersection."
   (declare (type linedef splitter line))
   (let* ((n (linedef-normal splitter))
          (-n (v- (v2 0 0) n))
