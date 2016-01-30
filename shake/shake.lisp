@@ -71,9 +71,15 @@
   (sdl2:gl-swap-window win)
   (gl:bind-vertex-array 0))
 
+(defmacro with-foreign-array (ptr ftype ltype values &body body)
+  (with-gensyms (len i val)
+    `(let ((,len (list-length ,values)))
+       (cffi:with-foreign-object (,ptr ,ftype ,len)
+         (loop for ,i below ,len and ,val in ,values
+            do (setf (cffi:mem-aref ,ptr ,ftype ,i)
+                     (coerce ,val ,ltype)))
+         ,@body))))
+
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
-  (let ((len (list-length values)))
-    (cffi:with-foreign-object (value-ptr :float len)
-      (loop for i below len and val in values
-         do (setf (cffi:mem-aref value-ptr :float i) (coerce val 'single-float)))
-      (%gl:clear-buffer-fv buffer drawbuffer value-ptr))))
+  (with-foreign-array value-ptr :float 'single-float values
+    (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))

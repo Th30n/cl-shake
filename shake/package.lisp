@@ -3,4 +3,6 @@
 (defpackage #:shake
   (:use #:cl)
   (:export #:main)
-  (:import-from #:alexandria #:read-file-into-string))
+  (:import-from #:alexandria
+                #:read-file-into-string
+                #:with-gensyms))
