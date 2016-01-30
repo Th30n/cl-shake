@@ -2,4 +2,5 @@
 
 (defpackage #:shake
   (:use #:cl)
-  (:export #:main))
+  (:export #:main)
+  (:import-from #:alexandria #:read-file-into-string))

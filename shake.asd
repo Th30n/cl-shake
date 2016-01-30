@@ -5,7 +5,7 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "MIT"
-  :depends-on ("sdl2" "cl-opengl" "cffi")
+  :depends-on ("sdl2" "cl-opengl" "cffi" "alexandria")
   :components
   ((:module "shake"
             :components ((:file "package")
