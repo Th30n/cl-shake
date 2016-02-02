@@ -25,4 +25,5 @@
   :components
   ((:module "shiva"
             :components ((:file "package")
-                         (:file "shiva" :depends-on ("package"))))))
+                         (:file "shiva" :depends-on ("package")))))
+  :in-order-to ((test-op (test-op shiva-test))))

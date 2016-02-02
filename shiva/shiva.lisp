@@ -93,12 +93,14 @@
 (defmacro-vector-apply vmax max)
 
 (defun vscale (scalar vector &aux (n (1- (array-dimension vector 0))))
+  "Scale a VECTOR by given SCALAR."
   (tensor ((i 0 n)) ((out (1+ n))) (:scalars (scalar) :simple-arrays (vector))
 	  ($ i (setf (out i) (* scalar (vector i))))
 	  out))
 
 (defun vtransform (matrix vector
 		   &aux (m (1- (array-dimension matrix 0))) (n (1- (array-dimension matrix 1))))
+  "Transform the given VECTOR using the given MATRIX."
   (tensor ((i 0 m) (j 0 n)) ((out (1+ m))) (:simple-arrays (vector matrix))
 	  ($ i (setf (out i) (sum j (* (matrix i j) (vector j)))))
 	  out))
@@ -109,8 +111,8 @@
 	  ($ i ($ k (setf (out i k) (sum j (* (m1 i j) (m2 j k))))))
 	  out))
 
-(defun vdot (v1 v2
-	     &aux (n (1- (array-dimension v1 0))))
+(defun vdot (v1 v2 &aux (n (1- (array-dimension v1 0))))
+  "Return the dot product of vectors V1 and V2."
   (tensor ((i 0 n)) () (:simple-arrays (v1 v2))
 	  (sum i (* (v1 i) (v2 i)))))
 
@@ -118,10 +120,14 @@
 (defun vdist (v1 v2) (vnorm (v- v1 v2)))
 (defun vdistsq (v1 v2) (let ((d (v- v1 v2))) (vdot d d)))
 (defun angle (v)
+  "Return the angle in radians of vector V around the Z axis."
   (declare (type (simple-array double-float) v))
   (atan (aref v 1) (aref v 0)))
-(defun direction (v1 v2) (angle (v- v2 v1)))
-(defconstant rad->deg (/ 180 pi))
+(defun direction (v1 v2)
+  "Return the direction angle in radians between points V1 and V2"
+  (angle (v- v2 v1)))
+(defconstant rad->deg (/ 180 pi)
+  "Constant for conversion from degrees to radians.")
 (defun deg-angle (v) (* rad->deg (angle v)))
 (defun deg-direction (v1 v2) (* rad->deg (direction v1 v2)))
 
@@ -194,3 +200,15 @@
 	  (setf (aref vector i) (coerce elt 'double-float)))
     vector))
 
+(defun mat (&rest rows)
+  "Construct a row major matrix as a 2D vector of double-float and fill it
+with ROWS."
+  (let* ((n (length rows))
+         (m (length (car rows)))
+         (matrix (make-array (list n m) :element-type 'double-float)))
+    (iter (for i from 0)
+          (for row in rows)
+          (iter (for j from 0)
+                (for elt in row)
+                (setf (aref matrix i j) (coerce elt 'double-float))))
+    matrix))

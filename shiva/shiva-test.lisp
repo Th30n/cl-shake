@@ -16,13 +16,42 @@
 
 (in-package #:cl-user)
 
-(defpackage #:shiva
+(defpackage #:shiva-test
   (:use #:cl
-        #:iterate
-        #:alexandria
-        #:metabang.bind)
-  (:export #:v
-           #:v-
-           #:vdot
-           #:mat
-           #:m*))
+        #:prove
+        #:shiva))
+
+(in-package #:shiva-test)
+
+(plan nil)
+
+(subtest "Testing v-"
+  (is (v- (v 5 3)
+          (v 4 7))
+      (v 1 -4) :test #'equalp)
+  (is-type (v- (v 3 4) (v 4 4))
+           '(vector double-float 2)))
+
+(subtest "Testing vdot"
+  (is (vdot (v 3 5)
+            (v 4 2))
+      22d0)
+  (is (vdot (v 2 4)
+            (v 8 -4))
+      0d0))
+
+(subtest "Testing m*"
+  (is (m* (mat '(1 2 3)
+               '(4 5 6))
+          (mat '(5 6)
+               '(7 8)
+               '(9 10)))
+      (mat '(46 52)
+           '(109 124)) :test #'equalp)
+  (is-type (m* (mat '(1 2)
+                    '(3 4))
+               (mat '(1 0)
+                    '(0 1)))
+           '(simple-array double-float (2 2))))
+
+(finalize)

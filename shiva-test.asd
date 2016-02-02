@@ -14,15 +14,14 @@
 ;;;; with this program; if not, write to the Free Software Foundation, Inc.,
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-(in-package #:cl-user)
+(in-package #:asdf-user)
 
-(defpackage #:shiva
-  (:use #:cl
-        #:iterate
-        #:alexandria
-        #:metabang.bind)
-  (:export #:v
-           #:v-
-           #:vdot
-           #:mat
-           #:m*))
+(defsystem "shiva-test"
+  :depends-on ("shiva"
+               "prove")
+  :defsystem-depends-on ("prove-asdf")
+  :components
+  ((:module "shiva"
+            :components ((:test-file "shiva-test"))))
+  :perform (test-op :after (op c)
+                    (funcall (intern #.(string :run) :prove) c)))
