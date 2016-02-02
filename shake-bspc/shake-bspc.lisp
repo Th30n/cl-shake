@@ -16,21 +16,9 @@
 
 (in-package #:shake-bspc)
 
-(defun v2 (x y)
-  (make-array 2
-              :element-type 'double-float
-              :initial-contents (list (coerce x 'double-float)
-                                      (coerce y 'double-float))))
-
-(defun v- (v1 v2)
-  (map '(vector double-float 2) #'- v1 v2))
-
-(defun vdot (v1 v2)
-  (reduce #'+ (map '(vector double-float 2) #'* v1 v2)))
-
 (defstruct linedef
-  (start (v2 0 0) :type (vector double-float 2) :read-only t)
-  (end  (v2 0 0) :type (vector double-float 2) :read-only t))
+  (start (v 0 0) :type (vector double-float 2) :read-only t)
+  (end  (v 0 0) :type (vector double-float 2) :read-only t))
 
 (defun linedef-normal (linedef)
   (let ((vec (v- (linedef-end linedef) (linedef-start linedef))))
@@ -50,7 +38,7 @@
   for calculating the parameter T of the intersection."
   (declare (type linedef splitter line))
   (let* ((n (linedef-normal splitter))
-         (-n (v- (v2 0 0) n))
+         (-n (v- (v 0 0) n))
          (l-vec (v- (linedef-end line) (linedef-start line)))
          (sl-vec (v- (linedef-start line) (linedef-start splitter)))
          (numer (vdot n sl-vec))
@@ -98,11 +86,6 @@
         (list rootseg
               (if (null front) nil (build-bsp (car front) (cdr front)))
               (if (null back) nil (build-bsp (car back) (cdr back)))))))
-
-(defparameter *test-linedefs*
-  (list (make-linedef :start (v2 0 -2) :end (v2 0 5))
-        (make-linedef :start (v2 -2 1) :end (v2 5 1))
-        (make-linedef :start (v2 3 2) :end (v2 3 -2))))
 
 (defun linedef->lineseg (linedef)
   (declare (type linedef linedef))

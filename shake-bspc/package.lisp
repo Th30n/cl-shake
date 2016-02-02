@@ -18,8 +18,11 @@
 
 (defpackage #:shake-bspc
   (:use #:cl)
-  (:export #:v2
-           #:v-
-           #:vdot
-           #:linedef
-           #:lineseg))
+  (:export #:linedef
+           #:make-linedef
+           #:lineseg
+           #:make-lineseg)
+  (:import-from #:shiva
+                #:v
+                #:v-
+                #:vdot))

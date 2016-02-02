@@ -21,6 +21,7 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
+  :depends-on ("shiva")
   :components
   ((:module "shake-bspc"
             :components ((:file "package")

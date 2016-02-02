@@ -19,25 +19,33 @@
 (defpackage #:shake-bspc-test
   (:use #:cl
         #:prove
-        #:shake-bspc))
+        #:shake-bspc)
+  (:import-from #:shiva
+                #:v))
 
 (in-package #:shake-bspc-test)
 
 (plan nil)
 
-(subtest "Testing v-"
-  (is (v- (v2 5 3)
-          (v2 4 7))
-      (v2 1 -4) :test #'equalp)
-  (is-type (v- (v2 3 4) (v2 4 4))
-           '(vector double-float 2)))
+(defparameter *test-linedefs*
+  (list (make-linedef :start (v 0 -2) :end (v 0 5))
+        (make-linedef :start (v -2 1) :end (v 5 1))
+        (make-linedef :start (v 3 2) :end (v 3 -2))))
 
-(subtest "Testing vdot"
-  (is (vdot (v2 3 5)
-            (v2 4 2))
-      22d0)
-  (is (vdot (v2 2 4)
-            (v2 8 -4))
-      0d0))
+(subtest "Testing split-lineseg"
+  (let ((seg (shake-bspc::linedef->lineseg (car *test-linedefs*))))
+    (is (shake-bspc::split-lineseg seg -1d0)
+        nil)
+    (is (shake-bspc::split-lineseg seg 0d0)
+        nil)
+    (is (shake-bspc::split-lineseg seg 1d0)
+        nil)
+    (let ((t-split 0.8d0))
+      (is (shake-bspc::split-lineseg seg t-split)
+          (cons (make-lineseg :orig-line (car *test-linedefs*)
+                              :t-end t-split)
+                (make-lineseg :orig-line (car *test-linedefs*)
+                              :t-start t-split))
+          :test #'equalp))))
 
 (finalize)
