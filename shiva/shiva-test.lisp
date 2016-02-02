@@ -54,4 +54,22 @@
                     '(0 1)))
            '(simple-array double-float (2 2))))
 
+(subtest "Testing transforms"
+  (is (vtransform (translation :x 2 :z -2) (v 3 5 0 1))
+      (v 5 5 -2 1) :test #'equalp)
+  (is (vtransform (translation :y 3) (v 4 5 6 0))
+      (v 4 5 6 0) :test #'equalp)
+  (is (vtransform (scale :x 5) (v 2 3 4 1))
+      (v 10 3 4 1) :test #'equalp)
+  (is (vtransform (scale :y 3 :z 4) (v 1 2 3 0))
+      (v 1 6 12 0) :test #'equalp)
+  (let ((scale (scale :x 2))
+        (translation (translation :x 1 :y 3)))
+    (is (vtransform (m* scale translation) (v 1 2 3 1))
+        (v 4 5 3 1) :test #'equalp)
+    (is (vtransform (m* translation scale) (v 1 2 3 1))
+        (v 3 5 3 1) :test #'equalp)
+    (is (vtransform (m* translation scale) (v 1 2 3 0))
+        (vtransform (m* scale translation) (v 1 2 3 0)) :test #'equalp)))
+
 (finalize)

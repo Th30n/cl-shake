@@ -212,3 +212,28 @@ with ROWS."
                 (for elt in row)
                 (setf (aref matrix i j) (coerce elt 'double-float))))
     matrix))
+
+(defun midentity (n)
+  "Construct a square identity matrix of dimensions N."
+  (let ((out (make-array (list n n) :element-type 'double-float
+                         :initial-element 0d0)))
+    (dotimes (i n out)
+      (setf (aref out i i) 1d0))))
+
+(defmacro deftransform (row-index values col-index)
+  "Iterate over first three rows and set given VALUES on given COL-INDEX."
+  (with-gensyms (out)
+    `(let ((,out (midentity 4)))
+       ,@(iter (for i below 3) (for val in values)
+               (collect `(let ((,row-index ,i))
+                           (setf (aref ,out ,row-index ,col-index)
+                                 (coerce ,val 'double-float)))))
+       ,out)))
+
+(defun translation (&key (x 0d0) (y 0d0) (z 0d0))
+  "Construct a translation matrix."
+  (deftransform i (x y z) 3))
+
+(defun scale (&key (x 1d0) (y 1d0) (z 1d0))
+  "Construct a scale matrix."
+  (deftransform i (x y z) i))
