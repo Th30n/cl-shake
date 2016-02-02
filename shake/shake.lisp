@@ -26,6 +26,7 @@
               (shader-prog (load-shader #P"shaders/pass.vert"
                                         #P"shaders/color.frag")))
           (gl:use-program shader-prog)
+          (uniform-mvp shader-prog (shiva:translation :x 0.5 :y 0.8))
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
             (:idle ()
@@ -99,3 +100,24 @@
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
   (with-foreign-array value-ptr :float 'single-float values
     (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))
+
+(defmacro with-foreign-matrix (ptr ftype ltype matrices comps &body body)
+  (with-gensyms (rows cols offset m i j)
+    `(cffi:with-foreign-object (,ptr ,ftype (* (length ,matrices) ,comps))
+       (loop for ,offset by ,comps and ,m in ,matrices
+          do (let ((,rows (array-dimension ,m 0))
+                   (,cols (array-dimension ,m 1)))
+               (loop for ,i below ,rows
+                  do (loop for ,j below ,cols
+                        do (setf (cffi:mem-aref ,ptr ,ftype
+                                                (+ ,offset (* ,i ,cols) ,j))
+                                 (coerce (aref ,m ,i ,j) ,ltype))))))
+       ,@body)))
+
+(defun uniform-matrix-4f (location matrices &key (transpose t))
+  (with-foreign-matrix ptr :float 'single-float matrices 16
+    (%gl:uniform-matrix-4fv location (length matrices) transpose ptr)))
+
+(defun uniform-mvp (program mvp)
+  (let ((mvp-loc (gl:get-uniform-location program "mvp")))
+    (uniform-matrix-4f mvp-loc (list mvp))))
