@@ -35,12 +35,13 @@
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
   and context creation."
-  (sdl2:gl-set-attr :context-major-version 3)
-  (sdl2:gl-set-attr :context-minor-version 3)
-  ;; set CONTEXT_FORWARD_COMPATIBLE
-  (sdl2:gl-set-attr :context-flags #x2)
-  ;; set CONTEXT_PROFILE_CORE
-  (sdl2:gl-set-attr :context-profile-mask #x1))
+  (sdl2:gl-set-attrs
+   :context-major-version 3
+   :context-minor-version 3
+   ;; set CONTEXT_FORWARD_COMPATIBLE
+   :context-flags #x2
+   ;; set CONTEXT_PROFILE_CORE
+   :context-profile-mask #x1))
 
 (defun print-gl-info ()
   "Print basic OpenGL information."
@@ -57,10 +58,8 @@
 (defun load-shader (vs-file fs-file)
   "Return shader program, created from given VS-FILE and FS-FILE paths to a
   vertex shader and fragment shader, respectively."
-  (let* ((vs-src (read-file-into-string vs-file))
-         (fs-src (read-file-into-string fs-file))
-         (vs (compile-shader vs-src :vertex-shader))
-         (fs (compile-shader fs-src :fragment-shader)))
+  (let* ((vs (compile-shader-file vs-file :vertex-shader))
+         (fs (compile-shader-file fs-file :fragment-shader)))
     (link-program fs vs)))
 
 (defun compile-shader (source type)
@@ -71,6 +70,10 @@
     (print (gl:get-shader-info-log shader))
     shader))
 
+(defun compile-shader-file (source-file shader-type)
+  (let ((src (read-file-into-string source-file)))
+    (compile-shader src shader-type)))
+
 (defun link-program (shader &rest shaders)
   "Create a program, linked with given SHADER objects."
   (let ((program (gl:create-program)))
@@ -80,14 +83,6 @@
     (print (gl:get-program-info-log program))
     program))
 
-(defun render (win vertex-array)
-  (gl:bind-vertex-array vertex-array)
-  (gl:vertex-attrib 0 0)
-  (clear-buffer-fv :color 0 0 0 0)
-  (gl:draw-arrays :points 0 1)
-  (sdl2:gl-swap-window win)
-  (gl:bind-vertex-array 0))
-
 (defmacro with-foreign-array (ptr ftype ltype values &body body)
   (with-gensyms (len i val)
     `(let ((,len (list-length ,values)))
@@ -96,6 +91,22 @@
             do (setf (cffi:mem-aref ,ptr ,ftype ,i)
                      (coerce ,val ,ltype)))
          ,@body))))
+
+(defun render (win vertex-array)
+  (let ((vbo (car (gl:gen-buffers 1))))
+    (gl:bind-vertex-array vertex-array)
+    (gl:bind-buffer :array-buffer vbo)
+    (with-foreign-array vertices-ptr :float 'single-float
+        (list 0 0 -0.5 -0.8)
+      (let ((vertices (gl::make-gl-array-from-pointer vertices-ptr :float 4)))
+        (gl:buffer-data :array-buffer :static-draw vertices)))
+    (gl:enable-vertex-attrib-array 0)
+    (gl:vertex-attrib-pointer 0 2 :float nil 0 (cffi:null-pointer))
+    (clear-buffer-fv :color 0 0 0 0)
+    (gl:draw-arrays :lines 0 2)
+    (sdl2:gl-swap-window win)
+    (gl:bind-vertex-array 0)
+    (gl:delete-buffers (list vbo))))
 
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
   (with-foreign-array value-ptr :float 'single-float values
