@@ -24,8 +24,10 @@
   (:export #:v
            #:v-
            #:vdot
+           #:v=
            #:vtransform
            #:mat
            #:m*
            #:translation
-           #:scale))
+           #:scale
+           #:ortho))

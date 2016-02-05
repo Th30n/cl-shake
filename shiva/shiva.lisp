@@ -237,3 +237,32 @@ with ROWS."
 (defun scale (&key (x 1d0) (y 1d0) (z 1d0))
   "Construct a scale matrix."
   (deftransform i (x y z) i))
+
+(defun ortho (left right bottom top near far)
+  "Create orthographic projection from 6 clipping planes."
+  (declare (type double-float left right bottom top near far))
+  (let ((rml (- right left))
+        (tmb (- top bottom))
+        ;; negate near and far, to switch OpenGL view direction.
+        (nmf (- near far))
+        (rpl (+ right left))
+        (tpb (+ top bottom))
+        (fpn (+ far near)))
+    (mat (list (/ 2d0 rml) 0d0 0d0 (- (/ rpl rml)))
+         (list 0d0 (/ 2d0 tmb) 0d0 (- (/ tpb tmb)))
+         (list 0d0 0d0 (/ 2d0 nmf) (/ fpn nmf))
+         (list 0d0 0d0 0d0 1d0))))
+
+(defun double-float-rel-eq (a b)
+  (declare (type double-float a b))
+  (let ((diff (abs (- a b)))
+        (max (max (abs a) (abs b))))
+    (<= diff (* max double-float-epsilon))))
+
+(defun v= (v1 v2 &key (test #'double-float-rel-eq))
+  "Perform a comparison of two vectors."
+  (let ((n1 (array-dimension v1 0))
+        (n2 (array-dimension v2 0)))
+    (when (= n1 n2)
+      (iter (for i below n1)
+            (always (funcall test (aref v1 i) (aref v2 i)))))))

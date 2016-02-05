@@ -28,7 +28,7 @@
 (subtest "Testing v-"
   (is (v- (v 5 3)
           (v 4 7))
-      (v 1 -4) :test #'equalp)
+      (v 1 -4) :test #'v=)
   (is-type (v- (v 3 4) (v 4 4))
            '(vector double-float 2)))
 
@@ -56,20 +56,29 @@
 
 (subtest "Testing transforms"
   (is (vtransform (translation :x 2 :z -2) (v 3 5 0 1))
-      (v 5 5 -2 1) :test #'equalp)
+      (v 5 5 -2 1) :test #'v=)
   (is (vtransform (translation :y 3) (v 4 5 6 0))
-      (v 4 5 6 0) :test #'equalp)
+      (v 4 5 6 0) :test #'v=)
   (is (vtransform (scale :x 5) (v 2 3 4 1))
-      (v 10 3 4 1) :test #'equalp)
+      (v 10 3 4 1) :test #'v=)
   (is (vtransform (scale :y 3 :z 4) (v 1 2 3 0))
-      (v 1 6 12 0) :test #'equalp)
+      (v 1 6 12 0) :test #'v=)
   (let ((scale (scale :x 2))
         (translation (translation :x 1 :y 3)))
     (is (vtransform (m* scale translation) (v 1 2 3 1))
-        (v 4 5 3 1) :test #'equalp)
+        (v 4 5 3 1) :test #'v=)
     (is (vtransform (m* translation scale) (v 1 2 3 1))
-        (v 3 5 3 1) :test #'equalp)
+        (v 3 5 3 1) :test #'v=)
     (is (vtransform (m* translation scale) (v 1 2 3 0))
-        (vtransform (m* scale translation) (v 1 2 3 0)) :test #'equalp)))
+        (vtransform (m* scale translation) (v 1 2 3 0)) :test #'v=)))
+
+(subtest "Testing projections"
+  (let ((ortho (ortho -1d0 2d0 -3d0 4d0 -5d0 6d0)))
+    (is (vtransform ortho (v -1 -3 5 1))
+        (v -1 -1 -1 1) :test #'v=)
+    (is (vtransform ortho (v 2 4 -6 1))
+        (v 1 1 1 1) :test #'v=)
+    (is (vtransform ortho (v 0.5d0 0.5d0 -0.5d0 1))
+        (v 0 0 0 1) :test #'v=)))
 
 (finalize)
