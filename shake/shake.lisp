@@ -16,6 +16,70 @@
 
 (in-package #:shake)
 
+(defparameter *test-linesegs* (mapcar #'shake-bspc::linedef->lineseg
+                                      shake-bspc-test::*test-linedefs*))
+
+(defun inorder (bsp)
+  (unless (null bsp)
+    (append (inorder (cadr bsp))
+            (cons (car bsp)
+                  (inorder (caddr bsp))))))
+
+(defun get-endpoints (lineseg)
+  (let* ((linedef (shake-bspc::lineseg-orig-line lineseg))
+         (line-vec (shiva:v- (shake-bspc::linedef-end linedef)
+                             (shake-bspc::linedef-start linedef)))
+         (start (shiva:v+ (shake-bspc::linedef-start linedef)
+                           (shiva::vscale (shake-bspc::lineseg-t-start lineseg)
+                                          line-vec)))
+         (end (shiva:v+ (shake-bspc::linedef-start linedef)
+                         (shiva::vscale (shake-bspc::lineseg-t-end lineseg)
+                                        line-vec))))
+     (list start end)))
+
+(defun get-triangles (lineseg)
+  (let* ((endpoints (get-endpoints lineseg))
+         (start-2d (car endpoints))
+         (start-3d (shiva:v (aref start-2d 0) 1 (aref start-2d 1)))
+         (end-2d (cadr endpoints))
+         (end-3d (shiva:v (aref end-2d 0) 1 (aref end-2d 1))))
+    (list start-3d end-3d (shiva:v- start-3d (shiva:v 0 1 0))
+          (shiva:v- start-3d (shiva:v 0 1 0)) end-3d (shiva:v- end-3d (shiva:v 0 1 0)))))
+
+(defun get-line-list ()
+  (let* ((bsp (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
+         (endpoints (mapcan #'get-endpoints (inorder bsp))))
+    (apply #'concatenate 'list endpoints)))
+
+(defun get-triangle-list ()
+  (let* ((bsp (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
+         (triangle-points (mapcan #'get-triangles (inorder bsp))))
+    (apply #'concatenate 'list triangle-points)))
+
+(defun repeat (obj n)
+  "Repeat N times the given OBJ."
+  (loop repeat n collecting obj))
+
+(defun repeat-list (list n)
+  (apply #'concatenate 'list (repeat list n)))
+
+(defparameter *lines* (get-line-list))
+(defparameter *triangles* (get-triangle-list))
+(defparameter *colors*
+  (concatenate 'list
+               (repeat-list (list 1 0 0) 2)
+               (repeat-list (list 0 1 0) 2)
+               (repeat-list (list 0 0 1) 2)
+               (repeat-list (list 0.5 0.5 0) 2)
+               (repeat-list (list 0 0.5 0.5) 2)))
+(defparameter *triangle-colors*
+  (concatenate 'list
+               (repeat-list (list 1 0 0) 6)
+               (repeat-list (list 0 1 0) 6)
+               (repeat-list (list 0 0 1) 6)
+               (repeat-list (list 0.5 0.5 0) 6)
+               (repeat-list (list 0 0.5 0.5) 6)))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
@@ -24,9 +88,16 @@
         (print-gl-info)
         (let ((vertex-array (gl:gen-vertex-array))
               (shader-prog (load-shader #P"shaders/pass.vert"
-                                        #P"shaders/color.frag")))
+                                        #P"shaders/color.frag"))
+              (proj (shiva:perspective (* shiva:deg->rad 60d0)
+                                       (/ 800d0 600d0) 0.1d0 100d0)))
           (gl:use-program shader-prog)
-          (uniform-mvp shader-prog (shiva:translation :x 0.5 :y 0.8))
+          (uniform-mvp shader-prog
+                       (shiva:m* proj
+                                 (shiva:m* (shiva:rotation (shiva:v 0 1 0)
+                                                           (* shiva:deg->rad 10))
+                                            (shiva:translation :x 2 :z -8))))
+;;        (uniform-mvp shader-prog (shiva:ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
             (:idle ()
@@ -93,20 +164,34 @@
          ,@body))))
 
 (defun render (win vertex-array)
-  (let ((vbo (car (gl:gen-buffers 1))))
+  (let ((vbo (car (gl:gen-buffers 1)))
+        (color-buffer (car (gl:gen-buffers 1))))
+    (gl:viewport 0 0 800 600)
     (gl:bind-vertex-array vertex-array)
+
     (gl:bind-buffer :array-buffer vbo)
-    (with-foreign-array vertices-ptr :float 'single-float
-        (list 0 0 -0.5 -0.8)
-      (let ((vertices (gl::make-gl-array-from-pointer vertices-ptr :float 4)))
+    (with-foreign-array vertices-ptr :float 'single-float *triangles*
+      (let ((vertices (gl::make-gl-array-from-pointer vertices-ptr :float
+                                                      (list-length *triangles*))))
         (gl:buffer-data :array-buffer :static-draw vertices)))
     (gl:enable-vertex-attrib-array 0)
-    (gl:vertex-attrib-pointer 0 2 :float nil 0 (cffi:null-pointer))
+    (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
+
+    (gl:bind-buffer :array-buffer color-buffer)
+    (with-foreign-array color-ptr :float 'single-float *triangle-colors*
+      (let ((colors (gl::make-gl-array-from-pointer color-ptr :float
+                                                    (list-length *triangle-colors*))))
+        (gl:buffer-data :array-buffer :static-draw colors)))
+    (gl:enable-vertex-attrib-array 1)
+    (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
+
     (clear-buffer-fv :color 0 0 0 0)
-    (gl:draw-arrays :lines 0 2)
+    (gl:draw-arrays :triangles 0 30)
+;;    (gl:draw-arrays :lines 0 10)
     (sdl2:gl-swap-window win)
     (gl:bind-vertex-array 0)
-    (gl:delete-buffers (list vbo))))
+    (gl:delete-buffers (list vbo color-buffer))
+    (gl:check-error)))
 
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
   (with-foreign-array value-ptr :float 'single-float values

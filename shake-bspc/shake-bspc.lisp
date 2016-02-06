@@ -60,7 +60,7 @@
 (defun build-bsp (rootseg linesegs)
   (declare (type lineseg rootseg) (type list linesegs))
   (if (null linesegs)
-      rootseg
+      (list rootseg)
       (let ((splitter (lineseg-orig-line rootseg))
             (front nil)
             (back nil))
