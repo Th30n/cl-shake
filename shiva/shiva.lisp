@@ -127,6 +127,8 @@
   "Return the direction angle in radians between points V1 and V2"
   (angle (v- v2 v1)))
 (defconstant rad->deg (/ 180 pi)
+  "Constant for conversion from radians to degrees.")
+(defconstant deg->rad (/ pi 180)
   "Constant for conversion from degrees to radians.")
 (defun deg-angle (v) (* rad->deg (angle v)))
 (defun deg-direction (v1 v2) (* rad->deg (direction v1 v2)))
@@ -253,11 +255,24 @@ with ROWS."
          (list 0d0 0d0 (/ 2d0 nmf) (/ fpn nmf))
          (list 0d0 0d0 0d0 1d0))))
 
-(defun double-float-rel-eq (a b)
+(defun perspective (fovy aspect near far)
+  "Create a perspective projection with symmetric view frustum."
+  (declare (type double-float fovy aspect near far))
+  (let* ((tan-half-fov (tan (/ fovy 2d0)))
+         (x (/ 1d0 (* aspect tan-half-fov)))
+         (y (/ 1d0 tan-half-fov))
+         (fmn (- far near))
+         (fpn (+ far near)))
+    (mat (list x 0d0 0d0 0d0)
+         (list 0d0 y 0d0 0d0)
+         (list 0d0 0d0 (- (/ fpn fmn)) (/ (* -2d0 far near) fmn))
+         (list 0d0 0d0 -1d0 0d0))))
+
+(defun double-float-rel-eq (a b &key (epsilon-scale 2d0))
   (declare (type double-float a b))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
-    (<= diff (* max double-float-epsilon))))
+    (<= diff (* max epsilon-scale double-float-epsilon))))
 
 (defun v= (v1 v2 &key (test #'double-float-rel-eq))
   "Perform a comparison of two vectors."

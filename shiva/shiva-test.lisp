@@ -73,12 +73,21 @@
         (vtransform (m* scale translation) (v 1 2 3 0)) :test #'v=)))
 
 (subtest "Testing projections"
-  (let ((ortho (ortho -1d0 2d0 -3d0 4d0 -5d0 6d0)))
+  (let ((ortho (ortho -1d0 2d0 -3d0 4d0 -5d0 6d0))
+        (persp (perspective (* deg->rad 90d0) 1d0 1d0 10d0)))
     (is (vtransform ortho (v -1 -3 5 1))
         (v -1 -1 -1 1) :test #'v=)
     (is (vtransform ortho (v 2 4 -6 1))
         (v 1 1 1 1) :test #'v=)
     (is (vtransform ortho (v 0.5d0 0.5d0 -0.5d0 1))
-        (v 0 0 0 1) :test #'v=)))
+        (v 0 0 0 1) :test #'v=)
+    (is (vtransform persp (v 0 0 -1 1))
+        (v 0 0 -1 1) :test #'v=)
+    (is (vtransform persp (v 1 1 -1 1))
+        (v 1 1 -1 1) :test #'v=)
+    (is (vtransform persp (v 0 0 -10 1))
+        (v 0 0 10 10) :test #'v=)
+    (is (vtransform persp (v -10 -10 -10 1))
+        (v -10 -10 10 10) :test #'v=)))
 
 (finalize)

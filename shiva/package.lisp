@@ -21,8 +21,12 @@
         #:iterate
         #:alexandria
         #:metabang.bind)
-  (:export #:v
+  (:export #:rad->deg
+           #:deg->rad
+           #:v
            #:v-
+           #:v+
+           #:vscale
            #:vdot
            #:v=
            #:vtransform
@@ -30,4 +34,5 @@
            #:m*
            #:translation
            #:scale
-           #:ortho))
+           #:ortho
+           #:perspective))
