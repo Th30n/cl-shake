@@ -28,11 +28,13 @@
            #:v+
            #:vscale
            #:vdot
+           #:vcross
            #:v=
            #:vtransform
            #:mat
            #:m*
            #:translation
            #:scale
+           #:rotation
            #:ortho
            #:perspective))

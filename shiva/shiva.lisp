@@ -268,7 +268,7 @@ with ROWS."
          (list 0d0 0d0 (- (/ fpn fmn)) (/ (* -2d0 far near) fmn))
          (list 0d0 0d0 -1d0 0d0))))
 
-(defun double-float-rel-eq (a b &key (epsilon-scale 2d0))
+(defun double-float-rel-eq (a b &key (epsilon-scale 4d0))
   (declare (type double-float a b))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
@@ -281,3 +281,49 @@ with ROWS."
     (when (= n1 n2)
       (iter (for i below n1)
             (always (funcall test (aref v1 i) (aref v2 i)))))))
+
+(defun vcross (v1 v2)
+  "Get the cross product of two vectors."
+  (tensor ((i 0 2)) ((out 3)) (:simple-arrays (v1 v2))
+    ($ i (let* ((j (mod (1+ i) 3))
+                (k (mod (1+ j) 3)))
+           (setf (out i) (- (* (v1 j) (v2 k)) (* (v1 k) (v2 j))))))
+    out))
+
+(defun q (x y z w)
+  "Construct a quaternion as a cons of vector X Y Z and W."
+  (cons (v x y z) (coerce w 'double-float)))
+
+(defun q+ (q1 q2)
+  "Add two quaternions."
+  (cons (v+ (car q1) (car q2)) (+ (cdr q1) (cdr q2))))
+
+(defun q* (q1 q2)
+  "Multiply two quaternions."
+  (let ((v1 (car q1))
+        (w1 (cdr q1))
+        (v2 (car q2))
+        (w2 (cdr q2)))
+    (cons (v+ (vcross v1 v2) (vscale w2 v1))
+          (- (* w1 w2) (vdot v1 v2)))))
+
+(defun qconj (q)
+  "Conjugate a quaternion."
+  (cons (vscale -1d0 (car q)) (cdr q)))
+
+(defun qrotation (axis rad-angle)
+  "Construct a quaternion for rotation of RAD-ANGLE around AXIS vector."
+  (let ((half-angle (/ (coerce rad-angle 'double-float) 2d0)))
+    (cons (vscale (sin half-angle) axis) (cos half-angle))))
+
+(defun rotation (axis rad-angle)
+  "Construct a rotation matrix for RAD-ANGLE around AXIS vector."
+  (let* ((q (qrotation axis rad-angle))
+         (x (aref (car q) 0))
+         (y (aref (car q) 1))
+         (z (aref (car q) 2))
+         (w (cdr q)))
+    (mat (list (- 1 (* 2 (+ (* y y) (* z z)))) (* 2 (- (* x y) (* w z))) (* 2 (+ (* x z) (* w y))) 0)
+         (list (* 2 (+ (* x y) (* w z))) (- 1 (* 2 (+ (* x x) (* z z)))) (* 2 (- (* y z) (* w z))) 0)
+         (list (* 2 (- (* x z) (* w y))) (* 2 (+ (* y z) (* w x))) (- 1 (* 2 (+ (* x x) (* y y)))) 0)
+         (list 0 0 0 1))))
