@@ -274,11 +274,15 @@ with ROWS."
          (list 0d0 0d0 (- (/ fpn fmn)) (/ (* -2d0 far near) fmn))
          (list 0d0 0d0 -1d0 0d0))))
 
-(defun double-float-rel-eq (a b &key (epsilon-scale 4d0))
+(defun double-float-rel-eq
+    (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
+  "Compare floating points using epsilon difference and fallback to relative
+epsilon. Doesn't handle infinities."
   (declare (type double-float a b))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
-    (<= diff (* max epsilon-scale double-float-epsilon))))
+    (or (<= diff epsilon) ;; Needed when near zero.
+        (<= diff (* max rel-epsilon)))))
 
 (defun v= (v1 v2 &key (test #'double-float-rel-eq))
   "Perform a comparison of two vectors."
