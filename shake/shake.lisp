@@ -20,22 +20,17 @@
 
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
-and rotation per axis in degrees."
+and rotation as a quaternion."
   projection
   (position (v 0 0 0) :type (vector double-float 3))
-  (rotation (v 0 0 0) :type (vector double-float 3)))
+  (rotation (q 0 0 0 1) :type (cons (vector double-float 3) double-float)))
 
 (defun camera-view-transform (camera)
   (declare (type camera camera))
   (let* ((pos (camera-position camera))
          (translation (translation
                        :x (- (vx pos)) :y (- (vy pos)) :z (- (vz pos))))
-         (rot (v- (v 0 0 0) (camera-rotation camera)))
-         (rx (* deg->rad (vx rot)))
-         (ry (* deg->rad (vy rot)))
-         (rz (* deg->rad (vz rot)))
-         (q (q* (qrotation (v 1 0 0) rx)
-                (q* (qrotation (v 0 1 0) ry) (qrotation (v 0 0 1) rz)))))
+         (q (qconj (camera-rotation camera))))
     (m* (q->mat q) translation)))
 
 (defparameter *test-linesegs* (mapcar #'shake-bspc::linedef->lineseg
@@ -100,6 +95,13 @@ and rotation per axis in degrees."
                (repeat-list (list 0.5 0.5 0) 6)
                (repeat-list (list 0 0.5 0.5) 6)))
 
+(defun nrotate-camera (xrel yrel camera)
+  (let* ((xrot (q* (qrotation (v 0 1 0) (* deg->rad (- xrel)))
+                   (camera-rotation camera)))
+         (yrot (q* xrot (qrotation (v 1 0 0) (* deg->rad (- yrel))))))
+    (setf (camera-rotation camera) yrot)
+    camera))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
@@ -111,16 +113,18 @@ and rotation per axis in degrees."
                                          #P"shaders/color.frag"))
                (proj (perspective (* deg->rad 60d0)
                                   (/ 800d0 600d0) 0.1d0 100d0))
-               (camera (make-camera :projection proj :position (v -2 0 8)
-                                    :rotation (v 0 -10 0))))
+               (camera (make-camera :projection proj :position (v -2 0 8))))
           (gl:use-program shader-prog)
-          (uniform-mvp shader-prog
-                     (m* (camera-projection camera)
-                         (camera-view-transform camera)))
           ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
+            (:mousemotion
+             (:xrel xrel :yrel yrel)
+             (nrotate-camera xrel yrel camera))
             (:idle ()
+                   (uniform-mvp shader-prog
+                                (m* (camera-projection camera)
+                                    (camera-view-transform camera)))
                    (render win vertex-array))))))))
 
 (defun set-gl-attrs ()
