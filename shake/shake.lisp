@@ -102,6 +102,18 @@ and rotation as a quaternion."
     (setf (camera-rotation camera) yrot)
     camera))
 
+(defun view-dir (dir-name camera)
+  (let ((dir (ecase dir-name
+               (:forward (v 0 0 -1))
+               (:back (v 0 0 1))
+               (:right (v 1 0 0))
+               (:left (v -1 0 0)))))
+    (vrotate (camera-rotation camera) dir)))
+
+(defun nmove-camera (dir-name camera)
+  (let ((pos (v+ (camera-position camera) (view-dir dir-name camera))))
+    (setf (camera-position camera) pos)))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
@@ -118,6 +130,18 @@ and rotation as a quaternion."
           ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
+            (:keydown
+             (:keysym keysym)
+             (let ((scancode (sdl2:scancode-value keysym)))
+               (cond
+                 ((sdl2:scancode= scancode :scancode-w)
+                  (nmove-camera :forward camera))
+                 ((sdl2:scancode= scancode :scancode-s)
+                  (nmove-camera :back camera))
+                 ((sdl2:scancode= scancode :scancode-a)
+                  (nmove-camera :left camera))
+                 ((sdl2:scancode= scancode :scancode-d)
+                  (nmove-camera :right camera)))))
             (:mousemotion
              (:xrel xrel :yrel yrel)
              (nrotate-camera xrel yrel camera))
