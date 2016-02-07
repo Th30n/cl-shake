@@ -23,8 +23,8 @@
         #:metabang.bind)
   (:export #:rad->deg #:deg->rad
            #:v #:vx #:vy #:vz #:vw
-           #:v- #:v+ #:v=
-           #:vscale #:vdot #:vcross #:vtransform
+           #:v- #:v+ #:v= #:vnorm #:vnormalize
+           #:vscale #:vdot #:vcross #:vtransform #:vrotate
            #:q #:q+ #:q* #:qconj #:qrotation #:q->mat
            #:mat
            #:m*

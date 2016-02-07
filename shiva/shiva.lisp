@@ -117,6 +117,7 @@
 	  (sum i (* (v1 i) (v2 i)))))
 
 (defun vnorm (v) (sqrt (vdot v v)))
+(defun vnormalize (v) (vscale (/ 1d0 (vnorm v)) v))
 (defun vdist (v1 v2) (vnorm (v- v1 v2)))
 (defun vdistsq (v1 v2) (let ((d (v- v1 v2))) (vdot d d)))
 (defun angle (v)
@@ -320,6 +321,12 @@ with ROWS."
   "Construct a quaternion for rotation of RAD-ANGLE around AXIS vector."
   (let ((half-angle (/ (coerce rad-angle 'double-float) 2d0)))
     (cons (vscale (sin half-angle) axis) (cos half-angle))))
+
+(defun vrotate (quaternion vector)
+  "Rotate a 3 component VECTOR by given QUATERNION."
+  (vnormalize
+   (car (q* (q* quaternion (q (vx vector) (vy vector) (vz vector) 0))
+            (qconj quaternion)))))
 
 (defun q->mat (quaternion)
   "Construct a rotation matrix from given unit QUATERNION."
