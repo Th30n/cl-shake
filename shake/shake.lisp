@@ -36,11 +36,28 @@ and rotation as a quaternion."
 (defparameter *test-linesegs* (mapcar #'shake-bspc::linedef->lineseg
                                       shake-bspc-test::*test-linedefs*))
 
-(defun inorder (bsp)
+(defparameter *bsp*
+  (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
+
+(defun determine-side (point lineseg)
+  "Determine on which side of a LINESEG is the given POINT located.
+Returns BACK or FRONT."
+  (let* ((line (shake-bspc::lineseg-orig-line lineseg))
+         (normal (shake-bspc::linedef-normal line)))
+    (if (>= 0 (- (vdot normal point)
+                 (vdot normal (shake-bspc::linedef-start line))))
+        'front
+        'back)))
+
+(defun back-to-front (point bsp)
+  "Traverse the BSP in back to front order relative to given POINT."
   (unless (null bsp)
-    (append (inorder (cadr bsp))
-            (cons (car bsp)
-                  (inorder (caddr bsp))))))
+    (let ((node (car bsp)))
+      (ecase (determine-side point node)
+        (front (append (back-to-front point (caddr bsp))
+                       (cons node (back-to-front point (cadr bsp)))))
+        (back (append (back-to-front point (cadr bsp))
+                      (cons node (back-to-front point (caddr bsp)))))))))
 
 (defun get-endpoints (lineseg)
   (let* ((linedef (shake-bspc::lineseg-orig-line lineseg))
@@ -61,14 +78,12 @@ and rotation as a quaternion."
     (list start-3d end-3d (v- start-3d (v 0 1 0))
           (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 
-(defun get-line-list ()
-  (let* ((bsp (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
-         (endpoints (mapcan #'get-endpoints (inorder bsp))))
+(defun get-line-list (point bsp)
+  (let* ((endpoints (mapcan #'get-endpoints (back-to-front point bsp))))
     (apply #'concatenate 'list endpoints)))
 
-(defun get-triangle-list ()
-  (let* ((bsp (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
-         (triangle-points (mapcan #'get-triangles (inorder bsp))))
+(defun get-triangle-list (point bsp)
+  (let* ((triangle-points (mapcan #'get-triangles (back-to-front point bsp))))
     (apply #'concatenate 'list triangle-points)))
 
 (defun repeat (obj n)
@@ -78,9 +93,7 @@ and rotation as a quaternion."
 (defun repeat-list (list n)
   (apply #'concatenate 'list (repeat list n)))
 
-(defparameter *lines* (get-line-list))
-(defparameter *triangles* (get-triangle-list))
-(defparameter *colors*
+(defparameter *line-colors*
   (concatenate 'list
                (repeat-list (list 1 0 0) 2)
                (repeat-list (list 0 1 0) 2)
@@ -120,12 +133,14 @@ and rotation as a quaternion."
     (sdl2:with-window (win :title "shake" :flags '(:shown :opengl))
       (sdl2:with-gl-context (context win)
         (print-gl-info)
+        (sdl2:set-relative-mouse-mode 1)
+        ;; (gl:enable :depth-test :cull-face)
         (let* ((vertex-array (gl:gen-vertex-array))
                (shader-prog (load-shader #P"shaders/pass.vert"
                                          #P"shaders/color.frag"))
                (proj (perspective (* deg->rad 60d0)
                                   (/ 800d0 600d0) 0.1d0 100d0))
-               (camera (make-camera :projection proj :position (v -2 0 8))))
+               (camera (make-camera :projection proj :position (v 0 0 8))))
           (gl:use-program shader-prog)
           ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
@@ -149,7 +164,7 @@ and rotation as a quaternion."
                    (uniform-mvp shader-prog
                                 (m* (camera-projection camera)
                                     (camera-view-transform camera)))
-                   (render win vertex-array))))))))
+                   (render win vertex-array camera))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
@@ -211,16 +226,23 @@ and rotation as a quaternion."
                      (coerce ,val ,ltype)))
          ,@body))))
 
-(defun render (win vertex-array)
+(defun get-map-walls (camera bsp)
+  (let* ((pos (camera-position camera))
+         (pos-2d (v (vx pos) (vz pos)))
+         (triangles (get-triangle-list pos-2d bsp)))
+    triangles))
+
+(defun render (win vertex-array camera)
   (let ((vbo (car (gl:gen-buffers 1)))
-        (color-buffer (car (gl:gen-buffers 1))))
+        (color-buffer (car (gl:gen-buffers 1)))
+        (triangles (get-map-walls camera *bsp*)))
     (gl:viewport 0 0 800 600)
     (gl:bind-vertex-array vertex-array)
 
     (gl:bind-buffer :array-buffer vbo)
-    (with-foreign-array vertices-ptr :float 'single-float *triangles*
+    (with-foreign-array vertices-ptr :float 'single-float triangles
       (let ((vertices (gl::make-gl-array-from-pointer vertices-ptr :float
-                                                      (list-length *triangles*))))
+                                                      (list-length triangles))))
         (gl:buffer-data :array-buffer :static-draw vertices)))
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
@@ -234,6 +256,7 @@ and rotation as a quaternion."
     (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
 
     (clear-buffer-fv :color 0 0 0 0)
+;;    (clear-buffer-fv :depth 0 1)
     (gl:draw-arrays :triangles 0 30)
 ;;    (gl:draw-arrays :lines 0 10)
     (sdl2:gl-swap-window win)
