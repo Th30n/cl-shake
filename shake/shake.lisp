@@ -113,9 +113,15 @@ Returns BACK or FRONT."
          (speed (* sens delta-time))
          (xrot (q* (qrotation (v 0 1 0) (* speed deg->rad (- xrel)))
                    (camera-rotation camera)))
-         (yrot (q* xrot (qrotation (v 1 0 0) (* speed deg->rad (- yrel))))))
-    (setf (camera-rotation camera) yrot)
-    camera))
+         (old-v-angle (* rad->deg (q->euler-x xrot)))
+         (v-angle-diff (* speed (- yrel))))
+    (cond
+      ((>= old-v-angle 90d0) (decf old-v-angle 180d0))
+      ((<= old-v-angle -90d0) (incf old-v-angle 180d0)))
+    (let ((v-angle (clamp (+ old-v-angle v-angle-diff) -89d0 89d0)))
+      (setf (camera-rotation camera)
+            (q* xrot (qrotation (v 1 0 0) (* deg->rad (- v-angle old-v-angle)))))
+      camera)))
 
 (defun view-dir (dir-name camera)
   (let ((dir (ecase dir-name

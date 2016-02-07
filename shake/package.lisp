@@ -21,4 +21,5 @@
   (:export #:main)
   (:import-from #:alexandria
                 #:read-file-into-string
-                #:with-gensyms))
+                #:with-gensyms
+                #:clamp))

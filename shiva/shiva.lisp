@@ -300,6 +300,11 @@ with ROWS."
   "Construct a quaternion as a cons of vector X Y Z and W."
   (cons (v x y z) (coerce w 'double-float)))
 
+(defmacro qx (quaternion) `(vx (car ,quaternion)))
+(defmacro qy (quaternion) `(vy (car ,quaternion)))
+(defmacro qz (quaternion) `(vz (car ,quaternion)))
+(defmacro qw (quaternion) `(cdr ,quaternion))
+
 (defun q+ (q1 q2)
   "Add two quaternions."
   (cons (v+ (car q1) (car q2)) (+ (cdr q1) (cdr q2))))
@@ -330,10 +335,10 @@ with ROWS."
 
 (defun q->mat (quaternion)
   "Construct a rotation matrix from given unit QUATERNION."
-  (let ((x (vx (car quaternion)))
-        (y (vy (car quaternion)))
-        (z (vz (car quaternion)))
-        (w (cdr quaternion)))
+  (let ((x (qx quaternion))
+        (y (qy quaternion))
+        (z (qz quaternion))
+        (w (qw quaternion)))
     (mat (list (- 1 (* 2 (+ (* y y) (* z z)))) (* 2 (- (* x y) (* w z))) (* 2 (+ (* x z) (* w y))) 0)
          (list (* 2 (+ (* x y) (* w z))) (- 1 (* 2 (+ (* x x) (* z z)))) (* 2 (- (* y z) (* w x))) 0)
          (list (* 2 (- (* x z) (* w y))) (* 2 (+ (* y z) (* w x))) (- 1 (* 2 (+ (* x x) (* y y)))) 0)
@@ -343,3 +348,11 @@ with ROWS."
   "Construct a rotation matrix for RAD-ANGLE around AXIS vector."
   (q->mat (qrotation axis rad-angle)))
 
+(defun q->euler-x (quaternion)
+  "Extract the euler angle about the x-axis (roll) from QUATERNION."
+  (let ((qx (qx quaternion))
+        (qy (qy quaternion))
+        (qz (qz quaternion))
+        (qw (qw quaternion)))
+    (atan (* 2d0 (+ (* qw qx) (* qy qz)))
+          (- 1d0 (* 2d0 (+ (* qx qx) (* qy qy)))))))

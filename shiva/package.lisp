@@ -25,7 +25,7 @@
            #:v #:vx #:vy #:vz #:vw
            #:v- #:v+ #:v= #:vnorm #:vnormalize
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
-           #:q #:q+ #:q* #:qconj #:qrotation #:q->mat
+           #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x
            #:mat
            #:m*
            #:translation #:scale #:rotation
