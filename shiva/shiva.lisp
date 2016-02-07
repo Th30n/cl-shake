@@ -202,6 +202,11 @@
 	  (setf (aref vector i) (coerce elt 'double-float)))
     vector))
 
+(defmacro vx (vector) `(aref ,vector 0))
+(defmacro vy (vector) `(aref ,vector 1))
+(defmacro vz (vector) `(aref ,vector 2))
+(defmacro vw (vector) `(aref ,vector 3))
+
 (defun mat (&rest rows)
   "Construct a row major matrix as a 2D vector of double-float and fill it
 with ROWS."
@@ -304,7 +309,7 @@ with ROWS."
         (w1 (cdr q1))
         (v2 (car q2))
         (w2 (cdr q2)))
-    (cons (v+ (vcross v1 v2) (vscale w2 v1))
+    (cons (v+ (vcross v1 v2) (vscale w2 v1) (vscale w1 v2))
           (- (* w1 w2) (vdot v1 v2)))))
 
 (defun qconj (q)
@@ -316,14 +321,18 @@ with ROWS."
   (let ((half-angle (/ (coerce rad-angle 'double-float) 2d0)))
     (cons (vscale (sin half-angle) axis) (cos half-angle))))
 
-(defun rotation (axis rad-angle)
-  "Construct a rotation matrix for RAD-ANGLE around AXIS vector."
-  (let* ((q (qrotation axis rad-angle))
-         (x (aref (car q) 0))
-         (y (aref (car q) 1))
-         (z (aref (car q) 2))
-         (w (cdr q)))
+(defun q->mat (quaternion)
+  "Construct a rotation matrix from given unit QUATERNION."
+  (let ((x (vx (car quaternion)))
+        (y (vy (car quaternion)))
+        (z (vz (car quaternion)))
+        (w (cdr quaternion)))
     (mat (list (- 1 (* 2 (+ (* y y) (* z z)))) (* 2 (- (* x y) (* w z))) (* 2 (+ (* x z) (* w y))) 0)
          (list (* 2 (+ (* x y) (* w z))) (- 1 (* 2 (+ (* x x) (* z z)))) (* 2 (- (* y z) (* w z))) 0)
          (list (* 2 (- (* x z) (* w y))) (* 2 (+ (* y z) (* w x))) (- 1 (* 2 (+ (* x x) (* y y)))) 0)
          (list 0 0 0 1))))
+
+(defun rotation (axis rad-angle)
+  "Construct a rotation matrix for RAD-ANGLE around AXIS vector."
+  (q->mat (qrotation axis rad-angle)))
+
