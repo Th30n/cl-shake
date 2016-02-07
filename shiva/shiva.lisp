@@ -328,7 +328,7 @@ with ROWS."
         (z (vz (car quaternion)))
         (w (cdr quaternion)))
     (mat (list (- 1 (* 2 (+ (* y y) (* z z)))) (* 2 (- (* x y) (* w z))) (* 2 (+ (* x z) (* w y))) 0)
-         (list (* 2 (+ (* x y) (* w z))) (- 1 (* 2 (+ (* x x) (* z z)))) (* 2 (- (* y z) (* w z))) 0)
+         (list (* 2 (+ (* x y) (* w z))) (- 1 (* 2 (+ (* x x) (* z z)))) (* 2 (- (* y z) (* w x))) 0)
          (list (* 2 (- (* x z) (* w y))) (* 2 (+ (* y z) (* w x))) (- 1 (* 2 (+ (* x x) (* y y)))) 0)
          (list 0 0 0 1))))
 
