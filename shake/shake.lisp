@@ -16,6 +16,28 @@
 
 (in-package #:shake)
 
+(declaim (optimize (debug 3)))
+
+(defstruct camera
+  "A camera structure, storing the projection matrix, position in world space
+and rotation per axis in degrees."
+  projection
+  (position (v 0 0 0) :type (vector double-float 3))
+  (rotation (v 0 0 0) :type (vector double-float 3)))
+
+(defun camera-view-transform (camera)
+  (declare (type camera camera))
+  (let* ((pos (camera-position camera))
+         (translation (translation
+                       :x (- (vx pos)) :y (- (vy pos)) :z (- (vz pos))))
+         (rot (v- (v 0 0 0) (camera-rotation camera)))
+         (rx (* deg->rad (vx rot)))
+         (ry (* deg->rad (vy rot)))
+         (rz (* deg->rad (vz rot)))
+         (q (q* (qrotation (v 1 0 0) rx)
+                (q* (qrotation (v 0 1 0) ry) (qrotation (v 0 0 1) rz)))))
+    (m* (q->mat q) translation)))
+
 (defparameter *test-linesegs* (mapcar #'shake-bspc::linedef->lineseg
                                       shake-bspc-test::*test-linedefs*))
 
@@ -27,24 +49,22 @@
 
 (defun get-endpoints (lineseg)
   (let* ((linedef (shake-bspc::lineseg-orig-line lineseg))
-         (line-vec (shiva:v- (shake-bspc::linedef-end linedef)
-                             (shake-bspc::linedef-start linedef)))
-         (start (shiva:v+ (shake-bspc::linedef-start linedef)
-                           (shiva::vscale (shake-bspc::lineseg-t-start lineseg)
-                                          line-vec)))
-         (end (shiva:v+ (shake-bspc::linedef-start linedef)
-                         (shiva::vscale (shake-bspc::lineseg-t-end lineseg)
-                                        line-vec))))
-     (list start end)))
+         (line-vec (v- (shake-bspc::linedef-end linedef)
+                       (shake-bspc::linedef-start linedef)))
+         (start (v+ (shake-bspc::linedef-start linedef)
+                    (vscale (shake-bspc::lineseg-t-start lineseg) line-vec)))
+         (end (v+ (shake-bspc::linedef-start linedef)
+                  (vscale (shake-bspc::lineseg-t-end lineseg) line-vec))))
+    (list start end)))
 
 (defun get-triangles (lineseg)
   (let* ((endpoints (get-endpoints lineseg))
          (start-2d (car endpoints))
-         (start-3d (shiva:v (aref start-2d 0) 1 (aref start-2d 1)))
+         (start-3d (v (aref start-2d 0) 1 (aref start-2d 1)))
          (end-2d (cadr endpoints))
-         (end-3d (shiva:v (aref end-2d 0) 1 (aref end-2d 1))))
-    (list start-3d end-3d (shiva:v- start-3d (shiva:v 0 1 0))
-          (shiva:v- start-3d (shiva:v 0 1 0)) end-3d (shiva:v- end-3d (shiva:v 0 1 0)))))
+         (end-3d (v (aref end-2d 0) 1 (aref end-2d 1))))
+    (list start-3d end-3d (v- start-3d (v 0 1 0))
+          (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 
 (defun get-line-list ()
   (let* ((bsp (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
@@ -86,18 +106,18 @@
     (sdl2:with-window (win :title "shake" :flags '(:shown :opengl))
       (sdl2:with-gl-context (context win)
         (print-gl-info)
-        (let ((vertex-array (gl:gen-vertex-array))
-              (shader-prog (load-shader #P"shaders/pass.vert"
-                                        #P"shaders/color.frag"))
-              (proj (shiva:perspective (* shiva:deg->rad 60d0)
-                                       (/ 800d0 600d0) 0.1d0 100d0)))
+        (let* ((vertex-array (gl:gen-vertex-array))
+               (shader-prog (load-shader #P"shaders/pass.vert"
+                                         #P"shaders/color.frag"))
+               (proj (perspective (* deg->rad 60d0)
+                                  (/ 800d0 600d0) 0.1d0 100d0))
+               (camera (make-camera :projection proj :position (v -2 0 8)
+                                    :rotation (v 0 -10 0))))
           (gl:use-program shader-prog)
           (uniform-mvp shader-prog
-                       (shiva:m* proj
-                                 (shiva:m* (shiva:rotation (shiva:v 0 1 0)
-                                                           (* shiva:deg->rad 10))
-                                            (shiva:translation :x 2 :z -8))))
-;;        (uniform-mvp shader-prog (shiva:ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
+                     (m* (camera-projection camera)
+                         (camera-view-transform camera)))
+          ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
             (:idle ()
