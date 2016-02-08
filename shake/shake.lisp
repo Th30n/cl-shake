@@ -165,18 +165,20 @@ Returns BACK or FRONT."
             (:keydown
              (:keysym keysym)
              (let ((scancode (sdl2:scancode-value keysym)))
-               (cond
-                 ((sdl2:scancode= scancode :scancode-w)
-                  (nmove-camera :forward delta-time camera))
-                 ((sdl2:scancode= scancode :scancode-s)
-                  (nmove-camera :back delta-time camera))
-                 ((sdl2:scancode= scancode :scancode-a)
-                  (nmove-camera :left delta-time camera))
-                 ((sdl2:scancode= scancode :scancode-d)
-                  (nmove-camera :right delta-time camera)))))
+               (when (member :input-focus (sdl2:get-window-flags win))
+                 (cond
+                   ((sdl2:scancode= scancode :scancode-w)
+                    (nmove-camera :forward delta-time camera))
+                   ((sdl2:scancode= scancode :scancode-s)
+                    (nmove-camera :back delta-time camera))
+                   ((sdl2:scancode= scancode :scancode-a)
+                    (nmove-camera :left delta-time camera))
+                   ((sdl2:scancode= scancode :scancode-d)
+                    (nmove-camera :right delta-time camera))))))
             (:mousemotion
              (:xrel xrel :yrel yrel)
-             (nrotate-camera delta-time xrel yrel camera))
+             (when (member :input-focus (sdl2:get-window-flags win))
+               (nrotate-camera delta-time xrel yrel camera)))
             (:idle ()
                    (setf delta-time (coerce (/ (- current-time start-time)
                                                (sdl2:get-performance-frequency))
@@ -184,10 +186,11 @@ Returns BACK or FRONT."
                          start-time current-time
                          current-time (sdl2:get-performance-counter))
                    ;; (format t "Delta time ~,2Fms~%" (* 1e3 delta-time))
-                   (uniform-mvp shader-prog
-                                (m* (camera-projection camera)
-                                    (camera-view-transform camera)))
-                   (render win vertex-array camera))))))))
+                   (unless (member :minimized (sdl2:get-window-flags win))
+                     (uniform-mvp shader-prog
+                                  (m* (camera-projection camera)
+                                      (camera-view-transform camera)))
+                     (render win vertex-array camera)))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
