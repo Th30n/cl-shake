@@ -17,8 +17,8 @@
 (in-package #:shake-bspc)
 
 (defstruct linedef
-  (start (v 0 0) :type (vector double-float 2) :read-only t)
-  (end  (v 0 0) :type (vector double-float 2) :read-only t))
+  (start (v 0 0) :type (simple-array double-float (2)) :read-only t)
+  (end  (v 0 0) :type (simple-array double-float (2)) :read-only t))
 
 (defun linedef-normal (linedef)
   (let ((vec (v- (linedef-end linedef) (linedef-start linedef))))

@@ -22,8 +22,8 @@
   "A camera structure, storing the projection matrix, position in world space
 and rotation as a quaternion."
   projection
-  (position (v 0 0 0) :type (vector double-float 3))
-  (rotation (q 0 0 0 1) :type (cons (vector double-float 3) double-float)))
+  (position (v 0 0 0) :type (simple-array double-float (3)))
+  (rotation (q 0 0 0 1) :type (cons (simple-array double-float (3)) double-float)))
 
 (defun camera-view-transform (camera)
   (declare (type camera camera))
@@ -34,22 +34,22 @@ and rotation as a quaternion."
     (m* (q->mat q) translation)))
 
 (defparameter *test-linedefs*
-  (list (shake-bspc:make-linedef :start (v 0 -2) :end (v 0 5))
-        (shake-bspc:make-linedef :start (v -2 1) :end (v 5 1))
-        (shake-bspc:make-linedef :start (v 3 2) :end (v 3 -2))))
-(defparameter *test-linesegs* (mapcar #'shake-bspc:linedef->lineseg
+  (list (sbsp:make-linedef :start (v 0 -2) :end (v 0 5))
+        (sbsp:make-linedef :start (v -2 1) :end (v 5 1))
+        (sbsp:make-linedef :start (v 3 2) :end (v 3 -2))))
+(defparameter *test-linesegs* (mapcar #'sbsp:linedef->lineseg
                                       *test-linedefs*))
 
 (defparameter *bsp*
-  (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
+  (sbsp::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
 
 (defun determine-side (point lineseg)
   "Determine on which side of a LINESEG is the given POINT located.
 Returns BACK or FRONT."
-  (let* ((line (shake-bspc::lineseg-orig-line lineseg))
-         (normal (shake-bspc::linedef-normal line)))
+  (let* ((line (sbsp::lineseg-orig-line lineseg))
+         (normal (sbsp::linedef-normal line)))
     (if (>= 0 (- (vdot normal point)
-                 (vdot normal (shake-bspc::linedef-start line))))
+                 (vdot normal (sbsp::linedef-start line))))
         'front
         'back)))
 
@@ -64,13 +64,13 @@ Returns BACK or FRONT."
                       (cons node (back-to-front point (caddr bsp)))))))))
 
 (defun get-endpoints (lineseg)
-  (let* ((linedef (shake-bspc::lineseg-orig-line lineseg))
-         (line-vec (v- (shake-bspc::linedef-end linedef)
-                       (shake-bspc::linedef-start linedef)))
-         (start (v+ (shake-bspc::linedef-start linedef)
-                    (vscale (shake-bspc::lineseg-t-start lineseg) line-vec)))
-         (end (v+ (shake-bspc::linedef-start linedef)
-                  (vscale (shake-bspc::lineseg-t-end lineseg) line-vec))))
+  (let* ((linedef (sbsp::lineseg-orig-line lineseg))
+         (line-vec (v- (sbsp::linedef-end linedef)
+                       (sbsp::linedef-start linedef)))
+         (start (v+ (sbsp::linedef-start linedef)
+                    (vscale (sbsp::lineseg-t-start lineseg) line-vec)))
+         (end (v+ (sbsp::linedef-start linedef)
+                  (vscale (sbsp::lineseg-t-end lineseg) line-vec))))
     (list start end)))
 
 (defun get-triangles (lineseg)
@@ -92,6 +92,7 @@ Returns BACK or FRONT."
 
 (defun repeat (obj n)
   "Repeat N times the given OBJ."
+  (declare (type fixnum n))
   (loop repeat n collecting obj))
 
 (defun repeat-list (list n)
@@ -141,6 +142,21 @@ Returns BACK or FRONT."
                   (vscale speed (view-dir dir-name camera)))))
     (setf (camera-position camera) pos)))
 
+(defun performance-delta (start stop)
+  "Return the delta in seconds between two performance counters."
+  (coerce (/ (- stop start) (sdl2:get-performance-frequency)) 'double-float))
+
+(defstruct frame-timer
+  (frame 0 :type fixnum)
+  (total-time 0d0 :type double-float)
+  (max-time 0d0 :type double-float))
+
+(defun update-frame-timer (frame-timer dt)
+  (incf (frame-timer-frame frame-timer))
+  (incf (frame-timer-total-time frame-timer) dt)
+  (setf (frame-timer-max-time frame-timer)
+        (max (frame-timer-max-time frame-timer) dt)))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
@@ -157,7 +173,9 @@ Returns BACK or FRONT."
                (camera (make-camera :projection proj :position (v 0 0 8)))
                (start-time 0)
                (current-time 0)
-               (delta-time 0d0))
+               (delta-time 0d0)
+               (max-time 0d0)
+               (frame-timer (make-frame-timer)))
           (gl:use-program shader-prog)
           ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
@@ -180,12 +198,17 @@ Returns BACK or FRONT."
              (when (member :input-focus (sdl2:get-window-flags win))
                (nrotate-camera delta-time xrel yrel camera)))
             (:idle ()
-                   (setf delta-time (coerce (/ (- current-time start-time)
-                                               (sdl2:get-performance-frequency))
-                                            'double-float)
+                   (setf delta-time (performance-delta start-time current-time)
                          start-time current-time
                          current-time (sdl2:get-performance-counter))
-                   ;; (format t "Delta time ~,2Fms~%" (* 1e3 delta-time))
+                   (update-frame-timer frame-timer delta-time)
+                   (when (>= (frame-timer-total-time frame-timer) 1d0)
+                     (let ((avg-time (/ (frame-timer-total-time frame-timer)
+                                        (frame-timer-frame frame-timer))))
+                       (setf max-time (frame-timer-max-time frame-timer)
+                             frame-timer (make-frame-timer))
+                       (format t "CPU time: ~,2Fms (max)~%" (* 1d3 max-time))
+                       (format t "CPU time: ~,2Fms (avg)~%" (* 1d3 avg-time))))
                    (unless (member :minimized (sdl2:get-window-flags win))
                      (uniform-mvp shader-prog
                                   (m* (camera-projection camera)

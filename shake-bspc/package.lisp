@@ -17,7 +17,7 @@
 (in-package #:cl-user)
 
 (defpackage #:shake-bspc
-  (:nicknames "shake-bsp" "sbsp")
+  (:nicknames #:shake-bsp #:sbsp)
   (:use #:cl)
   (:export #:linedef
            #:make-linedef
