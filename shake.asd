@@ -21,7 +21,8 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("sdl2" "cl-opengl" "cffi" "alexandria" "shiva")
+  :depends-on ("sdl2" "cl-opengl" "cffi" "alexandria"
+               "shiva" "shake-bspc")
   :components
   ((:module "shake"
             :components ((:file "package")

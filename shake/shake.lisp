@@ -33,8 +33,12 @@ and rotation as a quaternion."
          (q (qconj (camera-rotation camera))))
     (m* (q->mat q) translation)))
 
-(defparameter *test-linesegs* (mapcar #'shake-bspc::linedef->lineseg
-                                      shake-bspc-test::*test-linedefs*))
+(defparameter *test-linedefs*
+  (list (shake-bspc:make-linedef :start (v 0 -2) :end (v 0 5))
+        (shake-bspc:make-linedef :start (v -2 1) :end (v 5 1))
+        (shake-bspc:make-linedef :start (v 3 2) :end (v 3 -2))))
+(defparameter *test-linesegs* (mapcar #'shake-bspc:linedef->lineseg
+                                      *test-linedefs*))
 
 (defparameter *bsp*
   (shake-bspc::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
