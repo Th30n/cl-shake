@@ -37,8 +37,7 @@ and rotation as a quaternion."
   (list (sbsp:make-linedef :start (v 0 -2) :end (v 0 5))
         (sbsp:make-linedef :start (v -2 1) :end (v 5 1))
         (sbsp:make-linedef :start (v 3 2) :end (v 3 -2))))
-(defparameter *test-linesegs* (mapcar #'sbsp:linedef->lineseg
-                                      *test-linedefs*))
+(defparameter *test-linesegs* (mapcar #'sbsp:linedef->lineseg *test-linedefs*))
 
 (defparameter *bsp*
   (sbsp::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
@@ -83,11 +82,11 @@ Returns BACK or FRONT."
           (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 
 (defun get-line-list (point bsp)
-  (let* ((endpoints (mapcan #'get-endpoints (back-to-front point bsp))))
+  (let ((endpoints (mapcan #'get-endpoints (back-to-front point bsp))))
     (apply #'concatenate 'list endpoints)))
 
 (defun get-triangle-list (point bsp)
-  (let* ((triangle-points (mapcan #'get-triangles (back-to-front point bsp))))
+  (let ((triangle-points (mapcan #'get-triangles (back-to-front point bsp))))
     (apply #'concatenate 'list triangle-points)))
 
 (defun repeat (obj n)
@@ -140,7 +139,8 @@ Returns BACK or FRONT."
   (let* ((speed (* 10 delta-time))
          (pos (v+ (camera-position camera)
                   (vscale speed (view-dir dir-name camera)))))
-    (setf (camera-position camera) pos)))
+    (setf (camera-position camera) pos)
+    camera))
 
 (defun performance-delta (start stop)
   "Return the delta in seconds between two performance counters."
@@ -151,11 +151,12 @@ Returns BACK or FRONT."
   (total-time 0d0 :type double-float)
   (max-time 0d0 :type double-float))
 
-(defun update-frame-timer (frame-timer dt)
+(defun nupdate-frame-timer (frame-timer dt)
   (incf (frame-timer-frame frame-timer))
   (incf (frame-timer-total-time frame-timer) dt)
   (setf (frame-timer-max-time frame-timer)
-        (max (frame-timer-max-time frame-timer) dt)))
+        (max (frame-timer-max-time frame-timer) dt))
+  frame-timer)
 
 (defun main ()
   (sdl2:with-init (:video)
@@ -201,7 +202,7 @@ Returns BACK or FRONT."
                    (setf delta-time (performance-delta start-time current-time)
                          start-time current-time
                          current-time (sdl2:get-performance-counter))
-                   (update-frame-timer frame-timer delta-time)
+                   (nupdate-frame-timer frame-timer delta-time)
                    (when (>= (frame-timer-total-time frame-timer) 1d0)
                      (let ((avg-time (/ (frame-timer-total-time frame-timer)
                                         (frame-timer-frame frame-timer))))
@@ -266,14 +267,22 @@ Returns BACK or FRONT."
     (print (gl:get-program-info-log program))
     program))
 
-(defmacro with-foreign-array (ptr ftype ltype values &body body)
-  (with-gensyms (len i val)
-    `(let ((,len (list-length ,values)))
-       (cffi:with-foreign-object (,ptr ,ftype ,len)
-         (loop for ,i below ,len and ,val in ,values
-            do (setf (cffi:mem-aref ,ptr ,ftype ,i)
-                     (coerce ,val ,ltype)))
-         ,@body))))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun foreign-type->lisp-type (foreign-type)
+    "Convert a foreign type to lisp type. This is a convenience for using cffi
+and is implementation dependant."
+    (ecase foreign-type
+      (:float 'single-float))))
+
+(defmacro with-foreign-array (ptr ftype values &body body)
+  (let ((ltype (foreign-type->lisp-type ftype)))
+    (with-gensyms (len i val)
+      `(let ((,len (list-length ,values)))
+         (cffi:with-foreign-object (,ptr ,ftype ,len)
+           (loop for ,i below ,len and ,val in ,values
+              do (setf (cffi:mem-aref ,ptr ,ftype ,i)
+                       (coerce ,val (quote ,ltype))))
+           ,@body)))))
 
 (defun get-map-walls (camera bsp)
   (let* ((pos (camera-position camera))
@@ -289,7 +298,7 @@ Returns BACK or FRONT."
     (gl:bind-vertex-array vertex-array)
 
     (gl:bind-buffer :array-buffer vbo)
-    (with-foreign-array vertices-ptr :float 'single-float triangles
+    (with-foreign-array vertices-ptr :float triangles
       (let ((vertices (gl::make-gl-array-from-pointer vertices-ptr :float
                                                       (list-length triangles))))
         (gl:buffer-data :array-buffer :static-draw vertices)))
@@ -297,7 +306,7 @@ Returns BACK or FRONT."
     (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
 
     (gl:bind-buffer :array-buffer color-buffer)
-    (with-foreign-array color-ptr :float 'single-float *triangle-colors*
+    (with-foreign-array color-ptr :float *triangle-colors*
       (let ((colors (gl::make-gl-array-from-pointer color-ptr :float
                                                     (list-length *triangle-colors*))))
         (gl:buffer-data :array-buffer :static-draw colors)))
@@ -314,24 +323,25 @@ Returns BACK or FRONT."
     (gl:check-error)))
 
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
-  (with-foreign-array value-ptr :float 'single-float values
+  (with-foreign-array value-ptr :float values
     (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))
 
-(defmacro with-foreign-matrix (ptr ftype ltype matrices comps &body body)
-  (with-gensyms (rows cols offset m i j)
-    `(cffi:with-foreign-object (,ptr ,ftype (* (length ,matrices) ,comps))
-       (loop for ,offset by ,comps and ,m in ,matrices
-          do (let ((,rows (array-dimension ,m 0))
-                   (,cols (array-dimension ,m 1)))
-               (loop for ,i below ,rows
-                  do (loop for ,j below ,cols
-                        do (setf (cffi:mem-aref ,ptr ,ftype
-                                                (+ ,offset (* ,i ,cols) ,j))
-                                 (coerce (aref ,m ,i ,j) ,ltype))))))
-       ,@body)))
+(defmacro with-foreign-matrix (ptr ftype matrices comps &body body)
+  (let ((ltype (foreign-type->lisp-type ftype)))
+    (with-gensyms (rows cols offset m i j)
+      `(cffi:with-foreign-object (,ptr ,ftype (* (length ,matrices) ,comps))
+         (loop for ,offset by ,comps and ,m in ,matrices
+            do (let ((,rows (array-dimension ,m 0))
+                     (,cols (array-dimension ,m 1)))
+                 (loop for ,i below ,rows
+                    do (loop for ,j below ,cols
+                          do (setf (cffi:mem-aref ,ptr ,ftype
+                                                  (+ ,offset (* ,i ,cols) ,j))
+                                   (coerce (aref ,m ,i ,j) (quote ,ltype)))))))
+         ,@body))))
 
 (defun uniform-matrix-4f (location matrices &key (transpose t))
-  (with-foreign-matrix ptr :float 'single-float matrices 16
+  (with-foreign-matrix ptr :float matrices 16
     (%gl:uniform-matrix-4fv location (length matrices) transpose ptr)))
 
 (defun uniform-mvp (program mvp)
