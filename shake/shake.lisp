@@ -200,21 +200,51 @@ DRAW and DELETE for drawing and deleting respectively."
     (multiple-value-bind (y x) (floor char-code chars-per-line)
       (cons (* x cell-size) (* y cell-size)))))
 
+(defmacro with-uniform-locations (program names &body body)
+  "Get uniform locations for list of NAMES in PROGRAM and bind them to symbols.
+Names of uniforms are formatted such that all '-' are replaced with '_' and
+the characters are lowercased. Bound symbol's name is formatted as uniform
+name with '-LOC' suffix.
+
+Example usage:
+
+  (with-uniform-locations program (mvp color-tex)
+    ;; mvp-loc is the location of mvp uniform
+    (uniform-matrix-4f mvp-loc (list mvp-matrix))
+    ;; color-tex-loc is the location of color_tex uniform
+    (gl:uniformi color-tex-loc 0))"
+  (labels ((to-uniform-name (name)
+             (ppcre:regex-replace-all "-" (string-downcase (string name)) "_"))
+           (to-symbol (name)
+             (if (stringp name)
+                 ;; User convenience if passed in string.
+                 (ppcre:regex-replace-all "_" (string-upcase name) "-")
+                 name))
+           (get-location (name)
+             (let ((uniform-name (to-uniform-name name))
+                   (var-name (symbolicate (to-symbol name) "-LOC")))
+               `(,var-name
+                 (let ((loc (gl:get-uniform-location ,program ,uniform-name)))
+                   (if (= loc -1)
+                       (error "Uniform ~S not found" ,uniform-name)
+                       loc))))))
+    (let ((locations (if (consp names)
+                         (loop for n in names collect (get-location n))
+                         ;; User convenience for one uniform.
+                         (list (get-location names)))))
+      `(let ,locations
+         ,@body))))
+
 (defun render-text (renderer text pos-x pos-y width height shader font-tex)
   (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0)))
     (gl:active-texture :texture0)
     (gl:bind-texture :texture-2d font-tex)
     (gl:use-program shader)
-    (let ((tex-font-loc (gl:get-uniform-location shader "tex_font")))
-      (gl:uniformi tex-font-loc 0))
-    (let ((proj-loc (gl:get-uniform-location shader "proj")))
-      (uniform-matrix-4f proj-loc (list ortho)))
-    (let ((size-loc (gl:get-uniform-location shader "size")))
-      (gl:uniformf size-loc 8))
-    (let ((cell-loc (gl:get-uniform-location shader "cell")))
-      (gl:uniformi cell-loc 16 16))
-    (let ((mv-loc (gl:get-uniform-location shader "mv"))
-          (char-pos-loc (gl:get-uniform-location shader "char_pos")))
+    (with-uniform-locations shader (tex-font proj size cell mv char-pos)
+      (gl:uniformi tex-font-loc 0)
+      (uniform-matrix-4f proj-loc (list ortho))
+      (gl:uniformf size-loc 8)
+      (gl:uniformi cell-loc 16 16)
       (loop for char across text and offset from 8 by 8 do
            (destructuring-bind (x . y) (char->font-cell-pos char 16 256)
              (gl:uniformi char-pos-loc x y)
@@ -254,7 +284,7 @@ DRAW and DELETE for drawing and deleting respectively."
                (delta-time 0d0) (max-time 0d0) (avg-time 0d0)
                (frame-timer (make-frame-timer))
                (point-renderer (make-point-renderer)))
-          (let ((tex-font-loc (gl:get-uniform-location text-shader "tex_font")))
+          (with-uniform-locations text-shader (tex-font)
             (gl:use-program text-shader)
             (gl:uniformi tex-font-loc 0))
           (gl:use-program shader-prog)
@@ -439,5 +469,5 @@ and is implementation dependant."
     (%gl:uniform-matrix-4fv location (length matrices) transpose ptr)))
 
 (defun uniform-mvp (program mvp)
-  (let ((mvp-loc (gl:get-uniform-location program "mvp")))
+  (with-uniform-locations program mvp
     (uniform-matrix-4f mvp-loc (list mvp))))

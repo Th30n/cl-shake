@@ -22,7 +22,7 @@
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
   :depends-on ("sdl2" "cl-opengl" "cffi" "alexandria"
-               "shiva" "shake-bspc")
+               "shiva" "shake-bspc" "cl-ppcre")
   :components
   ((:module "shake"
             :components ((:file "package")

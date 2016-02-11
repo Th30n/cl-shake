@@ -23,4 +23,5 @@
                 #:read-file-into-string
                 #:with-gensyms
                 #:clamp
-                #:emptyp))
+                #:emptyp
+                #:symbolicate))
