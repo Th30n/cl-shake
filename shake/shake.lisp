@@ -158,6 +158,79 @@ Returns BACK or FRONT."
         (max (frame-timer-max-time frame-timer) dt))
   frame-timer)
 
+(defun load-texture (texture-file)
+  (let* ((surface (sdl2:load-bmp texture-file))
+         (pixels (sdl2:surface-pixels surface))
+         (width (sdl2:surface-width surface))
+         (height (sdl2:surface-height surface))
+         (tex (car (gl:gen-textures 1))))
+    (gl:active-texture :texture0)
+    (gl:bind-texture :texture-2d tex)
+    (gl:tex-image-2d :texture-2d 0 :srgb8 width height 0
+                     :bgr :unsigned-byte pixels)
+    (gl:tex-parameter :texture-2d :texture-min-filter :nearest)
+    (gl:tex-parameter :texture-2d :texture-mag-filter :nearest)
+    (sdl2:free-surface surface)
+    tex))
+
+(defun make-point-renderer ()
+  "Creates a function which draws a single point. The function takes symbols
+DRAW and DELETE for drawing and deleting respectively."
+  (let ((vao (gl:gen-vertex-array))
+        (deleted nil))
+    (gl:bind-vertex-array vao)
+    (gl:vertex-attrib 0 0 0 0)
+    (gl:bind-vertex-array 0)
+    (lambda (action)
+      (if (not deleted)
+          (ecase action
+            (draw (gl:bind-vertex-array vao)
+                  (gl:draw-arrays :points 0 1))
+            (delete (gl:delete-vertex-arrays (list vao))
+                     (setf deleted t)))
+          (error "Trying to render with deleted point-renderer.")))))
+
+(defun renderer-draw (renderer) (funcall renderer 'draw))
+(defun renderer-delete (renderer) (funcall renderer 'delete))
+
+(defun char->font-cell-pos (char cell-size font-width)
+  "Returns the char position in pixels for the given font."
+  (let ((chars-per-line (floor font-width cell-size))
+        (char-code (- (char-code char) 32)))
+    (multiple-value-bind (y x) (floor char-code chars-per-line)
+      (cons (* x cell-size) (* y cell-size)))))
+
+(defun render-text (renderer text pos-x pos-y width height shader font-tex)
+  (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0)))
+    (gl:active-texture :texture0)
+    (gl:bind-texture :texture-2d font-tex)
+    (gl:use-program shader)
+    (let ((tex-font-loc (gl:get-uniform-location shader "tex_font")))
+      (gl:uniformi tex-font-loc 0))
+    (let ((proj-loc (gl:get-uniform-location shader "proj")))
+      (uniform-matrix-4f proj-loc (list ortho)))
+    (let ((size-loc (gl:get-uniform-location shader "size")))
+      (gl:uniformf size-loc 8))
+    (let ((cell-loc (gl:get-uniform-location shader "cell")))
+      (gl:uniformi cell-loc 16 16))
+    (let ((mv-loc (gl:get-uniform-location shader "mv"))
+          (char-pos-loc (gl:get-uniform-location shader "char_pos")))
+      (loop for char across text and offset from 8 by 8 do
+           (destructuring-bind (x . y) (char->font-cell-pos char 16 256)
+             (gl:uniformi char-pos-loc x y)
+             (uniform-matrix-4f mv-loc
+                                (list (translation :x (+ offset pos-x)
+                                                   :y (+ pos-y 8))))
+             (renderer-draw renderer))))))
+
+(defun draw-stats (cpu-max cpu-avg point-renderer text-shader font)
+  (render-text point-renderer
+               (format nil "CPU time: ~,2Fms (max)" cpu-max)
+               600 580 800d0 600d0 text-shader font)
+  (render-text point-renderer
+               (format nil "CPU time: ~,2Fms (avg)" cpu-avg)
+               600 564 800d0 600d0 text-shader font))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
@@ -169,14 +242,21 @@ Returns BACK or FRONT."
         (let* ((vertex-array (gl:gen-vertex-array))
                (shader-prog (load-shader #P"shaders/pass.vert"
                                          #P"shaders/color.frag"))
+               (text-shader (load-shader #P"shaders/billboard.vert"
+                                         #P"shaders/text.frag"
+                                         #P"shaders/billboard.geom"))
+               (font (load-texture "share/font-16.bmp"))
                (proj (perspective (* deg->rad 60d0)
                                   (/ 800d0 600d0) 0.1d0 100d0))
                (camera (make-camera :projection proj :position (v 0 0 8)))
                (start-time 0)
                (current-time 0)
-               (delta-time 0d0)
-               (max-time 0d0)
-               (frame-timer (make-frame-timer)))
+               (delta-time 0d0) (max-time 0d0) (avg-time 0d0)
+               (frame-timer (make-frame-timer))
+               (point-renderer (make-point-renderer)))
+          (let ((tex-font-loc (gl:get-uniform-location text-shader "tex_font")))
+            (gl:use-program text-shader)
+            (gl:uniformi tex-font-loc 0))
           (gl:use-program shader-prog)
           ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
@@ -204,13 +284,15 @@ Returns BACK or FRONT."
                          current-time (sdl2:get-performance-counter))
                    (nupdate-frame-timer frame-timer delta-time)
                    (when (>= (frame-timer-total-time frame-timer) 1d0)
-                     (let ((avg-time (/ (frame-timer-total-time frame-timer)
-                                        (frame-timer-frame frame-timer))))
-                       (setf max-time (frame-timer-max-time frame-timer)
-                             frame-timer (make-frame-timer))
-                       (format t "CPU time: ~,2Fms (max)~%" (* 1d3 max-time))
-                       (format t "CPU time: ~,2Fms (avg)~%" (* 1d3 avg-time))))
+                     (setf avg-time (/ (frame-timer-total-time frame-timer)
+                                       (frame-timer-frame frame-timer))
+                           max-time (frame-timer-max-time frame-timer)
+                           frame-timer (make-frame-timer)))
                    (unless (member :minimized (sdl2:get-window-flags win))
+                     (clear-buffer-fv :color 0 0 0 0)
+                     (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
+                                 point-renderer text-shader font)
+                     (gl:use-program shader-prog)
                      (uniform-mvp shader-prog
                                   (m* (camera-projection camera)
                                       (camera-view-transform camera)))
@@ -239,19 +321,28 @@ Returns BACK or FRONT."
     (format t "GLSL Version: ~S~%" glsl-version)
     (finish-output)))
 
-(defun load-shader (vs-file fs-file)
+(defun load-shader (vs-file fs-file &optional gs-file)
   "Return shader program, created from given VS-FILE and FS-FILE paths to a
-  vertex shader and fragment shader, respectively."
-  (let* ((vs (compile-shader-file vs-file :vertex-shader))
-         (fs (compile-shader-file fs-file :fragment-shader)))
-    (link-program fs vs)))
+vertex shader and fragment shader, respectively. Optional GS-FILE is a path
+to a geometry shader."
+  (let ((shaders
+         (cons (compile-shader-file vs-file :vertex-shader)
+               (cons
+                (compile-shader-file fs-file :fragment-shader)
+                (when gs-file
+                  (list (compile-shader-file gs-file :geometry-shader)))))))
+    (apply #'link-program shaders)))
 
 (defun compile-shader (source type)
   "Create a shader of given TYPE, compiled with given SOURCE string."
   (let ((shader (gl:create-shader type)))
     (gl:shader-source shader source)
     (gl:compile-shader shader)
-    (print (gl:get-shader-info-log shader))
+    (let ((log (gl:get-shader-info-log shader)))
+      (unless (emptyp log) (print log))
+      (unless (gl:get-shader shader :compile-status)
+        (gl:delete-shader shader)
+        (error "Error compiling shader.~%~S~%" log)))
     shader))
 
 (defun compile-shader-file (source-file shader-type)
@@ -264,7 +355,11 @@ Returns BACK or FRONT."
     (dolist (sh (cons shader shaders))
       (gl:attach-shader program sh))
     (gl:link-program program)
-    (print (gl:get-program-info-log program))
+    (let ((log (gl:get-program-info-log program)))
+      (unless (emptyp log) (print log))
+      (unless (gl:get-program program :link-status)
+        (gl:delete-program program)
+        (error "Error linking program.~%~S~%" log)))
     program))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -313,7 +408,6 @@ and is implementation dependant."
     (gl:enable-vertex-attrib-array 1)
     (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
 
-    (clear-buffer-fv :color 0 0 0 0)
 ;;    (clear-buffer-fv :depth 0 1)
     (gl:draw-arrays :triangles 0 30)
 ;;    (gl:draw-arrays :lines 0 10)

@@ -22,4 +22,5 @@
   (:import-from #:alexandria
                 #:read-file-into-string
                 #:with-gensyms
-                #:clamp))
+                #:clamp
+                #:emptyp))
