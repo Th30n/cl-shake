@@ -159,6 +159,8 @@ Returns BACK or FRONT."
   frame-timer)
 
 (defun load-texture (texture-file)
+  "Load a texture from given string file path. Returns the OpenGL texture
+object as the primary value. Second and third value are image width and height."
   (let* ((surface (sdl2:load-bmp texture-file))
          (pixels (sdl2:surface-pixels surface))
          (width (sdl2:surface-width surface))
@@ -171,7 +173,7 @@ Returns BACK or FRONT."
     (gl:tex-parameter :texture-2d :texture-min-filter :nearest)
     (gl:tex-parameter :texture-2d :texture-mag-filter :nearest)
     (sdl2:free-surface surface)
-    tex))
+    (values tex width height)))
 
 (defun make-point-renderer ()
   "Creates a function which draws a single point. The function takes symbols
@@ -193,10 +195,25 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun renderer-draw (renderer) (funcall renderer 'draw))
 (defun renderer-delete (renderer) (funcall renderer 'delete))
 
-(defun char->font-cell-pos (char cell-size font-width)
+(defstruct font
+  (texture 0 :type fixnum)
+  (width 0 :type fixnum)
+  (height 0 :type fixnum)
+  (chars-per-line 0 :type fixnum)
+  (cell-size 0 :type fixnum)
+  (start-char-code 0 :type fixnum))
+
+(defun load-font (font-file cell-size start-char)
+  (multiple-value-bind (tex width height) (load-texture font-file)
+    (make-font :texture tex :width width :height height
+               :start-char-code (char-code start-char)
+               :chars-per-line (floor width cell-size) :cell-size cell-size)))
+
+(defun char->font-cell-pos (char font)
   "Returns the char position in pixels for the given font."
-  (let ((chars-per-line (floor font-width cell-size))
-        (char-code (- (char-code char) 32)))
+  (let ((cell-size (font-cell-size font))
+        (chars-per-line (font-chars-per-line font))
+        (char-code (- (char-code char) (font-start-char-code font))))
     (multiple-value-bind (y x) (floor char-code chars-per-line)
       (cons (* x cell-size) (* y cell-size)))))
 
@@ -235,22 +252,25 @@ Example usage:
       `(let ,locations
          ,@body))))
 
-(defun render-text (renderer text pos-x pos-y width height shader font-tex)
-  (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0)))
+(defun render-text (renderer text pos-x pos-y width height shader font)
+  (let* ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
+         (font-tex (font-texture font))
+         (cell-size (font-cell-size font))
+         (half-cell (* 0.5 cell-size)))
     (gl:active-texture :texture0)
     (gl:bind-texture :texture-2d font-tex)
     (gl:use-program shader)
     (with-uniform-locations shader (tex-font proj size cell mv char-pos)
       (gl:uniformi tex-font-loc 0)
       (uniform-matrix-4f proj-loc (list ortho))
-      (gl:uniformf size-loc 8)
-      (gl:uniformi cell-loc 16 16)
-      (loop for char across text and offset from 8 by 8 do
-           (destructuring-bind (x . y) (char->font-cell-pos char 16 256)
+      (gl:uniformf size-loc half-cell)
+      (gl:uniformi cell-loc cell-size cell-size)
+      (loop for char across text and offset from half-cell by half-cell do
+           (destructuring-bind (x . y) (char->font-cell-pos char font)
              (gl:uniformi char-pos-loc x y)
              (uniform-matrix-4f mv-loc
                                 (list (translation :x (+ offset pos-x)
-                                                   :y (+ pos-y 8))))
+                                                   :y (+ pos-y half-cell))))
              (renderer-draw renderer))))))
 
 (defun draw-stats (cpu-max cpu-avg point-renderer text-shader font)
@@ -275,10 +295,10 @@ Example usage:
                (text-shader (load-shader #P"shaders/billboard.vert"
                                          #P"shaders/text.frag"
                                          #P"shaders/billboard.geom"))
-               (font (load-texture "share/font-16.bmp"))
+               (font (load-font "share/font-16.bmp" 16 #\Space))
                (proj (perspective (* deg->rad 60d0)
                                   (/ 800d0 600d0) 0.1d0 100d0))
-               (camera (make-camera :projection proj :position (v 0 0 8)))
+               (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (start-time 0)
                (current-time 0)
                (delta-time 0d0) (max-time 0d0) (avg-time 0d0)
@@ -288,7 +308,6 @@ Example usage:
             (gl:use-program text-shader)
             (gl:uniformi tex-font-loc 0))
           (gl:use-program shader-prog)
-          ;; (uniform-mvp shader-prog (ortho -6d0 6d0 -6d0 6d0 -2d0 2d0))
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
             (:keydown
