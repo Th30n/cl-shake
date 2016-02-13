@@ -179,7 +179,7 @@ object as the primary value. Second and third value are image width and height."
   "Creates a function which draws a single point. The function takes symbols
 DRAW and DELETE for drawing and deleting respectively."
   (let ((vao (gl:gen-vertex-array))
-        (deleted nil))
+        deleted)
     (gl:bind-vertex-array vao)
     (gl:vertex-attrib 0 0 0 0)
     (gl:bind-vertex-array 0)
@@ -307,45 +307,48 @@ Example usage:
           (with-uniform-locations text-shader (tex-font)
             (gl:use-program text-shader)
             (gl:uniformi tex-font-loc 0))
-          (gl:use-program shader-prog)
-          (sdl2:with-event-loop (:method :poll)
-            (:quit () t)
-            (:keydown
-             (:keysym keysym)
-             (let ((scancode (sdl2:scancode-value keysym)))
-               (when (member :input-focus (sdl2:get-window-flags win))
-                 (cond
-                   ((sdl2:scancode= scancode :scancode-w)
-                    (nmove-camera :forward delta-time camera))
-                   ((sdl2:scancode= scancode :scancode-s)
-                    (nmove-camera :back delta-time camera))
-                   ((sdl2:scancode= scancode :scancode-a)
-                    (nmove-camera :left delta-time camera))
-                   ((sdl2:scancode= scancode :scancode-d)
-                    (nmove-camera :right delta-time camera))))))
-            (:mousemotion
-             (:xrel xrel :yrel yrel)
-             (when (member :input-focus (sdl2:get-window-flags win))
-               (nrotate-camera delta-time xrel yrel camera)))
-            (:idle ()
-                   (setf delta-time (performance-delta start-time current-time)
-                         start-time current-time
-                         current-time (sdl2:get-performance-counter))
-                   (nupdate-frame-timer frame-timer delta-time)
-                   (when (>= (frame-timer-total-time frame-timer) 1d0)
-                     (setf avg-time (/ (frame-timer-total-time frame-timer)
-                                       (frame-timer-frame frame-timer))
-                           max-time (frame-timer-max-time frame-timer)
-                           frame-timer (make-frame-timer)))
-                   (unless (member :minimized (sdl2:get-window-flags win))
-                     (clear-buffer-fv :color 0 0 0 0)
-                     (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
-                                 point-renderer text-shader font)
-                     (gl:use-program shader-prog)
-                     (uniform-mvp shader-prog
-                                  (m* (camera-projection camera)
-                                      (camera-view-transform camera)))
-                     (render win vertex-array camera)))))))))
+          (symbol-macrolet ((input-focus-p
+                             (member :input-focus (sdl2:get-window-flags win)))
+                            (minimized-p
+                             (member :minimized (sdl2:get-window-flags win))))
+            (sdl2:with-event-loop (:method :poll)
+              (:quit () t)
+              (:keydown
+               (:keysym keysym)
+               (let ((scancode (sdl2:scancode-value keysym)))
+                 (when input-focus-p
+                   (cond
+                     ((sdl2:scancode= scancode :scancode-w)
+                      (nmove-camera :forward delta-time camera))
+                     ((sdl2:scancode= scancode :scancode-s)
+                      (nmove-camera :back delta-time camera))
+                     ((sdl2:scancode= scancode :scancode-a)
+                      (nmove-camera :left delta-time camera))
+                     ((sdl2:scancode= scancode :scancode-d)
+                      (nmove-camera :right delta-time camera))))))
+              (:mousemotion
+               (:xrel xrel :yrel yrel)
+               (when input-focus-p
+                 (nrotate-camera delta-time xrel yrel camera)))
+              (:idle ()
+                     (setf delta-time (performance-delta start-time current-time)
+                           start-time current-time
+                           current-time (sdl2:get-performance-counter))
+                     (nupdate-frame-timer frame-timer delta-time)
+                     (when (>= (frame-timer-total-time frame-timer) 1d0)
+                       (setf avg-time (/ (frame-timer-total-time frame-timer)
+                                         (frame-timer-frame frame-timer))
+                             max-time (frame-timer-max-time frame-timer)
+                             frame-timer (make-frame-timer)))
+                     (unless minimized-p
+                       (clear-buffer-fv :color 0 0 0 0)
+                       (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
+                                   point-renderer text-shader font)
+                       (gl:use-program shader-prog)
+                       (uniform-mvp shader-prog
+                                    (m* (camera-projection camera)
+                                        (camera-view-transform camera)))
+                       (render win vertex-array camera))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
