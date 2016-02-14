@@ -21,7 +21,7 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("alexandria" "shiva" "shake-bspc" "cl-opengl"
+  :depends-on ("alexandria" "shiva" "shake-bspc" "shake-gl"
                "qtools" "qtcore" "qtgui" "qtopengl")
   :components
   ((:module "shake-ed"
