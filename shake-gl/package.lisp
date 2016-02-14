@@ -16,6 +16,11 @@
 
 (in-package #:cl-user)
 
-(defpackage #:shake
-  (:use #:cl #:shiva #:shake-gl #:alexandria)
-  (:export #:main))
+(defpackage #:shake-gl
+  (:nicknames #:sgl)
+  (:use #:cl #:alexandria)
+  (:export #:clear-buffer-fv
+           #:load-shader
+           #:with-foreign-array
+           #:with-uniform-locations
+           #:uniform-matrix-4f))

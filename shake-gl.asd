@@ -14,8 +14,15 @@
 ;;;; with this program; if not, write to the Free Software Foundation, Inc.,
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-(in-package #:cl-user)
+(in-package #:asdf-user)
 
-(defpackage #:shake
-  (:use #:cl #:shiva #:shake-gl #:alexandria)
-  (:export #:main))
+(defsystem "shake-gl"
+  :description "shake-gl: A wrapper around cl-opengl for shake"
+  :version "0.0.1"
+  :author "Teon Banek <theongugl@gmail.com>"
+  :licence "GPL2"
+  :depends-on ("cl-opengl" "cffi" "alexandria" "cl-ppcre")
+  :components
+  ((:module "shake-gl"
+            :components ((:file "package")
+                         (:file "gl" :depends-on ("package"))))))
