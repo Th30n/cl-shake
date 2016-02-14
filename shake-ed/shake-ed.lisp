@@ -52,9 +52,10 @@
         (progn
           (setf drawing-line (new-lineitem (q+:scene-pos mouse-event)
                                            (q+:scene-pos mouse-event)))
-          (with-finalizing* ((brush (q+:make-qbrush (q+:qt.black)))
-                             (pen (q+:make-qpen brush 2)))
-            (setf (q+:pen drawing-line) pen))
+          (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                             (pen (q+:make-qpen color)))
+            (setf (q+:width-f pen) 0.5
+                  (q+:pen drawing-line) pen))
           (q+:add-item map-scene drawing-line)))
     (stop-overriding)))
 
@@ -78,18 +79,23 @@
 
 (define-subwidget (main button) (q+:make-qpushbutton "Click Me!"))
 
+(define-subwidget (main map-view) (q+:make-qgraphicsview)
+  (with-finalizing ((cursor (q+:make-qcursor (q+:qt.cross-cursor))))
+    (setf (q+:minimum-size map-view) (values 200 200)
+          (q+:mouse-tracking map-view) t
+          (q+:cursor map-view) cursor))
+  (q+:scale map-view 4 4)
+  (with-finalizing ((rect (q+:make-qrectf -200 -200 400 400))
+                    (brush (q+:make-qbrush (q+:qt.black) (q+:qt.solid-pattern))))
+    (setf (q+:scene-rect scene) rect
+          (q+:background-brush scene) brush))
+  (setf (q+:scene map-view) scene))
+
 (define-subwidget (main layout) (q+:make-qvboxlayout)
   (q+:add-widget layout editor)
   (q+:add-widget layout button)
-  (let ((widget (q+:make-qwidget))
-        (view (q+:make-qgraphicsview)))
-    (setf (q+:minimum-size view) (values 200 200)
-          (q+:mouse-tracking view) t)
-    (q+:scale view 2 2)
-    (with-finalizing ((rect (q+:make-qrectf 0 0 1000 1000)))
-      (setf (q+:scene-rect scene) rect))
-    (setf (q+:scene view) scene)
-    (q+:add-widget layout view)
+  (let ((widget (q+:make-qwidget)))
+    (q+:add-widget layout map-view)
     (setf (q+:layout widget) layout)
     (setf (q+:central-widget main) widget)))
 
