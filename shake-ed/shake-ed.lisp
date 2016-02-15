@@ -115,21 +115,20 @@
    w "Open Map"
    "Open an existing map."))
 
-(defun qlineitem->linedef (lineitem)
-  (let ((p1 (q+:p1 (q+:line lineitem)))
-        (p2 (q+:p2 (q+:line lineitem))))
-    (sbsp:make-linedef
-     :start (shiva:vscale 0.1d0 (shiva:v (q+:x p1) (q+:y p1)))
-     :end (shiva:vscale 0.1d0 (shiva:v (q+:x p2) (q+:y p2))))))
-
 (defun save-map (w)
   (q+:qmessagebox-information
    w "Save Map"
    "Save to existing 'test.map'.")
   (with-slots-bound (w main)
     (with-open-file (file "test.map" :direction :output
-                          :if-exists :overwrite :if-does-not-exist :create)
-      (write (mapcar #'qlineitem->linedef (q+:items scene)) :stream file))))
+                          :if-exists :supersede :if-does-not-exist :create)
+      (let ((items (q+:items scene)))
+        (format file "~S~%" (length items))
+        (dolist (lineitem items)
+          (let ((p1 (q+:p1 (q+:line lineitem)))
+                (p2 (q+:p2 (q+:line lineitem))))
+            (format file "~S~%"
+                    (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2)))))))))
 
 (defun save-as-map (w)
   (q+:qmessagebox-information

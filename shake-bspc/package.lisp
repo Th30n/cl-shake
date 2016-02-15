@@ -23,7 +23,10 @@
            #:make-linedef
            #:lineseg
            #:make-lineseg
-           #:linedef->lineseg)
+           #:linedef->lineseg
+           #:read-map
+           #:build-bsp
+           #:read-and-compile-map)
   (:import-from #:shiva
                 #:v
                 #:v-

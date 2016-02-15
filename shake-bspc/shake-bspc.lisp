@@ -90,3 +90,16 @@
 (defun linedef->lineseg (linedef)
   (declare (type linedef linedef))
   (make-lineseg :orig-line linedef))
+
+(defun read-linedef (stream)
+  (destructuring-bind (x1 y1 x2 y2) (read stream)
+    (make-linedef :start (v x1 y1) :end (v x2 y2))))
+
+(defun read-map (stream)
+  (let ((n (read stream)))
+    (loop repeat n collecting (read-linedef stream))))
+
+(defun read-and-compile-map (stream)
+  (let* ((map (read-map stream))
+         (segs (mapcar #'linedef->lineseg map)))
+    (build-bsp (car segs) (cdr segs))))
