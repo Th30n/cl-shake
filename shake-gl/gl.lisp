@@ -23,32 +23,22 @@ and is implementation dependant."
     (ecase foreign-type
       (:float 'single-float))))
 
-(defmacro with-foreign-array (ptr ftype values &body body)
+(defmacro with-foreign-array (ptr ftype arrays &body body)
   (let ((ltype (foreign-type->lisp-type ftype)))
-    (with-gensyms (len i val)
-      `(let ((,len (list-length ,values)))
-         (cffi:with-foreign-object (,ptr ,ftype ,len)
-           (loop for ,i below ,len and ,val in ,values
-              do (setf (cffi:mem-aref ,ptr ,ftype ,i)
-                       (coerce ,val (quote ,ltype))))
+    (with-gensyms (comps garrays total-size)
+      `(let* ((,garrays ,arrays)
+              (,comps (array-total-size (car ,garrays)))
+              (,total-size (* (list-length ,garrays) ,comps)))
+         (cffi:with-foreign-object (,ptr ,ftype ,total-size)
+           ;; No need for genysms here as the body is outside the loop.
+           (loop for offset by ,comps and a in ,garrays
+              do (dotimes (i ,comps)
+                   (setf (cffi:mem-aref ,ptr ,ftype (+ offset i))
+                         (coerce (row-major-aref a i) ',ltype))))
            ,@body)))))
 
-(defmacro with-foreign-matrix (ptr ftype matrices comps &body body)
-  (let ((ltype (foreign-type->lisp-type ftype)))
-    (with-gensyms (rows cols offset m i j)
-      `(cffi:with-foreign-object (,ptr ,ftype (* (length ,matrices) ,comps))
-         (loop for ,offset by ,comps and ,m in ,matrices
-            do (let ((,rows (array-dimension ,m 0))
-                     (,cols (array-dimension ,m 1)))
-                 (loop for ,i below ,rows
-                    do (loop for ,j below ,cols
-                          do (setf (cffi:mem-aref ,ptr ,ftype
-                                                  (+ ,offset (* ,i ,cols) ,j))
-                                   (coerce (aref ,m ,i ,j) (quote ,ltype)))))))
-         ,@body))))
-
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
-  (with-foreign-array value-ptr :float values
+  (with-foreign-array value-ptr :float (list (apply #'vector values))
     (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))
 
 (defun load-shader (vs-file fs-file &optional gs-file)
@@ -128,5 +118,5 @@ Example usage:
          ,@body))))
 
 (defun uniform-matrix-4f (location matrices &key (transpose t))
-  (with-foreign-matrix ptr :float matrices 16
+  (with-foreign-array ptr :float matrices
     (%gl:uniform-matrix-4fv location (length matrices) transpose ptr)))

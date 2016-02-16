@@ -82,35 +82,30 @@ Returns BACK or FRONT."
           (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 
 (defun get-line-list (point bsp)
-  (let ((endpoints (mapcan #'get-endpoints (back-to-front point bsp))))
-    (apply #'concatenate 'list endpoints)))
+  (mapcan #'get-endpoints (back-to-front point bsp)))
 
 (defun get-triangle-list (point bsp)
-  (let ((triangle-points (mapcan #'get-triangles (back-to-front point bsp))))
-    (apply #'concatenate 'list triangle-points)))
+  (mapcan #'get-triangles (back-to-front point bsp)))
 
 (defun repeat (obj n)
   "Repeat N times the given OBJ."
   (declare (type fixnum n))
   (loop repeat n collecting obj))
 
-(defun repeat-list (list n)
-  (apply #'concatenate 'list (repeat list n)))
-
 (defparameter *line-colors*
   (concatenate 'list
-               (repeat-list (list 1 0 0) 2)
-               (repeat-list (list 0 1 0) 2)
-               (repeat-list (list 0 0 1) 2)
-               (repeat-list (list 0.5 0.5 0) 2)
-               (repeat-list (list 0 0.5 0.5) 2)))
+               (repeat (v 1 0 0) 2)
+               (repeat (v 0 1 0) 2)
+               (repeat (v 0 0 1) 2)
+               (repeat (v 0.5 0.5 0) 2)
+               (repeat (v 0 0.5 0.5) 2)))
 (defparameter *triangle-colors*
   (concatenate 'list
-               (repeat-list (list 1 0 0) 6)
-               (repeat-list (list 0 1 0) 6)
-               (repeat-list (list 0 0 1) 6)
-               (repeat-list (list 0.5 0.5 0) 6)
-               (repeat-list (list 0 0.5 0.5) 6)))
+               (repeat (v 1 0 0) 6)
+               (repeat (v 0 1 0) 6)
+               (repeat (v 0 0 1) 6)
+               (repeat (v 0.5 0.5 0) 6)
+               (repeat (v 0 0.5 0.5) 6)))
 
 (defun nrotate-camera (delta-time xrel yrel camera)
   (let* ((sens 10d0)
@@ -353,16 +348,18 @@ DRAW and DELETE for drawing and deleting respectively."
 
     (gl:bind-buffer :array-buffer vbo)
     (with-foreign-array vertices-ptr :float triangles
-      (let ((vertices (gl::make-gl-array-from-pointer vertices-ptr :float
-                                                      (list-length triangles))))
+      (let ((vertices (gl::make-gl-array-from-pointer
+                       vertices-ptr :float
+                       (* 3 (list-length triangles)))))
         (gl:buffer-data :array-buffer :static-draw vertices)))
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
 
     (gl:bind-buffer :array-buffer color-buffer)
     (with-foreign-array color-ptr :float *triangle-colors*
-      (let ((colors (gl::make-gl-array-from-pointer color-ptr :float
-                                                    (list-length *triangle-colors*))))
+      (let ((colors (gl::make-gl-array-from-pointer
+                     color-ptr :float
+                     (* 3 (list-length *triangle-colors*)))))
         (gl:buffer-data :array-buffer :static-draw colors)))
     (gl:enable-vertex-attrib-array 1)
     (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
