@@ -18,7 +18,7 @@
 
 (defpackage #:shake-bspc
   (:nicknames #:shake-bsp #:sbsp)
-  (:use #:cl)
+  (:use #:cl #:shiva)
   (:export #:linedef
            #:make-linedef
            #:lineseg
@@ -26,8 +26,5 @@
            #:linedef->lineseg
            #:read-map
            #:build-bsp
-           #:read-and-compile-map)
-  (:import-from #:shiva
-                #:v
-                #:v-
-                #:vdot))
+           #:read-and-compile-map
+           #:read-bsp))

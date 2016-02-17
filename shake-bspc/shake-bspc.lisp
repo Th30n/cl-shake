@@ -91,15 +91,70 @@
   (declare (type linedef linedef))
   (make-lineseg :orig-line linedef))
 
-(defun read-linedef (stream)
+(defun read-map-linedef (stream)
   (destructuring-bind (x1 y1 x2 y2) (read stream)
     (make-linedef :start (v x1 y1) :end (v x2 y2))))
 
 (defun read-map (stream)
   (let ((n (read stream)))
-    (loop repeat n collecting (read-linedef stream))))
+    (loop repeat n collecting (read-map-linedef stream))))
 
 (defun read-and-compile-map (stream)
   (let* ((map (read-map stream))
          (segs (mapcar #'linedef->lineseg map)))
     (build-bsp (car segs) (cdr segs))))
+
+(defun write-linedef (linedef stream)
+  (let ((start (linedef-start linedef))
+        (end (linedef-end linedef)))
+    (format stream "~S ~S ~S ~S~%" (vx start) (vy start) (vx end) (vy end))))
+
+(defun read-linedef (stream)
+  (let ((start (v (read stream) (read stream)))
+        (end (v (read stream) (read stream))))
+    (make-linedef :start start :end end)))
+
+(defun write-lineseg (lineseg stream)
+  (let ((linedef (lineseg-orig-line lineseg))
+        (t-start (lineseg-t-start lineseg))
+        (t-end (lineseg-t-end lineseg)))
+    (write-linedef linedef stream)
+    (format stream "~S ~S~%" t-start t-end)))
+
+(defun read-lineseg (stream)
+  (let ((linedef (read-linedef stream))
+        (t-start (read stream))
+        (t-end (read stream)))
+    (make-lineseg :orig-line linedef :t-start t-start :t-end t-end)))
+
+(defun write-bsp (bsp stream)
+  (cond
+    ((null bsp) (format stream "~S~%" bsp))
+    ((listp bsp)
+     ;; preorder traverse write
+     (write-bsp (first bsp) stream)
+     (write-bsp (second bsp) stream)
+     (write-bsp (third bsp) stream))
+    (t
+     (format stream "~S~%" :lineseg)
+     (write-lineseg bsp stream))))
+
+(defun read-bsp (stream)
+  (let ((node-type (read stream)))
+    (ecase node-type
+      (:lineseg (let ((root (read-lineseg stream))
+                      (front (read-bsp stream))
+                      (back (read-bsp stream)))
+                  (if (and (null front) (null back))
+                      (list root)
+                      (list root front back))))
+      ((nil) nil))))
+
+(defun compile-map-file (map-file bsp-file)
+  "Compile a map from MAP-FILE and store it into BSP-FILE"
+  (let ((bsp))
+    (with-open-file (mf map-file)
+      (setf bsp (read-and-compile-map mf)))
+    (with-open-file (bf bsp-file :direction :output :if-exists :supersede
+                        :if-does-not-exist :create)
+      (write-bsp bsp bf))))
