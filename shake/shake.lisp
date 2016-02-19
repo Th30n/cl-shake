@@ -18,6 +18,16 @@
 
 (declaim (optimize (debug 3)))
 
+(defmacro with-struct ((name . fields) struct &body body)
+  "Bind variables to FIELDS from STRUCT. NAME is a prefix associated with
+the structure."
+  (let ((gs (gensym)))
+    `(let ((,gs ,struct))
+       (let ,(mapcar (lambda (f)
+                       `(,f (,(symbolicate name f) ,gs)))
+                     fields)
+         ,@body))))
+
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
 and rotation as a quaternion."
@@ -33,14 +43,8 @@ and rotation as a quaternion."
          (q (qconj (camera-rotation camera))))
     (m* (q->mat q) translation)))
 
-(defparameter *test-linedefs*
-  (list (sbsp:make-linedef :start (v 0 -2) :end (v 0 5))
-        (sbsp:make-linedef :start (v -2 1) :end (v 5 1))
-        (sbsp:make-linedef :start (v 3 2) :end (v 3 -2))))
-(defparameter *test-linesegs* (mapcar #'sbsp:linedef->lineseg *test-linedefs*))
-
 (defparameter *bsp*
-  (sbsp::build-bsp (car *test-linesegs*) (cdr *test-linesegs*)))
+  (with-open-file (file "test.bsp") (sbsp:read-bsp file)))
 
 (defun determine-side (point lineseg)
   "Determine on which side of a LINESEG is the given POINT located.
@@ -81,31 +85,13 @@ Returns BACK or FRONT."
     (list start-3d end-3d (v- start-3d (v 0 1 0))
           (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 
-(defun get-line-list (point bsp)
-  (mapcan #'get-endpoints (back-to-front point bsp)))
-
-(defun get-triangle-list (point bsp)
-  (mapcan #'get-triangles (back-to-front point bsp)))
+(defun get-color (lineseg)
+  (sbsp::linedef-color (sbsp::lineseg-orig-line lineseg)))
 
 (defun repeat (obj n)
   "Repeat N times the given OBJ."
   (declare (type fixnum n))
   (loop repeat n collecting obj))
-
-(defparameter *line-colors*
-  (concatenate 'list
-               (repeat (v 1 0 0) 2)
-               (repeat (v 0 1 0) 2)
-               (repeat (v 0 0 1) 2)
-               (repeat (v 0.5 0.5 0) 2)
-               (repeat (v 0 0.5 0.5) 2)))
-(defparameter *triangle-colors*
-  (concatenate 'list
-               (repeat (v 1 0 0) 6)
-               (repeat (v 0 1 0) 6)
-               (repeat (v 0 0 1) 6)
-               (repeat (v 0.5 0.5 0) 6)
-               (repeat (v 0 0.5 0.5) 6)))
 
 (defun nrotate-camera (delta-time xrel yrel camera)
   (let* ((sens 10d0)
@@ -206,32 +192,30 @@ DRAW and DELETE for drawing and deleting respectively."
 
 (defun char->font-cell-pos (char font)
   "Returns the char position in pixels for the given font."
-  (let ((cell-size (font-cell-size font))
-        (chars-per-line (font-chars-per-line font))
-        (char-code (- (char-code char) (font-start-char-code font))))
-    (multiple-value-bind (y x) (floor char-code chars-per-line)
-      (cons (* x cell-size) (* y cell-size)))))
+  (with-struct (font- cell-size chars-per-line start-char-code) font
+    (let ((char-code (- (char-code char) start-char-code)))
+      (multiple-value-bind (y x) (floor char-code chars-per-line)
+        (cons (* x cell-size) (* y cell-size))))))
 
 (defun render-text (renderer text pos-x pos-y width height shader font)
-  (let* ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
-         (font-tex (font-texture font))
-         (cell-size (font-cell-size font))
-         (half-cell (* 0.5 cell-size)))
-    (gl:active-texture :texture0)
-    (gl:bind-texture :texture-2d font-tex)
-    (gl:use-program shader)
-    (with-uniform-locations shader (tex-font proj size cell mv char-pos)
-      (gl:uniformi tex-font-loc 0)
-      (uniform-matrix-4f proj-loc (list ortho))
-      (gl:uniformf size-loc half-cell)
-      (gl:uniformi cell-loc cell-size cell-size)
-      (loop for char across text and offset from half-cell by half-cell do
-           (destructuring-bind (x . y) (char->font-cell-pos char font)
-             (gl:uniformi char-pos-loc x y)
-             (uniform-matrix-4f mv-loc
-                                (list (translation :x (+ offset pos-x)
-                                                   :y (+ pos-y half-cell))))
-             (renderer-draw renderer))))))
+  (with-struct (font- texture cell-size) font
+    (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
+          (half-cell (* 0.5 cell-size)))
+      (gl:active-texture :texture0)
+      (gl:bind-texture :texture-2d texture)
+      (gl:use-program shader)
+      (with-uniform-locations shader (tex-font proj size cell mv char-pos)
+        (gl:uniformi tex-font-loc 0)
+        (uniform-matrix-4f proj-loc (list ortho))
+        (gl:uniformf size-loc half-cell)
+        (gl:uniformi cell-loc cell-size cell-size)
+        (loop for char across text and offset from half-cell by half-cell do
+             (destructuring-bind (x . y) (char->font-cell-pos char font)
+               (gl:uniformi char-pos-loc x y)
+               (uniform-matrix-4f mv-loc
+                                  (list (translation :x (+ offset pos-x)
+                                                     :y (+ pos-y half-cell))))
+               (renderer-draw renderer)))))))
 
 (defun draw-stats (cpu-max cpu-avg point-renderer text-shader font)
   (render-text point-renderer
@@ -336,41 +320,44 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun get-map-walls (camera bsp)
   (let* ((pos (camera-position camera))
          (pos-2d (v (vx pos) (vz pos)))
-         (triangles (get-triangle-list pos-2d bsp)))
-    triangles))
+         (segs (back-to-front pos-2d bsp)))
+    (values (mapcan #'get-triangles segs)
+            (mapcan (lambda (s) (repeat (get-color s) 6)) segs))))
 
 (defun render (win vertex-array camera)
   (let ((vbo (car (gl:gen-buffers 1)))
-        (color-buffer (car (gl:gen-buffers 1)))
-        (triangles (get-map-walls camera *bsp*)))
-    (gl:viewport 0 0 800 600)
-    (gl:bind-vertex-array vertex-array)
+        (color-buffer (car (gl:gen-buffers 1))))
+    (multiple-value-bind (triangles triangle-colors) (get-map-walls camera *bsp*)
+      (gl:viewport 0 0 800 600)
+      (gl:bind-vertex-array vertex-array)
 
-    (gl:bind-buffer :array-buffer vbo)
-    (with-foreign-array vertices-ptr :float triangles
-      (let ((vertices (gl::make-gl-array-from-pointer
-                       vertices-ptr :float
-                       (* 3 (list-length triangles)))))
-        (gl:buffer-data :array-buffer :static-draw vertices)))
-    (gl:enable-vertex-attrib-array 0)
-    (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
+      (gl:bind-buffer :array-buffer vbo)
+      (with-foreign-array
+          vertices-ptr :float triangles
+          (let ((vertices (gl::make-gl-array-from-pointer
+                           vertices-ptr :float
+                           (* 3 (list-length triangles)))))
+            (gl:buffer-data :array-buffer :static-draw vertices)))
+      (gl:enable-vertex-attrib-array 0)
+      (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
 
-    (gl:bind-buffer :array-buffer color-buffer)
-    (with-foreign-array color-ptr :float *triangle-colors*
-      (let ((colors (gl::make-gl-array-from-pointer
-                     color-ptr :float
-                     (* 3 (list-length *triangle-colors*)))))
-        (gl:buffer-data :array-buffer :static-draw colors)))
-    (gl:enable-vertex-attrib-array 1)
-    (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
+      (gl:bind-buffer :array-buffer color-buffer)
+      (with-foreign-array
+          color-ptr :float triangle-colors
+          (let ((colors (gl::make-gl-array-from-pointer
+                         color-ptr :float
+                         (* 3 (list-length triangle-colors)))))
+            (gl:buffer-data :array-buffer :static-draw colors)))
+      (gl:enable-vertex-attrib-array 1)
+      (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
 
-;;    (clear-buffer-fv :depth 0 1)
-    (gl:draw-arrays :triangles 0 30)
-;;    (gl:draw-arrays :lines 0 10)
-    (sdl2:gl-swap-window win)
-    (gl:bind-vertex-array 0)
-    (gl:delete-buffers (list vbo color-buffer))
-    (gl:check-error)))
+      ;;    (clear-buffer-fv :depth 0 1)
+      (gl:draw-arrays :triangles 0 (list-length triangles))
+      ;;    (gl:draw-arrays :lines 0 10)
+      (sdl2:gl-swap-window win)
+      (gl:bind-vertex-array 0)
+      (gl:delete-buffers (list vbo color-buffer))
+      (gl:check-error))))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp
