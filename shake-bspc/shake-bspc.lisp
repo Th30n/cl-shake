@@ -18,7 +18,8 @@
 
 (defstruct linedef
   (start (v 0 0) :type (simple-array double-float (2)) :read-only t)
-  (end  (v 0 0) :type (simple-array double-float (2)) :read-only t))
+  (end  (v 0 0) :type (simple-array double-float (2)) :read-only t)
+  (color (v 1 0 1) :type (simple-array double-float (3)) :read-only t))
 
 (defun linedef-normal (linedef)
   (let ((vec (v- (linedef-end linedef) (linedef-start linedef))))
@@ -93,7 +94,8 @@
 
 (defun read-map-linedef (stream)
   (destructuring-bind (x1 y1 x2 y2) (read stream)
-    (make-linedef :start (v x1 y1) :end (v x2 y2))))
+    (let ((color (v (read stream) (read stream) (read stream))))
+      (make-linedef :start (v x1 y1) :end (v x2 y2) :color color))))
 
 (defun read-map (stream)
   (let ((n (read stream)))
@@ -106,13 +108,17 @@
 
 (defun write-linedef (linedef stream)
   (let ((start (linedef-start linedef))
-        (end (linedef-end linedef)))
-    (format stream "~S ~S ~S ~S~%" (vx start) (vy start) (vx end) (vy end))))
+        (end (linedef-end linedef))
+        (color (linedef-color linedef)))
+    (format stream "~S ~S ~S ~S~%~S ~S ~S~%"
+            (vx start) (vy start) (vx end) (vy end)
+            (vx color) (vy color) (vz color))))
 
 (defun read-linedef (stream)
   (let ((start (v (read stream) (read stream)))
-        (end (v (read stream) (read stream))))
-    (make-linedef :start start :end end)))
+        (end (v (read stream) (read stream)))
+        (color (v (read stream) (read stream) (read stream))))
+    (make-linedef :start start :end end :color color)))
 
 (defun write-lineseg (lineseg stream)
   (let ((linedef (lineseg-orig-line lineseg))

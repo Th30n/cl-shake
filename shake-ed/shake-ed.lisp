@@ -122,13 +122,16 @@
   (with-slots-bound (w main)
     (with-open-file (file "test.map" :direction :output
                           :if-exists :supersede :if-does-not-exist :create)
-      (let ((items (q+:items scene)))
-        (format file "~S~%" (length items))
-        (dolist (lineitem items)
-          (let ((p1 (q+:p1 (q+:line lineitem)))
-                (p2 (q+:p2 (q+:line lineitem))))
-            (format file "~S~%"
-                    (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2)))))))))
+      (let* ((items (q+:items scene))
+             (items-count (length items)))
+        (format file "~S~%" items-count)
+        (loop for i from 0 and lineitem in items do
+             (let ((p1 (q+:p1 (q+:line lineitem)))
+                   (p2 (q+:p2 (q+:line lineitem)))
+                   (color (shiva:v (* i (/ 256 items-count 256)) 0 1)))
+               (format file "~S~%~S ~S ~S~%"
+                       (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
+                       (shiva:vx color) (shiva:vy color) (shiva:vz color))))))))
 
 (defun save-as-map (w)
   (q+:qmessagebox-information

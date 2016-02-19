@@ -33,19 +33,26 @@
         (make-linedef :start (v 3 2) :end (v 3 -2))))
 
 (subtest "Testing split-lineseg"
-  (let ((seg (shake-bspc::linedef->lineseg (car *test-linedefs*))))
-    (is (shake-bspc::split-lineseg seg -1d0)
+  (let ((seg (linedef->lineseg (car *test-linedefs*))))
+    (is (sbsp::split-lineseg seg -1d0)
         nil)
-    (is (shake-bspc::split-lineseg seg 0d0)
+    (is (sbsp::split-lineseg seg 0d0)
         nil)
-    (is (shake-bspc::split-lineseg seg 1d0)
+    (is (sbsp::split-lineseg seg 1d0)
         nil)
     (let ((t-split 0.8d0))
-      (is (shake-bspc::split-lineseg seg t-split)
+      (is (sbsp::split-lineseg seg t-split)
           (cons (make-lineseg :orig-line (car *test-linedefs*)
                               :t-end t-split)
                 (make-lineseg :orig-line (car *test-linedefs*)
                               :t-start t-split))
           :test #'equalp))))
+
+(subtest "Test serialization"
+         (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
+                (bsp (build-bsp (car segs) (cdr segs))))
+           (with-input-from-string (in (with-output-to-string (out)
+                                         (sbsp::write-bsp bsp out)))
+             (is (read-bsp in) bsp :test #'equalp))))
 
 (finalize)
