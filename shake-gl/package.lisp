@@ -23,4 +23,5 @@
            #:load-shader
            #:with-foreign-array
            #:with-uniform-locations
-           #:uniform-matrix-4f))
+           #:uniform-matrix-4f
+           #:buffer-data))

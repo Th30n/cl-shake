@@ -41,6 +41,15 @@ and is implementation dependant."
   (with-foreign-array value-ptr :float (list (apply #'vector values))
     (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))
 
+(defmacro buffer-data (target usage type arrays)
+  `(with-foreign-array
+       ptr ,type ,arrays
+       (let* ((arrays ,arrays)
+              (comps (array-total-size (car arrays)))
+              (data (gl::make-gl-array-from-pointer
+                     ptr ,type (* comps (list-length ,arrays)))))
+         (gl:buffer-data ,target ,usage data))))
+
 (defun load-shader (vs-file fs-file &optional gs-file)
   "Return shader program, created from given VS-FILE and FS-FILE paths to a
 vertex shader and fragment shader, respectively. Optional GS-FILE is a path

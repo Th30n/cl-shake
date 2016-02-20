@@ -286,13 +286,14 @@ DRAW and DELETE for drawing and deleting respectively."
                              frame-timer (make-frame-timer)))
                      (unless minimized-p
                        (clear-buffer-fv :color 0 0 0 0)
-                       (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
-                                   point-renderer text-shader font)
                        (gl:use-program shader-prog)
                        (uniform-mvp shader-prog
                                     (m* (camera-projection camera)
                                         (camera-view-transform camera)))
-                       (render win vertex-array camera))))))))))
+                       (render win vertex-array camera)
+                       (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
+                                   point-renderer text-shader font)
+                       (sdl2:gl-swap-window win))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
@@ -332,29 +333,18 @@ DRAW and DELETE for drawing and deleting respectively."
       (gl:bind-vertex-array vertex-array)
 
       (gl:bind-buffer :array-buffer vbo)
-      (with-foreign-array
-          vertices-ptr :float triangles
-          (let ((vertices (gl::make-gl-array-from-pointer
-                           vertices-ptr :float
-                           (* 3 (list-length triangles)))))
-            (gl:buffer-data :array-buffer :static-draw vertices)))
+      (buffer-data :array-buffer :static-draw :float triangles)
       (gl:enable-vertex-attrib-array 0)
       (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
 
       (gl:bind-buffer :array-buffer color-buffer)
-      (with-foreign-array
-          color-ptr :float triangle-colors
-          (let ((colors (gl::make-gl-array-from-pointer
-                         color-ptr :float
-                         (* 3 (list-length triangle-colors)))))
-            (gl:buffer-data :array-buffer :static-draw colors)))
+      (buffer-data :array-buffer :static-draw :float triangle-colors)
       (gl:enable-vertex-attrib-array 1)
       (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
 
       ;;    (clear-buffer-fv :depth 0 1)
       (gl:draw-arrays :triangles 0 (list-length triangles))
       ;;    (gl:draw-arrays :lines 0 10)
-      (sdl2:gl-swap-window win)
       (gl:bind-vertex-array 0)
       (gl:delete-buffers (list vbo color-buffer))
       (gl:check-error))))
