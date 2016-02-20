@@ -87,7 +87,7 @@
            (q+:y (q+:scene-pos mouse-event))))
 
 (define-widget main (QMainWindow)
-  ())
+  ((map-file :initform nil)))
 
 (define-subwidget (main editor) (make-instance 'gl-editor))
 
@@ -135,42 +135,51 @@
    w "Open Map"
    "Open an existing map."))
 
-(defun save-map (w)
-  (q+:qmessagebox-information
-   w "Save Map"
-   "Save to existing 'test.map'.")
-  (with-slots-bound (w main)
-    (with-slots (line-color-map) scene
-      (with-open-file (file "test.map" :direction :output
-                            :if-exists :supersede :if-does-not-exist :create)
-        (let* ((items (q+:items scene))
-               (items-count (length items)))
-          (format file "~S~%" items-count)
-          (loop for i from 0 and lineitem in items do
-               (let ((p1 (q+:p1 (q+:line lineitem)))
-                     (p2 (q+:p2 (q+:line lineitem)))
-                     (color (gethash lineitem line-color-map (shiva:v 1 0 1))))
-                 (format file "~S~%~S ~S ~S~%"
-                         (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
-                         (shiva:vx color) (shiva:vy color) (shiva:vz color)))))))))
+(defun write-map (stream scene)
+  (with-slots (line-color-map) scene
+    (let* ((items (q+:items scene))
+           (items-count (length items)))
+      (format stream "~S~%" items-count)
+      (loop for i from 0 and lineitem in items do
+           (let ((p1 (q+:p1 (q+:line lineitem)))
+                 (p2 (q+:p2 (q+:line lineitem)))
+                 (color (gethash lineitem line-color-map (shiva:v 1 0 1))))
+             (format stream "~S~%~S ~S ~S~%"
+                     (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
+                     (shiva:vx color) (shiva:vy color) (shiva:vz color)))))))
 
-(defun save-as-map (w)
-  (q+:qmessagebox-information
-   w "Save As Map"
-   "Save to a new file."))
+(defun save-map (w &optional filename)
+  (let ((filepath filename))
+    (unless filepath
+      (setf filepath
+            (q+:qfiledialog-get-save-file-name w "Save Map" "" "Maps (*.map)")))
+    (unless (emptyp filepath)
+      (unless (ends-with-subseq ".map" filepath)
+        (setf filepath (concatenate 'string filepath ".map")))
+      (with-slots (scene map-file) w
+        (with-open-file (file filepath :direction :output
+                              :if-exists :supersede :if-does-not-exist :create)
+          (write-map file scene)
+          (q+:show-message (q+:status-bar w)
+                           (format nil "Saved '~S'" filepath))
+          (setf map-file filepath))))))
 
 (defun compile-map (w)
-  (q+:qmessagebox-information
-   w "Compile Map"
-   "Compiling from 'test.map' to 'test.bsp'.")
-  (sbsp:compile-map-file "test.map" "test.bsp"))
+  (with-slots (map-file) w
+    (unless (emptyp map-file)
+      (let ((bsp-file (concatenate 'string
+                                   (subseq map-file 0 (- (length map-file) 4))
+                                   ".bsp")))
+        (sbsp:compile-map-file map-file bsp-file)
+        (q+:show-message (q+:status-bar w)
+                         (format nil "Compiled to '~S'" bsp-file))))))
 
 (define-menu (main File)
   (:item ("New" (ctrl n)) (new-map main))
   (:item ("Open..." (ctrl o)) (open-map main))
   (:separator)
-  (:item ("Save" (ctrl s)) (save-map main))
-  (:item ("Save As..." (shift ctrl s)) (save-as-map main))
+  (:item ("Save" (ctrl s)) (save-map main map-file))
+  (:item ("Save As..." (shift ctrl s)) (save-map main))
   (:item ("Compile" (f5)) (compile-map main))
   (:separator)
   (:item ("Quit" (ctrl q))
@@ -184,7 +193,6 @@
           (with-finalizing* ((qcolor (vector->qcolor old-color))
                              (new-qcolor (q+:qcolordialog-get-color qcolor w)))
             (when (q+:is-valid new-qcolor)
-              (format t "Color: ~S~%" new-qcolor)
               (setf (gethash item line-color-map)
                     (qcolor->vector new-qcolor)))))))))
 

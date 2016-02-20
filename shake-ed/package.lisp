@@ -20,4 +20,6 @@
   (:use #:cl+qt)
   (:export #:main)
   (:import-from #:alexandria
-                #:when-let))
+                #:when-let
+                #:emptyp
+                #:ends-with-subseq))
