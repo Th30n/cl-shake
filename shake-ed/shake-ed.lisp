@@ -17,6 +17,15 @@
 (in-package #:shake-ed)
 (in-readtable :qtools)
 
+(defun qcolor->vector (qcolor)
+  (shiva:v (q+:red-f qcolor) (q+:green-f qcolor) (q+:blue-f qcolor)))
+
+(defun vector->qcolor (color)
+  (let ((qcolor (q+:make-qcolor)))
+    (setf (q+:rgb-f qcolor)
+          (values (shiva:vx color) (shiva:vy color) (shiva:vz color)))
+    qcolor))
+
 (define-widget gl-editor (QGLWidget)
   ())
 
@@ -27,7 +36,8 @@
   (sgl:clear-buffer-fv :color 0 0 0 0))
 
 (define-widget map-scene (QGraphicsScene)
-  ((drawing-line :initform nil)))
+  ((drawing-line :initform nil)
+   (line-color-map :initform (make-hash-table))))
 
 (defun update-lineitem-p2 (lineitem p2)
   (with-finalizing ((new-line (q+:make-qlinef (q+:p1 (q+:line lineitem)) p2)))
@@ -35,7 +45,9 @@
 
 (defun new-lineitem (p1 p2)
   (with-finalizing ((new-line (q+:make-qlinef p1 p2)))
-    (q+:make-qgraphicslineitem new-line)))
+    (let ((lineitem (q+:make-qgraphicslineitem new-line)))
+      (setf (q+:flag lineitem) (values (q+:qgraphicsitem.item-is-selectable) t))
+      lineitem)))
 
 (defun within-scene-p (scene point)
   (q+:contains (q+:scene-rect scene) point))
@@ -43,21 +55,29 @@
 (define-signal (map-scene mouse-scene-pos) (double double))
 
 (define-override (map-scene mouse-press-event) (mouse-event)
-  (when (and (enum-equal (q+:button mouse-event) (q+:qt.left-button))
-             (within-scene-p map-scene (q+:scene-pos mouse-event)))
-    (if drawing-line
-        (progn
-          (update-lineitem-p2 drawing-line (q+:scene-pos mouse-event))
-          (setf drawing-line nil))
-        (progn
-          (setf drawing-line (new-lineitem (q+:scene-pos mouse-event)
-                                           (q+:scene-pos mouse-event)))
-          (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
-                             (pen (q+:make-qpen color)))
-            (setf (q+:width-f pen) 0.5
-                  (q+:pen drawing-line) pen))
-          (q+:add-item map-scene drawing-line)))
-    (stop-overriding)))
+  (when (within-scene-p map-scene (q+:scene-pos mouse-event))
+    (cond
+      ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
+       (if drawing-line
+           (progn
+             (update-lineitem-p2 drawing-line (q+:scene-pos mouse-event))
+             (setf drawing-line nil))
+           (progn
+             (setf drawing-line (new-lineitem (q+:scene-pos mouse-event)
+                                              (q+:scene-pos mouse-event)))
+             (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                                (pen (q+:make-qpen color)))
+               (setf (q+:width-f pen) 0.5
+                     (q+:pen drawing-line) pen))
+             (q+:add-item map-scene drawing-line))))
+      ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
+       (let* ((view (car (q+:views map-scene)))
+              (item (q+:item-at map-scene (q+:scene-pos mouse-event)
+                                (q+:transform view))))
+         (q+:clear-selection map-scene)
+         (unless (null-qobject-p item)
+           (setf (q+:selected item) t))))
+      (t (stop-overriding)))))
 
 (define-override (map-scene mouse-move-event) (mouse-event)
   (when (and drawing-line (within-scene-p map-scene (q+:scene-pos mouse-event)))
@@ -120,23 +140,30 @@
    w "Save Map"
    "Save to existing 'test.map'.")
   (with-slots-bound (w main)
-    (with-open-file (file "test.map" :direction :output
-                          :if-exists :supersede :if-does-not-exist :create)
-      (let* ((items (q+:items scene))
-             (items-count (length items)))
-        (format file "~S~%" items-count)
-        (loop for i from 0 and lineitem in items do
-             (let ((p1 (q+:p1 (q+:line lineitem)))
-                   (p2 (q+:p2 (q+:line lineitem)))
-                   (color (shiva:v (* i (/ 256 items-count 256)) 0 1)))
-               (format file "~S~%~S ~S ~S~%"
-                       (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
-                       (shiva:vx color) (shiva:vy color) (shiva:vz color))))))))
+    (with-slots (line-color-map) scene
+      (with-open-file (file "test.map" :direction :output
+                            :if-exists :supersede :if-does-not-exist :create)
+        (let* ((items (q+:items scene))
+               (items-count (length items)))
+          (format file "~S~%" items-count)
+          (loop for i from 0 and lineitem in items do
+               (let ((p1 (q+:p1 (q+:line lineitem)))
+                     (p2 (q+:p2 (q+:line lineitem)))
+                     (color (gethash lineitem line-color-map (shiva:v 1 0 1))))
+                 (format file "~S~%~S ~S ~S~%"
+                         (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
+                         (shiva:vx color) (shiva:vy color) (shiva:vz color)))))))))
 
 (defun save-as-map (w)
   (q+:qmessagebox-information
    w "Save As Map"
    "Save to a new file."))
+
+(defun compile-map (w)
+  (q+:qmessagebox-information
+   w "Compile Map"
+   "Compiling from 'test.map' to 'test.bsp'.")
+  (sbsp:compile-map-file "test.map" "test.bsp"))
 
 (define-menu (main File)
   (:item ("New" (ctrl n)) (new-map main))
@@ -144,9 +171,25 @@
   (:separator)
   (:item ("Save" (ctrl s)) (save-map main))
   (:item ("Save As..." (shift ctrl s)) (save-as-map main))
+  (:item ("Compile" (f5)) (compile-map main))
   (:separator)
   (:item ("Quit" (ctrl q))
          (q+:close main)))
+
+(defun edit-color (w)
+  (with-slots-bound (w main)
+    (when-let ((item (car (q+:selected-items scene))))
+      (with-slots (line-color-map) scene
+        (let ((old-color (gethash item line-color-map (shiva:v 1 0 1))))
+          (with-finalizing* ((qcolor (vector->qcolor old-color))
+                             (new-qcolor (q+:qcolordialog-get-color qcolor w)))
+            (when (q+:is-valid new-qcolor)
+              (format t "Color: ~S~%" new-qcolor)
+              (setf (gethash item line-color-map)
+                    (qcolor->vector new-qcolor)))))))))
+
+(define-menu (main Edit)
+  (:item "Color" (edit-color main)))
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd")

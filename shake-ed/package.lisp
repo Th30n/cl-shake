@@ -18,4 +18,6 @@
 
 (defpackage #:shake-ed
   (:use #:cl+qt)
-  (:export #:main))
+  (:export #:main)
+  (:import-from #:alexandria
+                #:when-let))
