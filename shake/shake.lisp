@@ -93,13 +93,13 @@ Returns BACK or FRONT."
   (declare (type fixnum n))
   (loop repeat n collecting obj))
 
-(defun nrotate-camera (delta-time xrel yrel camera)
-  (let* ((sens 10d0)
-         (speed (* sens delta-time))
-         (xrot (q* (qrotation (v 0 1 0) (* speed deg->rad (- xrel)))
+(defun nrotate-camera (xrel yrel camera)
+  "Rotate the CAMERA for XREL degrees around the world Y axis and YREL degrees
+around the local X axis. The vertical angle is clamped."
+  (let* ((xrot (q* (qrotation (v 0 1 0) (* deg->rad (- xrel)))
                    (camera-rotation camera)))
          (old-v-angle (* rad->deg (q->euler-x xrot)))
-         (v-angle-diff (* speed (- yrel))))
+         (v-angle-diff yrel))
     (cond
       ((>= old-v-angle 90d0) (decf old-v-angle 180d0))
       ((<= old-v-angle -90d0) (incf old-v-angle 180d0)))
@@ -225,11 +225,77 @@ DRAW and DELETE for drawing and deleting respectively."
                (format nil "CPU time: ~,2Fms (avg)" cpu-avg)
                600 564 800d0 600d0 text-shader font))
 
+(declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
+               *last-time* *base-time* *gametic*))
+(defconstant +ticrate+ 60)
+(defconstant +max-frame-skip+ 5)
+(defvar *base-time* 0)
+(defvar *last-time* 0)
+(defvar *gametic* 0)
+
+(defun get-time ()
+  "Return time in 1/TICRATE second tics offset by *BASE-TIME*."
+  (declare (optimize (speed 2)))
+  (floor (* +ticrate+ (the (unsigned-byte 32) (- (sdl2:get-ticks) *base-time*)))
+         1000))
+
+(defun start-game-loop ()
+  (setf *base-time* (sdl2:get-ticks)
+        *last-time* *base-time*))
+
+(defun try-run-tics (update-fun)
+  (let ((new-tics (- (get-time) *last-time*)))
+    (incf *last-time* new-tics)
+    (loop repeat (min new-tics +max-frame-skip+) do
+         (funcall update-fun)
+         (incf *gametic*))))
+
+(defvar *mouse* (cons 0 0))
+
+(defun update-mouse-relative (xrel yrel)
+  (incf (car *mouse*) xrel)
+  (incf (cdr *mouse*) yrel))
+
+(defvar *game-keys* (make-hash-table)
+  "Mapping of currently pressed keys. Used for building a tick command.")
+
+(defun reset-game-keys ()
+  (clrhash *game-keys*))
+
+(defun press-game-key (key)
+  (setf (gethash key *game-keys*) t))
+
+(defun release-game-key (key)
+  (setf (gethash key *game-keys*) nil))
+
+(defun game-key-down-p (key)
+  (gethash key *game-keys*))
+
+(defun build-ticcmd (camera)
+  "TODO: Convert the camera movement into building a ticcmd for moving the camera."
+  (let ((dt (coerce (/ +ticrate+) 'double-float))
+        (xrel (car *mouse*))
+        ;; Invert the Y movement.
+        (yrel (- (cdr *mouse*)))
+        (sens 1.5d0))
+    (when (game-key-down-p :scancode-w)
+      (nmove-camera :forward dt camera))
+    (when (game-key-down-p :scancode-s)
+      (nmove-camera :back dt camera))
+    (when (game-key-down-p :scancode-a)
+      (nmove-camera :left dt camera))
+    (when (game-key-down-p :scancode-d)
+      (nmove-camera :right dt camera))
+    (nrotate-camera (* xrel (/ sens 10d0)) (* yrel (/ sens 10d0)) camera)
+    (setf (car *mouse*) 0)
+    (setf (cdr *mouse*) 0)))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
     (sdl2:with-window (win :title "shake" :flags '(:shown :opengl))
       (sdl2:with-gl-context (context win)
+        (sdl2:gl-set-swap-interval 0)
         (print-gl-info)
         (sdl2:set-relative-mouse-mode 1)
         ;; (gl:enable :depth-test :cull-face)
@@ -255,26 +321,23 @@ DRAW and DELETE for drawing and deleting respectively."
                              (member :input-focus (sdl2:get-window-flags win)))
                             (minimized-p
                              (member :minimized (sdl2:get-window-flags win))))
+            (start-game-loop)
             (sdl2:with-event-loop (:method :poll)
               (:quit () t)
               (:keydown
                (:keysym keysym)
-               (let ((scancode (sdl2:scancode-value keysym)))
-                 (when input-focus-p
-                   (cond
-                     ((sdl2:scancode= scancode :scancode-w)
-                      (nmove-camera :forward delta-time camera))
-                     ((sdl2:scancode= scancode :scancode-s)
-                      (nmove-camera :back delta-time camera))
-                     ((sdl2:scancode= scancode :scancode-a)
-                      (nmove-camera :left delta-time camera))
-                     ((sdl2:scancode= scancode :scancode-d)
-                      (nmove-camera :right delta-time camera))))))
+               (when input-focus-p
+                 (press-game-key (sdl2:scancode keysym))))
+              (:keyup
+               (:keysym keysym)
+               (when input-focus-p
+                 (release-game-key (sdl2:scancode keysym))))
               (:mousemotion
                (:xrel xrel :yrel yrel)
                (when input-focus-p
-                 (nrotate-camera delta-time xrel yrel camera)))
+                 (update-mouse-relative xrel yrel)))
               (:idle ()
+                     (try-run-tics (lambda () (build-ticcmd camera)))
                      (setf delta-time (performance-delta start-time current-time)
                            start-time current-time
                            current-time (sdl2:get-performance-counter))
