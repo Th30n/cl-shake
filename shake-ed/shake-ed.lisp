@@ -26,15 +26,6 @@
           (values (shiva:vx color) (shiva:vy color) (shiva:vz color)))
     qcolor))
 
-(define-widget gl-editor (QGLWidget)
-  ())
-
-(define-initializer (gl-editor setup)
-  (setf (q+:minimum-size gl-editor) (values 200 200)))
-
-(define-override (gl-editor "paintGL" paint-gl) ()
-  (sgl:clear-buffer-fv :color 0 0 0 0))
-
 (define-widget map-scene (QGraphicsScene)
   ((drawing-line :initform nil)
    (line-color-map :initform (make-hash-table))))
@@ -89,15 +80,11 @@
 (define-widget main (QMainWindow)
   ((map-file :initform nil)))
 
-(define-subwidget (main editor) (make-instance 'gl-editor))
-
 (define-subwidget (main scene) (make-instance 'map-scene))
 
 (define-slot (main mouse-scene-pos) ((x double) (y double))
   (declare (connected scene (mouse-scene-pos double double)))
   (q+:show-message (q+:status-bar main) (format nil "Pos ~,2F, ~,2F" x y)))
-
-(define-subwidget (main button) (q+:make-qpushbutton "Click Me!"))
 
 (define-subwidget (main map-view) (q+:make-qgraphicsview)
   (with-finalizing ((cursor (q+:make-qcursor (q+:qt.cross-cursor))))
@@ -112,18 +99,10 @@
   (setf (q+:scene map-view) scene))
 
 (define-subwidget (main layout) (q+:make-qvboxlayout)
-  (q+:add-widget layout editor)
-  (q+:add-widget layout button)
   (let ((widget (q+:make-qwidget)))
     (q+:add-widget layout map-view)
     (setf (q+:layout widget) layout)
     (setf (q+:central-widget main) widget)))
-
-(define-slot (main button-pressed) ()
-  (declare (connected button (pressed)))
-  (q+:qmessagebox-information
-   main "Hello World!"
-   (format nil "Hello dear sir/madam.")))
 
 (defun new-map (w)
   (q+:qmessagebox-information
