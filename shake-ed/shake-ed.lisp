@@ -67,7 +67,7 @@
                                               (q+:scene-pos mouse-event)))
              (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
                                 (pen (q+:make-qpen color)))
-               (setf (q+:width-f pen) 0.5
+               (setf (q+:width-f pen) 0.05
                      (q+:pen drawing-line) pen))
              (q+:add-item map-scene drawing-line))))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
@@ -104,7 +104,7 @@
     (setf (q+:minimum-size map-view) (values 200 200)
           (q+:mouse-tracking map-view) t
           (q+:cursor map-view) cursor))
-  (q+:scale map-view 4 4)
+  (q+:scale map-view 25 25)
   (with-finalizing ((rect (q+:make-qrectf -200 -200 400 400))
                     (brush (q+:make-qbrush (q+:qt.black) (q+:qt.solid-pattern))))
     (setf (q+:scene-rect scene) rect
