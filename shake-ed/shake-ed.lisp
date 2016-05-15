@@ -204,7 +204,7 @@
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd")
-  (q+:resize main 480 320)
+  (q+:resize main 800 600)
   (q+:show-message (q+:status-bar main) "Status"))
 
 (defun main ()
