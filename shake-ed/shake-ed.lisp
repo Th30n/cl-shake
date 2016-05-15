@@ -105,9 +105,9 @@
     (setf (q+:central-widget main) widget)))
 
 (defun new-map (w)
-  (q+:qmessagebox-information
-   w "New Map"
-   "Create a new map."))
+  (with-slots (scene map-file) w
+    (q+:clear scene)
+    (setf map-file nil)))
 
 (defun open-map (w)
   (q+:qmessagebox-information
