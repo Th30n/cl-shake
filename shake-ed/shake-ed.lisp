@@ -45,6 +45,13 @@
 
 (define-signal (map-scene mouse-scene-pos) (double double))
 
+(defun add-line-to-scene (scene line)
+  (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                     (pen (q+:make-qpen color)))
+    (setf (q+:width-f pen) 0.05
+          (q+:pen line) pen))
+  (q+:add-item scene line))
+
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
@@ -56,11 +63,7 @@
            (progn
              (setf drawing-line (new-lineitem (q+:scene-pos mouse-event)
                                               (q+:scene-pos mouse-event)))
-             (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
-                                (pen (q+:make-qpen color)))
-               (setf (q+:width-f pen) 0.05
-                     (q+:pen drawing-line) pen))
-             (q+:add-item map-scene drawing-line))))
+             (add-line-to-scene map-scene drawing-line))))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
        (let* ((view (car (q+:views map-scene)))
               (item (q+:item-at map-scene (q+:scene-pos mouse-event)
@@ -109,11 +112,6 @@
     (q+:clear scene)
     (setf map-file nil)))
 
-(defun open-map (w)
-  (q+:qmessagebox-information
-   w "Open Map"
-   "Open an existing map."))
-
 (defun write-map (stream scene)
   (with-slots (line-color-map) scene
     (let* ((items (q+:items scene))
@@ -126,6 +124,20 @@
              (format stream "~S~%~S ~S ~S~%"
                      (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
                      (shiva:vx color) (shiva:vy color) (shiva:vz color)))))))
+
+(defun read-map (stream scene)
+  (with-slots (line-color-map) scene
+    (let ((n (read stream)))
+      (loop repeat n doing
+           (let ((points (read stream))
+                 (color (shiva:v (read stream) (read stream) (read stream))))
+             (with-finalizing ((p1 (q+:make-qpointf (first points)
+                                                    (second points)))
+                               (p2 (q+:make-qpointf (third points)
+                                                    (fourth points))))
+               (let ((lineitem (new-lineitem p1 p2)))
+                 (add-line-to-scene scene lineitem)
+                 (setf (gethash lineitem line-color-map) color))))))))
 
 (defun save-map (w &optional filename)
   (let ((filepath filename))
@@ -141,6 +153,18 @@
           (write-map file scene)
           (q+:show-message (q+:status-bar w)
                            (format nil "Saved '~S'" filepath))
+          (setf map-file filepath))))))
+
+(defun open-map (w)
+  (let ((filepath (q+:qfiledialog-get-open-file-name
+                   w "Open Map" "" "Maps (*.map)")))
+    (when (and filepath (ends-with-subseq ".map" filepath))
+      (with-slots (scene map-file) w
+        (with-open-file (file filepath)
+          (q+:clear scene)
+          (read-map file scene)
+          (q+:show-message (q+:status-bar w)
+                           (format nil "Loaded '~S'" filepath))
           (setf map-file filepath))))))
 
 (defun compile-map (w)
