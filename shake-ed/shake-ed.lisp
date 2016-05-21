@@ -30,6 +30,19 @@
   ((drawing-line :initform nil)
    (line-color-map :initform (make-hash-table))))
 
+(define-override (map-scene draw-background) (painter rect)
+  (q+:fill-rect painter rect (q+:qt.black))
+  (with-finalizing* ((color (q+:make-qcolor 40 40 40)))
+    (q+:set-pen painter color)
+    (loop for x from (ceiling (q+:left rect)) upto (floor (q+:right rect)) do
+         (with-finalizing ((p1 (q+:make-qpointf x (q+:top rect)))
+                           (p2 (q+:make-qpointf x (q+:bottom rect))))
+           (q+:draw-line painter p1 p2)))
+    (loop for y from (ceiling (q+:top rect)) upto (floor (q+:bottom rect)) do
+         (with-finalizing ((p1 (q+:make-qpointf (q+:left rect) y))
+                           (p2 (q+:make-qpointf (q+:right rect) y)))
+           (q+:draw-line painter p1 p2)))))
+
 (defun update-lineitem-p2 (lineitem p2)
   (with-finalizing ((new-line (q+:make-qlinef (q+:p1 (q+:line lineitem)) p2)))
     (setf (q+:line lineitem) new-line)))
