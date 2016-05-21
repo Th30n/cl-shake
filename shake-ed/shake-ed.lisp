@@ -65,18 +65,33 @@
           (q+:pen line) pen))
   (q+:add-item scene line))
 
+(defun scene-pos-from-mouse (mouse-event)
+  (let* ((scene-pos (q+:scene-pos mouse-event))
+         (x (q+:x scene-pos))
+         (y (q+:y scene-pos))
+         (snap-to-grid-p (enum-equal (q+:modifiers mouse-event)
+                                     (q+:qt.control-modifier))))
+    (if snap-to-grid-p
+        (cons (round x) (round y))
+        (cons x y))))
+
+(defun add-or-update-line (map-scene scene-pos)
+  (with-slots (drawing-line) map-scene
+    (with-finalizing ((scene-point (q+:make-qpointf (car scene-pos)
+                                                    (cdr scene-pos))))
+      (if drawing-line
+          (progn
+            (update-lineitem-p2 drawing-line scene-point)
+            (setf drawing-line nil))
+          (progn
+            (setf drawing-line (new-lineitem scene-point scene-point))
+            (add-line-to-scene map-scene drawing-line))))))
+
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
-       (if drawing-line
-           (progn
-             (update-lineitem-p2 drawing-line (q+:scene-pos mouse-event))
-             (setf drawing-line nil))
-           (progn
-             (setf drawing-line (new-lineitem (q+:scene-pos mouse-event)
-                                              (q+:scene-pos mouse-event)))
-             (add-line-to-scene map-scene drawing-line))))
+       (add-or-update-line map-scene (scene-pos-from-mouse mouse-event)))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
        (let* ((view (car (q+:views map-scene)))
               (item (q+:item-at map-scene (q+:scene-pos mouse-event)
@@ -88,7 +103,10 @@
 
 (define-override (map-scene mouse-move-event) (mouse-event)
   (when (and drawing-line (within-scene-p map-scene (q+:scene-pos mouse-event)))
-    (update-lineitem-p2 drawing-line (q+:scene-pos mouse-event)))
+    (let ((scene-pos (scene-pos-from-mouse mouse-event)))
+      (with-finalizing ((scene-point (q+:make-qpointf (car scene-pos)
+                                                      (cdr scene-pos))))
+        (update-lineitem-p2 drawing-line scene-point))))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
