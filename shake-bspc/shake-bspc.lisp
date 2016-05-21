@@ -16,6 +16,8 @@
 
 (in-package #:shake-bspc)
 
+(defconstant +match-tolerance+ 1d-5 "Tolerance for collinear points")
+
 (defstruct linedef
   (start (v 0 0) :type (simple-array double-float (2)) :read-only t)
   (end  (v 0 0) :type (simple-array double-float (2)) :read-only t)
@@ -71,19 +73,29 @@
               (if (= den 0d0)
                   ;; parallel lines
                   (if (< num 0d0)
-                      (setf front (cons seg front))
-                      (setf back (cons seg back)))
+                      (push seg front)
+                      (push seg back))
                   ;; lines intersect
                   (let ((splitted (split-lineseg seg (/ num den))))
                     (if (null splitted)
                         (if (< num 0d0)
-                            (setf front (cons seg front))
-                            (setf back (cons seg back)))
-                        (if (< num 0d0)
-                            (setf front (cons (car splitted) front)
-                                  back (cons (cdr splitted) back))
-                            (setf back (cons (car splitted) back)
-                                  front (cons (cdr splitted) front)))))))))
+                            (push seg front)
+                            (push seg back))
+                        (loop with done = nil until done do
+                             (cond
+                               ((< num (- +match-tolerance+))
+                                (push (car splitted) front)
+                                (push (cdr splitted) back)
+                                (setf done t))
+                               ((> num +match-tolerance+)
+                                (push (car splitted) back)
+                                (push (cdr splitted) front)
+                                (setf done t))
+                               (t ;; points are collinear, compare with other
+                                (let ((n (linedef-normal splitter))
+                                      (sl-vec (v- (linedef-end line)
+                                                  (linedef-start splitter))))
+                                  (setf num (vdot n sl-vec))))))))))))
         (list rootseg
               (if (null front) nil (build-bsp (car front) (cdr front)))
               (if (null back) nil (build-bsp (car back) (cdr back)))))))
