@@ -111,6 +111,20 @@
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
 
+(defun remove-selected (scene)
+  (let ((items (q+:selected-items scene)))
+    (dolist (item items)
+      (q+:remove-item scene item)
+      (with-slots (drawing-line line-color-map) scene
+        (setf drawing-line nil)
+        (remhash item line-color-map)))))
+
+(define-override (map-scene key-press-event) (key-event)
+  (cond
+    ((q+:matches key-event (q+:qkeysequence.delete))
+     (remove-selected map-scene))
+    (t (stop-overriding))))
+
 (define-widget main (QMainWindow)
   ((map-file :initform nil)))
 
@@ -231,7 +245,8 @@
                     (qcolor->vector new-qcolor)))))))))
 
 (define-menu (main Edit)
-  (:item "Color" (edit-color main)))
+  (:item "Color" (edit-color main))
+  (:item "Delete" (remove-selected scene)))
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd")
