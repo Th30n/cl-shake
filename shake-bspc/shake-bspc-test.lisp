@@ -21,6 +21,7 @@
         #:prove
         #:shake-bspc)
   (:import-from #:shiva
+                #:v=
                 #:v))
 
 (in-package #:shake-bspc-test)
@@ -33,26 +34,52 @@
         (make-linedef :start (v 3 2) :end (v 3 -2))))
 
 (subtest "Testing split-lineseg"
-  (let ((seg (linedef->lineseg (car *test-linedefs*))))
+  (let* ((line (car *test-linedefs*))
+         (seg (linedef->lineseg line)))
     (is (sbsp::split-lineseg seg -1d0)
         nil)
     (is (sbsp::split-lineseg seg 0d0)
         nil)
     (is (sbsp::split-lineseg seg 1d0)
         nil)
-    (let ((t-split 0.8d0))
-      (is (sbsp::split-lineseg seg t-split)
-          (cons (make-lineseg :orig-line (car *test-linedefs*)
+    (let* ((t-split 0.8d0)
+           (split-segs (sbsp::split-lineseg seg t-split)))
+      (is split-segs
+          (cons (make-lineseg :orig-line line
                               :t-end t-split)
-                (make-lineseg :orig-line (car *test-linedefs*)
+                (make-lineseg :orig-line line
                               :t-start t-split))
-          :test #'equalp))))
+          :test #'equalp)
+      (is (sbsp::lineseg-start (car split-segs))
+          (sbsp::linedef-start line) :test #'v=)
+      (is (sbsp::lineseg-end (cdr split-segs))
+          (sbsp::linedef-end line) :test #'v=)
+      (is (sbsp::lineseg-start (cdr split-segs)) (v 0 3.6d0) :test #'v=)
+      (is (sbsp::lineseg-start (cdr split-segs))
+          (sbsp::lineseg-end (car split-segs)) :test #'v=))))
 
 (subtest "Test serialization"
-         (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
-                (bsp (build-bsp (car segs) (cdr segs))))
-           (with-input-from-string (in (with-output-to-string (out)
-                                         (sbsp::write-bsp bsp out)))
-             (is (read-bsp in) bsp :test #'equalp))))
+  (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
+         (bsp (build-bsp (car segs) (cdr segs))))
+    (with-input-from-string (in (with-output-to-string (out)
+                                  (sbsp::write-bsp bsp out)))
+      (is (read-bsp in) bsp :test #'equalp))))
+
+(defparameter *parallel-linedefs*
+  (list (make-linedef :start (v -3.0d0 1.0d0) :end (v -2.0d0 1.0d0))
+        (make-linedef :start (v -4.0d0 2.0d0) :end (v -4.0d0 0.0d0))
+        (make-linedef :start (v -1.0d0 1.0d0) :end (v 0.0d0 1.0d0))))
+
+(subtest "Test build-bsp produces correct back-to-front"
+  (subtest "Parallel segments on same line"
+    (let* ((segs (mapcar #'linedef->lineseg *parallel-linedefs*))
+           (bsp (build-bsp (car segs) (cdr segs))))
+      (is (back-to-front (v -0.5d0 1.5d0) bsp)
+          (list (make-lineseg :orig-line (second *parallel-linedefs*)
+                              :t-start 0.5d0 :t-end 1d0)
+                (third segs)
+                (first segs)
+                (make-lineseg :orig-line (second *parallel-linedefs*)
+                              :t-start 0d0 :t-end 0.5d0)) :test #'equalp))))
 
 (finalize)
