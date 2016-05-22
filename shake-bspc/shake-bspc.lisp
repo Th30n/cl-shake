@@ -50,8 +50,7 @@
   "Split the given LINESEG at the given T-SPLIT parameter into a pair
   of LINESEG. Returns NIL if T-SPLIT does not split the line segment."
   (declare (type lineseg lineseg) (type double-float t-split))
-  (when (and (> t-split (lineseg-t-start lineseg))
-             (< t-split (lineseg-t-end lineseg)))
+  (when (< (lineseg-t-start lineseg) t-split (lineseg-t-end lineseg))
     (let ((l1 (copy-lineseg lineseg))
           (l2 (copy-lineseg lineseg)))
       (setf (lineseg-t-end l1) t-split)
@@ -76,9 +75,7 @@
                   ;; lines intersect
                   (let ((splitted (split-lineseg seg (/ num den))))
                     (if (null splitted)
-                        (if (< num 0d0)
-                            (push seg front)
-                            (push seg back))
+                        ;; no split
                         (progn
                           (when (double-float-rel-eq num 0d0)
                             ;; Points are collinear, use other end for numerator.
@@ -86,13 +83,17 @@
                                   (sl-vec (v- (linedef-end line)
                                               (linedef-start splitter))))
                               (setf num (vdot n sl-vec))))
-                          (cond
-                               ((< num 0d0)
-                                (push (car splitted) front)
-                                (push (cdr splitted) back))
-                               (t
-                                (push (car splitted) back)
-                                (push (cdr splitted) front))))))))))
+                          (if (< num 0d0)
+                              (push seg front)
+                              (push seg back)))
+                        ;; split
+                        (cond
+                          ((< num 0d0)
+                           (push (car splitted) front)
+                           (push (cdr splitted) back))
+                          (t
+                           (push (car splitted) back)
+                           (push (cdr splitted) front)))))))))
         (list rootseg
               (if (null front) nil (build-bsp (car front) (cdr front)))
               (if (null back) nil (build-bsp (car back) (cdr back)))))))
