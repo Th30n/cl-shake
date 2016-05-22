@@ -188,3 +188,22 @@
     (with-open-file (bf bsp-file :direction :output :if-exists :supersede
                         :if-does-not-exist :create)
       (write-bsp bsp bf))))
+
+(defun determine-side (point lineseg)
+  "Determine on which side of a LINESEG is the given POINT located.
+Returns BACK or FRONT."
+  (let* ((normal (linedef-normal (lineseg-orig-line lineseg))))
+    (if (>= 0 (- (vdot normal point)
+                 (vdot normal (lineseg-start lineseg))))
+        'front
+        'back)))
+
+(defun back-to-front (point bsp)
+  "Traverse the BSP in back to front order relative to given POINT."
+  (unless (null bsp)
+    (let ((node (car bsp)))
+      (ecase (determine-side point node)
+        (front (append (back-to-front point (caddr bsp))
+                       (cons node (back-to-front point (cadr bsp)))))
+        (back (append (back-to-front point (cadr bsp))
+                      (cons node (back-to-front point (caddr bsp)))))))))

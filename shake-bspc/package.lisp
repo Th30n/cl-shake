@@ -28,4 +28,5 @@
            #:build-bsp
            #:read-and-compile-map
            #:read-bsp
-           #:compile-map-file))
+           #:compile-map-file
+           #:back-to-front))

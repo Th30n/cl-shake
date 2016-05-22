@@ -46,26 +46,6 @@ and rotation as a quaternion."
 (defparameter *bsp*
   (with-open-file (file "test.bsp") (sbsp:read-bsp file)))
 
-(defun determine-side (point lineseg)
-  "Determine on which side of a LINESEG is the given POINT located.
-Returns BACK or FRONT."
-  (let* ((line (sbsp::lineseg-orig-line lineseg))
-         (normal (sbsp::linedef-normal line)))
-    (if (>= 0 (- (vdot normal point)
-                 (vdot normal (sbsp::linedef-start line))))
-        'front
-        'back)))
-
-(defun back-to-front (point bsp)
-  "Traverse the BSP in back to front order relative to given POINT."
-  (unless (null bsp)
-    (let ((node (car bsp)))
-      (ecase (determine-side point node)
-        (front (append (back-to-front point (caddr bsp))
-                       (cons node (back-to-front point (cadr bsp)))))
-        (back (append (back-to-front point (cadr bsp))
-                      (cons node (back-to-front point (caddr bsp)))))))))
-
 (defun get-endpoints (lineseg)
   (let* ((linedef (sbsp::lineseg-orig-line lineseg))
          (line-vec (v- (sbsp::linedef-end linedef)
@@ -384,7 +364,7 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun get-map-walls (camera bsp)
   (let* ((pos (camera-position camera))
          (pos-2d (v (vx pos) (vz pos)))
-         (segs (back-to-front pos-2d bsp)))
+         (segs (sbsp:back-to-front pos-2d bsp)))
     (values (mapcan #'get-triangles segs)
             (mapcan (lambda (s) (repeat (get-color s) 6)) segs))))
 
