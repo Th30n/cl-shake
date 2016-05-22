@@ -21,7 +21,8 @@
         #:iterate
         #:alexandria
         #:metabang.bind)
-  (:export #:rad->deg #:deg->rad
+  (:export #:double-float-rel-eq
+           #:rad->deg #:deg->rad
            #:v #:vx #:vy #:vz #:vw
            #:v- #:v+ #:v= #:vnorm #:vnormalize
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
