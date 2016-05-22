@@ -21,8 +21,11 @@
   (end  (v 0 0) :type (simple-array double-float (2)) :read-only t)
   (color (v 1 0 1) :type (simple-array double-float (3)) :read-only t))
 
+(defun linedef-vec (linedef)
+  (v- (linedef-end linedef) (linedef-start linedef)))
+
 (defun linedef-normal (linedef)
-  (let ((vec (v- (linedef-end linedef) (linedef-start linedef))))
+  (let ((vec (linedef-vec linedef)))
     (rotatef (aref vec 0) (aref vec 1))
     (setf (aref vec 1) (- (aref vec 1)))
     vec))
@@ -34,14 +37,26 @@
   (t-start 0d0 :type double-float)
   (t-end 1d0 :type double-float))
 
-(defun line-intersect-ratio (splitter line)
-  "Takes a SPLITTER and LINE linedefs. Returns numerator and denominator values
-  for calculating the parameter T of the intersection."
-  (declare (type linedef splitter line))
-  (let* ((n (linedef-normal splitter))
+(defun lineseg-start (lineseg)
+  (let* ((line (lineseg-orig-line lineseg))
+         (l-vec (linedef-vec line)))
+    (v+ (linedef-start line) (vscale (lineseg-t-start lineseg) l-vec))))
+
+(defun lineseg-end (lineseg)
+  (let* ((line (lineseg-orig-line lineseg))
+         (l-vec (linedef-vec line)))
+    (v+ (linedef-start line) (vscale (lineseg-t-end lineseg) l-vec))))
+
+(defun line-intersect-ratio (splitter lineseg)
+  "Takes a SPLITTER and LINESEG linesegs. Returns numerator and denominator
+  values for calculating the parameter T of the intersection."
+  (declare (type lineseg splitter lineseg))
+  (let* ((n (linedef-normal (lineseg-orig-line splitter)))
          (-n (v- (v 0 0) n))
-         (l-vec (v- (linedef-end line) (linedef-start line)))
-         (sl-vec (v- (linedef-start line) (linedef-start splitter)))
+         (l-vec (linedef-vec (lineseg-orig-line lineseg)))
+         (s-start (lineseg-start splitter))
+         (l-start (lineseg-start lineseg))
+         (sl-vec (v- l-start s-start))
          (numer (vdot n sl-vec))
          (denom (vdot -n l-vec)))
     (values numer denom)))
@@ -65,35 +80,34 @@
             (front nil)
             (back nil))
         (dolist (seg linesegs)
-          (let ((line (lineseg-orig-line seg)))
-            (multiple-value-bind (num den) (line-intersect-ratio splitter line)
-              (if (double-float-rel-eq den 0d0)
-                  ;; parallel lines
-                  (if (< num 0d0)
-                      (push seg front)
-                      (push seg back))
-                  ;; lines intersect
-                  (let ((splitted (split-lineseg seg (/ num den))))
-                    (if (null splitted)
-                        ;; no split
-                        (progn
-                          (when (double-float-rel-eq num 0d0)
-                            ;; Points are collinear, use other end for numerator.
-                            (let ((n (linedef-normal splitter))
-                                  (sl-vec (v- (linedef-end line)
-                                              (linedef-start splitter))))
-                              (setf num (vdot n sl-vec))))
-                          (if (< num 0d0)
-                              (push seg front)
-                              (push seg back)))
-                        ;; split
-                        (cond
-                          ((< num 0d0)
-                           (push (car splitted) front)
-                           (push (cdr splitted) back))
-                          (t
-                           (push (car splitted) back)
-                           (push (cdr splitted) front)))))))))
+          (multiple-value-bind (num den) (line-intersect-ratio rootseg seg)
+            (if (double-float-rel-eq den 0d0)
+                ;; parallel lines
+                (if (< num 0d0)
+                    (push seg front)
+                    (push seg back))
+                ;; lines intersect
+                (let ((splitted (split-lineseg seg (/ num den))))
+                  (if (null splitted)
+                      ;; no split
+                      (progn
+                        (when (double-float-rel-eq num 0d0)
+                          ;; Points are collinear, use other end for numerator.
+                          (let ((n (linedef-normal splitter))
+                                (sl-vec (v- (lineseg-end seg)
+                                            (lineseg-start rootseg))))
+                            (setf num (vdot n sl-vec))))
+                        (if (< num 0d0)
+                            (push seg front)
+                            (push seg back)))
+                      ;; split
+                      (cond
+                        ((< num 0d0)
+                         (push (car splitted) front)
+                         (push (cdr splitted) back))
+                        (t
+                         (push (car splitted) back)
+                         (push (cdr splitted) front))))))))
         (list rootseg
               (if (null front) nil (build-bsp (car front) (cdr front)))
               (if (null back) nil (build-bsp (car back) (cdr back)))))))
