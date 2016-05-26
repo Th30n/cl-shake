@@ -18,6 +18,13 @@
 
 (declaim (optimize (debug 3)))
 
+(defvar *base-dir*
+  #.(directory-namestring (or *compile-file-truename* *load-truename*)))
+
+(defun data-path (filename)
+  "Construct a path to FILENAME relative to *BASE-DIR*."
+  (merge-pathnames filename *base-dir*))
+
 (defmacro with-struct ((name . fields) struct &body body)
   "Bind variables to FIELDS from STRUCT. NAME is a prefix associated with
 the structure."
@@ -44,7 +51,7 @@ and rotation as a quaternion."
     (m* (q->mat q) translation)))
 
 (defparameter *bsp*
-  (with-open-file (file "test.bsp") (sbsp:read-bsp file)))
+  (with-open-file (file (data-path "test.bsp")) (sbsp:read-bsp file)))
 
 (defun get-endpoints (lineseg)
   (let* ((linedef (sbsp::lineseg-orig-line lineseg))
@@ -280,12 +287,12 @@ DRAW and DELETE for drawing and deleting respectively."
         (sdl2:set-relative-mouse-mode 1)
         ;; (gl:enable :depth-test :cull-face)
         (let* ((vertex-array (gl:gen-vertex-array))
-               (shader-prog (load-shader #P"shaders/pass.vert"
-                                         #P"shaders/color.frag"))
-               (text-shader (load-shader #P"shaders/billboard.vert"
-                                         #P"shaders/text.frag"
-                                         #P"shaders/billboard.geom"))
-               (font (load-font "share/font-16.bmp" 16 #\Space))
+               (shader-prog (load-shader (data-path "shaders/pass.vert")
+                                         (data-path "shaders/color.frag")))
+               (text-shader (load-shader (data-path "shaders/billboard.vert")
+                                         (data-path "shaders/text.frag")
+                                         (data-path "shaders/billboard.geom")))
+               (font (load-font (data-path "share/font-16.bmp") 16 #\Space))
                (proj (perspective (* deg->rad 60d0)
                                   (/ 800d0 600d0) 0.1d0 100d0))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
