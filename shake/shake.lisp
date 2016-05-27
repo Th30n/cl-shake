@@ -103,9 +103,8 @@ around the local X axis. The vertical angle is clamped."
                (:left (v -1 0 0)))))
     (vrotate (camera-rotation camera) dir)))
 
-(defun nmove-camera (dir-name delta-time camera)
-  (let* ((speed (* 10 delta-time))
-         (pos (v+ (camera-position camera)
+(defun nmove-camera (dir-name speed camera)
+  (let* ((pos (v+ (camera-position camera)
                   (vscale speed (view-dir dir-name camera)))))
     (setf (camera-position camera) pos)
     camera))
@@ -230,11 +229,11 @@ DRAW and DELETE for drawing and deleting respectively."
   (setf *base-time* (sdl2:get-ticks)
         *last-time* *base-time*))
 
-(defun try-run-tics (update-fun)
+(defun try-run-tics (build-ticcmd run-tic)
   (let ((new-tics (- (get-time) *last-time*)))
     (incf *last-time* new-tics)
     (loop repeat (min new-tics +max-frame-skip+) do
-         (funcall update-fun)
+         (funcall run-tic (funcall build-ticcmd))
          (incf *gametic*))))
 
 (defvar *mouse* (cons 0 0))
@@ -258,24 +257,42 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun game-key-down-p (key)
   (gethash key *game-keys*))
 
-(defun build-ticcmd (camera)
-  "TODO: Convert the camera movement into building a ticcmd for moving the camera."
-  (let ((dt (coerce (/ +ticrate+) 'double-float))
-        (xrel (car *mouse*))
+(defstruct ticcmd
+  (forward-move 0d0 :type double-float)
+  (side-move 0d0 :type double-float)
+  (angle-turn (cons 0d0 0d0) :type (cons double-float double-float)))
+
+(defun build-ticcmd ()
+  (let ((xrel (car *mouse*))
         ;; Invert the Y movement.
         (yrel (- (cdr *mouse*)))
-        (sens 1.5d0))
+        (sens 1.5d0)
+        (move-speed 5)
+        (cmd (make-ticcmd)))
     (when (game-key-down-p :scancode-w)
-      (nmove-camera :forward dt camera))
+      (incf (ticcmd-forward-move cmd) move-speed))
     (when (game-key-down-p :scancode-s)
-      (nmove-camera :back dt camera))
-    (when (game-key-down-p :scancode-a)
-      (nmove-camera :left dt camera))
+      (decf (ticcmd-forward-move cmd) move-speed))
     (when (game-key-down-p :scancode-d)
-      (nmove-camera :right dt camera))
-    (nrotate-camera (* xrel (/ sens 10d0)) (* yrel (/ sens 10d0)) camera)
+      (incf (ticcmd-side-move cmd) move-speed))
+    (when (game-key-down-p :scancode-a)
+      (decf (ticcmd-side-move cmd) move-speed))
+    (incf (car (ticcmd-angle-turn cmd)) (* xrel (/ sens 10d0)))
+    (incf (cdr (ticcmd-angle-turn cmd)) (* yrel (/ sens 10d0)))
     (setf (car *mouse*) 0)
-    (setf (cdr *mouse*) 0)))
+    (setf (cdr *mouse*) 0)
+    cmd))
+
+(defun run-tic (camera cmd)
+  (with-struct (ticcmd- forward-move side-move angle-turn) cmd
+    (let ((dt (coerce (/ +ticrate+) 'double-float)))
+      (when (not (zerop forward-move))
+        (nmove-camera :forward (* forward-move dt) camera))
+      (when (not (zerop side-move))
+        (nmove-camera :right (* side-move dt) camera))
+      (destructuring-bind (x-turn . y-turn) angle-turn
+        (when (not (and (zerop x-turn) (zerop y-turn)))
+          (nrotate-camera x-turn y-turn camera))))))
 
 (defun main ()
   (sdl2:with-init (:video)
@@ -324,7 +341,8 @@ DRAW and DELETE for drawing and deleting respectively."
                (when input-focus-p
                  (update-mouse-relative xrel yrel)))
               (:idle ()
-                     (try-run-tics (lambda () (build-ticcmd camera)))
+                     (try-run-tics #'build-ticcmd
+                                   (lambda (tic) (run-tic camera tic)))
                      (setf delta-time (performance-delta start-time current-time)
                            start-time current-time
                            current-time (sdl2:get-performance-counter))
