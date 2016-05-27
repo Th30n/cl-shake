@@ -103,12 +103,6 @@ around the local X axis. The vertical angle is clamped."
                (:left (v -1 0 0)))))
     (vrotate (camera-rotation camera) dir)))
 
-(defun nmove-camera (dir-name speed camera)
-  (let* ((pos (v+ (camera-position camera)
-                  (vscale speed (view-dir dir-name camera)))))
-    (setf (camera-position camera) pos)
-    camera))
-
 (defun performance-delta (start stop)
   "Return the delta in seconds between two performance counters."
   (coerce (/ (- stop start) (sdl2:get-performance-frequency)) 'double-float))
@@ -283,15 +277,24 @@ DRAW and DELETE for drawing and deleting respectively."
     (setf (cdr *mouse*) 0)
     cmd))
 
+(defun move-player (player forward-move side-move &key (noclip nil))
+  (let ((forward-dir (view-dir :forward player)))
+    (unless noclip
+      ;; Project forward-dir to plane of movement.
+      (setf forward-dir (vnormalize (v (vx forward-dir) 0 (vz forward-dir)))))
+    (let ;; Intentionally make diagonal movement faster.
+        ((move-vec (v+ (vscale forward-move forward-dir)
+                       (vscale side-move (view-dir :right player))))
+         (start-pos (camera-position player)))
+      (setf (camera-position player) (v+ start-pos move-vec)))))
+
 (defun run-tic (camera cmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
     (let ((dt (coerce (/ +ticrate+) 'double-float)))
-      (when (not (zerop forward-move))
-        (nmove-camera :forward (* forward-move dt) camera))
-      (when (not (zerop side-move))
-        (nmove-camera :right (* side-move dt) camera))
+      (unless (and (zerop forward-move) (zerop side-move))
+        (move-player camera (* forward-move dt) (* side-move dt) :noclip t))
       (destructuring-bind (x-turn . y-turn) angle-turn
-        (when (not (and (zerop x-turn) (zerop y-turn)))
+        (unless (and (zerop x-turn) (zerop y-turn))
           (nrotate-camera x-turn y-turn camera))))))
 
 (defun main ()
