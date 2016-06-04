@@ -28,7 +28,7 @@
   (let ((vec (linedef-vec linedef)))
     (rotatef (aref vec 0) (aref vec 1))
     (setf (aref vec 1) (- (aref vec 1)))
-    vec))
+    (vnormalize vec)))
 
 (defstruct lineseg
   "Segment of a line. Each line starts as a full segment, but may be split
@@ -46,6 +46,11 @@
   (let* ((line (lineseg-orig-line lineseg))
          (l-vec (linedef-vec line)))
     (v+ (linedef-start line) (vscale (lineseg-t-end lineseg) l-vec))))
+
+(defstruct node
+  (segs nil :type list)
+  (front nil :type (or node null))
+  (back nil :type (or node null)))
 
 (defun line-intersect-ratio (splitter lineseg)
   "Takes a SPLITTER and LINESEG linesegs. Returns numerator and denominator
@@ -75,7 +80,7 @@
 (defun build-bsp (rootseg linesegs)
   (declare (type lineseg rootseg) (type list linesegs))
   (if (null linesegs)
-      (list rootseg)
+      (make-node :segs (list rootseg))
       (let ((splitter (lineseg-orig-line rootseg))
             (front nil)
             (back nil))
@@ -108,9 +113,10 @@
                         (t
                          (push (car splitted) back)
                          (push (cdr splitted) front))))))))
-        (list rootseg
-              (if (null front) nil (build-bsp (car front) (cdr front)))
-              (if (null back) nil (build-bsp (car back) (cdr back)))))))
+        (make-node
+         :segs (list rootseg)
+         :front (if (null front) nil (build-bsp (car front) (cdr front)))
+         :back (if (null back) nil (build-bsp (car back) (cdr back)))))))
 
 (defun linedef->lineseg (linedef)
   (declare (type linedef linedef))
@@ -160,14 +166,12 @@
 (defun write-bsp (bsp stream)
   (cond
     ((null bsp) (format stream "~S~%" bsp))
-    ((listp bsp)
-     ;; preorder traverse write
-     (write-bsp (first bsp) stream)
-     (write-bsp (second bsp) stream)
-     (write-bsp (third bsp) stream))
     (t
+     ;; preorder traverse write
      (format stream "~S~%" :lineseg)
-     (write-lineseg bsp stream))))
+     (write-lineseg (car (node-segs bsp)) stream)
+     (write-bsp (node-front bsp) stream)
+     (write-bsp (node-back bsp) stream))))
 
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
@@ -175,9 +179,7 @@
       (:lineseg (let ((root (read-lineseg stream))
                       (front (read-bsp stream))
                       (back (read-bsp stream)))
-                  (if (and (null front) (null back))
-                      (list root)
-                      (list root front back))))
+                  (make-node :segs (list root) :front front :back back)))
       ((nil) nil))))
 
 (defun compile-map-file (map-file bsp-file)
@@ -201,9 +203,9 @@ Returns BACK or FRONT."
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."
   (unless (null bsp)
-    (let ((node (car bsp)))
-      (ecase (determine-side point node)
-        (front (append (back-to-front point (caddr bsp))
-                       (cons node (back-to-front point (cadr bsp)))))
-        (back (append (back-to-front point (cadr bsp))
-                      (cons node (back-to-front point (caddr bsp)))))))))
+    (let ((seg (car (node-segs bsp))))
+      (ecase (determine-side point seg)
+        (front (append (back-to-front point (node-back bsp))
+                       (cons seg (back-to-front point (node-front bsp)))))
+        (back (append (back-to-front point (node-front bsp))
+                      (cons seg (back-to-front point (node-back bsp)))))))))
