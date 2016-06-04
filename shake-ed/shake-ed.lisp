@@ -122,9 +122,9 @@
        (let* ((view (car (q+:views map-scene)))
               (item (q+:item-at map-scene (q+:scene-pos mouse-event)
                                 (q+:transform view))))
-         (q+:clear-selection map-scene)
-         (unless (null-qobject-p item)
-           (setf (q+:selected item) t))))
+         (if (null-qobject-p item)
+             (q+:clear-selection map-scene)
+             (setf (q+:selected item) t))))
       (t (stop-overriding)))))
 
 (define-override (map-scene mouse-move-event) (mouse-event)
@@ -276,14 +276,15 @@
 
 (defun edit-color (w)
   (with-slots-bound (w main)
-    (when-let ((item (car (q+:selected-items scene))))
+    (when-let ((items (q+:selected-items scene)))
       (with-slots (line-color-map) scene
-        (let ((old-color (gethash item line-color-map (shiva:v 1 0 1))))
+        (let ((old-color (gethash (car items) line-color-map (shiva:v 1 0 1))))
           (with-finalizing* ((qcolor (vector->qcolor old-color))
                              (new-qcolor (q+:qcolordialog-get-color qcolor w)))
             (when (q+:is-valid new-qcolor)
-              (setf (gethash item line-color-map)
-                    (qcolor->vector new-qcolor)))))))))
+              (dolist (item items)
+                (setf (gethash item line-color-map)
+                      (qcolor->vector new-qcolor))))))))))
 
 (define-menu (main Edit)
   (:item "Color" (edit-color main))
