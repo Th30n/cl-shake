@@ -151,6 +151,16 @@
      (remove-selected map-scene))
     (t (stop-overriding))))
 
+(defun flip-normal-on-selected (scene)
+  (let ((items (q+:selected-items scene)))
+    (dolist (item items)
+      (let ((line (q+:line item)))
+        (with-finalizing ((flipped-line (q+:make-qlinef (q+:p2 line)
+                                                        (q+:p1 line))))
+          (q+:set-line item flipped-line))))
+    (when items
+      (q+:update scene (q+:scene-rect scene)))))
+
 (defun toggle-view-normals (scene)
   (with-slots (view-normals-p) scene
     (setf view-normals-p (not view-normals-p))
@@ -277,7 +287,8 @@
 
 (define-menu (main Edit)
   (:item "Color" (edit-color main))
-  (:item "Delete" (remove-selected scene)))
+  (:item "Delete" (remove-selected scene))
+  (:item "Flip facing" (flip-normal-on-selected scene)))
 
 (define-menu (main View)
   (:item "Normals" (toggle-view-normals scene)))
