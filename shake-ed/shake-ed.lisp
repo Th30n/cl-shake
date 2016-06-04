@@ -287,9 +287,9 @@
                       (qcolor->vector new-qcolor))))))))))
 
 (define-menu (main Edit)
-  (:item "Color" (edit-color main))
+  (:item ("Color" (c)) (edit-color main))
   (:item "Delete" (remove-selected scene))
-  (:item "Flip facing" (flip-normal-on-selected scene)))
+  (:item ("Flip facing" (f)) (flip-normal-on-selected scene)))
 
 (define-menu (main View)
   (:item "Normals" (toggle-view-normals scene)))
