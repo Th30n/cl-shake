@@ -26,13 +26,21 @@
           (values (shiva:vx color) (shiva:vy color) (shiva:vz color)))
     qcolor))
 
+(defun lineitem-normal (lineitem)
+  ;; This needs to be the same as linedef-normal in shake-bspc.
+  (let ((p1 (q+:p1 (q+:line lineitem)))
+        (p2 (q+:p2 (q+:line lineitem))))
+    (shiva:vnormalize (shiva:v (- (q+:y p2) (q+:y p1))
+                               (- (q+:x p1) (q+:x p2))))))
+
 (define-widget map-scene (QGraphicsScene)
   ((drawing-line :initform nil)
-   (line-color-map :initform (make-hash-table))))
+   (line-color-map :initform (make-hash-table))
+   (view-normals-p :initform t)))
 
 (define-override (map-scene draw-background) (painter rect)
   (q+:fill-rect painter rect (q+:qt.black))
-  (with-finalizing* ((color (q+:make-qcolor 40 40 40)))
+  (with-finalizing ((color (q+:make-qcolor 40 40 40)))
     (q+:set-pen painter color)
     (loop for x from (ceiling (q+:left rect)) upto (floor (q+:right rect)) do
          (with-finalizing ((p1 (q+:make-qpointf x (q+:top rect)))
@@ -42,6 +50,24 @@
          (with-finalizing ((p1 (q+:make-qpointf (q+:left rect) y))
                            (p2 (q+:make-qpointf (q+:right rect) y)))
            (q+:draw-line painter p1 p2)))))
+
+(defun draw-lineitem-normal (item painter &key (scale 0.25d0))
+  (let ((item-center (q+:center (q+:bounding-rect item)))
+        (normal (shiva:vscale scale (lineitem-normal item))))
+    (with-finalizing ((endpoint (q+:make-qpointf (+ (q+:x item-center)
+                                                    (shiva:vx normal))
+                                                 (+ (q+:y item-center)
+                                                    (shiva:vy normal)))))
+      (q+:draw-line painter item-center endpoint))))
+
+(define-override (map-scene draw-foreground) (painter rect)
+  (when view-normals-p
+    (with-finalizing ((color (q+:make-qcolor 0 255 255)))
+      (q+:set-pen painter color)
+      (let ((items (q+:items map-scene)))
+        (dolist (item items)
+          (draw-lineitem-normal item painter)))))
+  (stop-overriding))
 
 (defun update-lineitem-p2 (lineitem p2)
   (with-finalizing ((new-line (q+:make-qlinef (q+:p1 (q+:line lineitem)) p2)))
@@ -124,6 +150,11 @@
     ((q+:matches key-event (q+:qkeysequence.delete))
      (remove-selected map-scene))
     (t (stop-overriding))))
+
+(defun toggle-view-normals (scene)
+  (with-slots (view-normals-p) scene
+    (setf view-normals-p (not view-normals-p))
+    (q+:update scene (q+:scene-rect scene))))
 
 (define-widget main (QMainWindow)
   ((map-file :initform nil)))
@@ -247,6 +278,9 @@
 (define-menu (main Edit)
   (:item "Color" (edit-color main))
   (:item "Delete" (remove-selected scene)))
+
+(define-menu (main View)
+  (:item "Normals" (toggle-view-normals scene)))
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd")
