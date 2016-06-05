@@ -70,6 +70,11 @@
         (make-linedef :start (v -4.0d0 2.0d0) :end (v -4.0d0 0.0d0))
         (make-linedef :start (v -1.0d0 1.0d0) :end (v 0.0d0 1.0d0))))
 
+(defparameter *double-split-linedefs*
+  (list (make-linedef :start (v 1d0 1d0) :end (v 1d0 3d0))
+        (make-linedef :start (v 4d0 0d0) :end (v 0d0 0d0))
+        (make-linedef :start (v 3d0 1d0) :end (v 3d0 2d0))))
+
 (subtest "Test build-bsp produces correct back-to-front"
   (subtest "Coincident segments"
     (let* ((segs (mapcar #'linedef->lineseg *coincident-linedefs*))
@@ -80,6 +85,20 @@
                 (first segs)
                 (third segs)
                 (make-lineseg :orig-line (second *coincident-linedefs*)
-                              :t-start 0d0 :t-end 0.5d0)) :test #'equalp))))
+                              :t-start 0d0 :t-end 0.5d0))
+          :test #'equalp)))
+  (subtest "Double split segment"
+    (let* ((segs (mapcar #'linedef->lineseg *double-split-linedefs*))
+           (bsp (build-bsp segs)))
+      (is (back-to-front (v 3.5d0 1.5d0) bsp)
+          (list (make-lineseg :orig-line (second *double-split-linedefs*)
+                              :t-start 0.75d0 :t-end 1d0)
+                (first segs)
+                (make-lineseg :orig-line (second *double-split-linedefs*)
+                              :t-start 0.25d0 :t-end 0.75d0)
+                (make-lineseg :orig-line (second *double-split-linedefs*)
+                              :t-start 0d0 :t-end 0.25d0)
+                (third segs))
+          :test #'equalp))))
 
 (finalize)
