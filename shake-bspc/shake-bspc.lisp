@@ -47,10 +47,22 @@
          (l-vec (linedef-vec line)))
     (v+ (linedef-start line) (vscale (lineseg-t-end lineseg) l-vec))))
 
-(defstruct node
+(defstruct leaf
+  "A leaf node in the BSP tree. The SEGS slot stores the geometry as a LIST of
+  LINESEGs. The CONTENTS stores the type of the leaf, used for collision
+  detection. It can be one of:
+    * :CONTENTS-EMPTY -- free space
+    * :CONTENTS-SOLID -- solid, impassable space"
   (segs nil :type list)
-  (front nil :type (or node null))
-  (back nil :type (or node null)))
+  (contents :contents-empty))
+
+(defstruct node
+  "A node in the BSP tree. The geometry is stored in leaves. LINE is the
+  splitting LINESEG used at this node. Children are stored in FRONT and BACK
+  slots."
+  (line nil :type lineseg)
+  (front nil :type (or node leaf))
+  (back nil :type (or node leaf)))
 
 (defun line-intersect-ratio (splitter lineseg)
   "Takes a SPLITTER and LINESEG linesegs. Returns numerator and denominator
@@ -58,7 +70,7 @@
   (declare (type lineseg splitter lineseg))
   (let* ((n (linedef-normal (lineseg-orig-line splitter)))
          (-n (v- (v 0 0) n))
-         (l-vec (linedef-vec (lineseg-orig-line lineseg)))
+         (l-vec (v- (lineseg-end lineseg) (lineseg-start lineseg)))
          (s-start (lineseg-start splitter))
          (l-start (lineseg-start lineseg))
          (sl-vec (v- l-start s-start))
@@ -66,10 +78,16 @@
          (denom (vdot -n l-vec)))
     (values numer denom)))
 
-(defun split-lineseg (lineseg t-split)
-  "Split the given LINESEG at the given T-SPLIT parameter into a pair
-  of LINESEG. Returns NIL if T-SPLIT does not split the line segment."
+(defun split-lineseg (lineseg t-split &key (relative-t nil))
+  "Split the given LINESEG at the given T-SPLIT parameter into a pair of
+  LINESEG. Returns NIL if T-SPLIT does not split the line segment. When
+  RELATIVE-T is not NIL, T-SPLIT parameter is treated relative to the
+  segment."
   (declare (type lineseg lineseg) (type double-float t-split))
+  (when relative-t
+    (let ((t-diff (- (lineseg-t-end lineseg) (lineseg-t-start lineseg))))
+      (setf t-split (+ (lineseg-t-start lineseg)
+                       (* t-split t-diff)))))
   (when (< (lineseg-t-start lineseg) t-split (lineseg-t-end lineseg))
     (let ((l1 (copy-lineseg lineseg))
           (l2 (copy-lineseg lineseg)))
@@ -77,46 +95,103 @@
       (setf (lineseg-t-start l2) t-split)
       (cons l1 l2))))
 
-(defun build-bsp (rootseg linesegs)
-  (declare (type lineseg rootseg) (type list linesegs))
+(defun determine-side (point lineseg)
+  "Determine on which side of a LINESEG is the given POINT located.
+  Returns BACK or FRONT."
+  (let* ((normal (linedef-normal (lineseg-orig-line lineseg))))
+    (if (minusp (vdot normal (v- point (lineseg-start lineseg))))
+        'back
+        'front)))
+
+(defun convex-hull-p (linesegs)
+  "Checks if the given list of LINESEG instances forms a convex hull."
+  (block test
+    (dolist (test-seg linesegs)
+      (dolist (seg linesegs)
+        (unless (eq seg test-seg)
+          (when (eq 'back (determine-side (lineseg-start test-seg) seg))
+            (return-from test nil))
+          (when (eq 'back (determine-side (lineseg-end test-seg) seg))
+            (return-from test nil)))))
+    t))
+
+(defun choose-splitter (linesegs splitters)
+  (declare (type list linesegs splitters))
+  (let (rest splitter-seg)
+    (dolist (seg linesegs)
+      (if (or splitter-seg (member (lineseg-orig-line seg) splitters
+                                   :test #'equalp))
+          (push seg rest)
+          (setf splitter-seg seg)))
+    (values splitter-seg rest)))
+
+(defun partition-linesegs (splitter-seg linesegs)
+  (declare (type lineseg splitter-seg) (type list linesegs))
+  (let (front
+        back
+        (splitter (lineseg-orig-line splitter-seg)))
+    (dolist (seg linesegs)
+      (multiple-value-bind (num den) (line-intersect-ratio splitter-seg seg)
+        (if (double-float-rel-eq den 0d0)
+            ;; parallel lines
+            (cond
+              ((double-float-rel-eq num 0d0)
+               ;; on the same line
+               (if (v= (linedef-normal splitter)
+                       (linedef-normal (lineseg-orig-line seg)))
+                   ;; same facing
+                   (push seg front)
+                   ;; opposite facing
+                   (push seg back)))
+              ((plusp num)
+               (push seg front))
+              (t
+               (push seg back)))
+            ;; lines intersect
+            (let ((splitted (split-lineseg seg (/ num den) :relative-t t)))
+              (if (null splitted)
+                  ;; no split
+                  (progn
+                    (when (double-float-rel-eq num 0d0)
+                      ;; Points are collinear, use other end for numerator.
+                      (let ((n (linedef-normal splitter))
+                            (sl-vec (v- (lineseg-end seg)
+                                        (lineseg-start splitter-seg))))
+                        (setf num (vdot n sl-vec))))
+                    (if (plusp num)
+                        (push seg front)
+                        (push seg back)))
+                  ;; split
+                  (cond
+                    ((plusp num)
+                     (push (car splitted) front)
+                     (push (cdr splitted) back))
+                    (t
+                     (push (car splitted) back)
+                     (push (cdr splitted) front))))))))
+    (values front back)))
+
+(defun build-bsp (linesegs &optional (splitters nil))
+  (declare (optimize (speed 0) (debug 3)))
   (if (null linesegs)
-      (make-node :segs (list rootseg))
-      (let ((splitter (lineseg-orig-line rootseg))
-            (front nil)
-            (back nil))
-        (dolist (seg linesegs)
-          (multiple-value-bind (num den) (line-intersect-ratio rootseg seg)
-            (if (double-float-rel-eq den 0d0)
-                ;; parallel lines
-                (if (plusp num)
-                    (push seg front)
-                    (push seg back))
-                ;; lines intersect
-                (let ((splitted (split-lineseg seg (/ num den))))
-                  (if (null splitted)
-                      ;; no split
-                      (progn
-                        (when (double-float-rel-eq num 0d0)
-                          ;; Points are collinear, use other end for numerator.
-                          (let ((n (linedef-normal splitter))
-                                (sl-vec (v- (lineseg-end seg)
-                                            (lineseg-start rootseg))))
-                            (setf num (vdot n sl-vec))))
-                        (if (plusp num)
-                            (push seg front)
-                            (push seg back)))
-                      ;; split
-                      (cond
-                        ((plusp num)
-                         (push (car splitted) front)
-                         (push (cdr splitted) back))
-                        (t
-                         (push (car splitted) back)
-                         (push (cdr splitted) front))))))))
-        (make-node
-         :segs (list rootseg)
-         :front (if (null front) nil (build-bsp (car front) (cdr front)))
-         :back (if (null back) nil (build-bsp (car back) (cdr back)))))))
+      (make-leaf :contents :contents-solid)
+      (multiple-value-bind
+            (splitter-seg rest) (choose-splitter linesegs splitters)
+        (if (null splitter-seg)
+            ;; We've selected all the segments and they form a convex hull.
+            (progn
+              (assert (convex-hull-p rest))
+              (make-leaf :segs rest))
+            ;; Split the remaining into front and back.
+            (multiple-value-bind
+                  (front back) (partition-linesegs splitter-seg rest)
+              (let ((splitter (lineseg-orig-line splitter-seg)))
+                (make-node :line splitter-seg
+                           ;; Add the splitter itself to front.
+                           :front (build-bsp (cons splitter-seg front)
+                                             (cons splitter splitters))
+                           :back (build-bsp back
+                                            (cons splitter splitters)))))))))
 
 (defun linedef->lineseg (linedef)
   (declare (type linedef linedef))
@@ -134,7 +209,7 @@
 (defun read-and-compile-map (stream)
   (let* ((map (read-map stream))
          (segs (mapcar #'linedef->lineseg map)))
-    (build-bsp (car segs) (cdr segs))))
+    (build-bsp segs)))
 
 (defun write-linedef (linedef stream)
   (let ((start (linedef-start linedef))
@@ -165,22 +240,32 @@
 
 (defun write-bsp (bsp stream)
   (cond
-    ((null bsp) (format stream "~S~%" bsp))
-    (t
+    ((node-p bsp)
      ;; preorder traverse write
-     (format stream "~S~%" :lineseg)
-     (write-lineseg (car (node-segs bsp)) stream)
+     (format stream "~S~%" :node)
+     (write-lineseg (node-line bsp) stream)
      (write-bsp (node-front bsp) stream)
-     (write-bsp (node-back bsp) stream))))
+     (write-bsp (node-back bsp) stream))
+    (t
+     (format stream "~S~%" :leaf)
+     (format stream "~S~%" (leaf-contents bsp))
+     (format stream "~S~%" (list-length (leaf-segs bsp)))
+     (dolist (seg (leaf-segs bsp))
+       (write-lineseg seg stream)))))
 
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
     (ecase node-type
-      (:lineseg (let ((root (read-lineseg stream))
-                      (front (read-bsp stream))
-                      (back (read-bsp stream)))
-                  (make-node :segs (list root) :front front :back back)))
-      ((nil) nil))))
+      (:node (let ((seg (read-lineseg stream))
+                   (front (read-bsp stream))
+                   (back (read-bsp stream)))
+               (make-node :line seg :front front :back back)))
+      (:leaf (let ((contents (read stream))
+                   (num-segs (read stream))
+                   segs)
+               (loop repeat num-segs do
+                    (push (read-lineseg stream) segs))
+               (make-leaf :segs (reverse segs) :contents contents))))))
 
 (defun compile-map-file (map-file bsp-file)
   "Compile a map from MAP-FILE and store it into BSP-FILE"
@@ -191,20 +276,13 @@
                         :if-does-not-exist :create)
       (write-bsp bsp bf))))
 
-(defun determine-side (point lineseg)
-  "Determine on which side of a LINESEG is the given POINT located.
-Returns BACK or FRONT."
-  (let* ((normal (linedef-normal (lineseg-orig-line lineseg))))
-    (if (plusp (vdot normal (v- point (lineseg-start lineseg))))
-        'front
-        'back)))
-
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."
-  (unless (null bsp)
-    (let ((seg (car (node-segs bsp))))
-      (ecase (determine-side point seg)
-        (front (append (back-to-front point (node-back bsp))
-                       (cons seg (back-to-front point (node-front bsp)))))
-        (back (append (back-to-front point (node-front bsp))
-                      (cons seg (back-to-front point (node-back bsp)))))))))
+  (if (leaf-p bsp)
+      (leaf-segs bsp)
+      (let ((seg (node-line bsp)))
+        (ecase (determine-side point seg)
+          (front (append (back-to-front point (node-back bsp))
+                         (back-to-front point (node-front bsp))))
+          (back (append (back-to-front point (node-front bsp))
+                        (back-to-front point (node-back bsp))))))))

@@ -60,7 +60,7 @@
 
 (subtest "Test serialization"
   (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
-         (bsp (build-bsp (car segs) (cdr segs))))
+         (bsp (build-bsp segs)))
     (with-input-from-string (in (with-output-to-string (out)
                                   (sbsp::write-bsp bsp out)))
       (is (read-bsp in) bsp :test #'equalp))))
@@ -73,7 +73,7 @@
 (subtest "Test build-bsp produces correct back-to-front"
   (subtest "Coincident segments"
     (let* ((segs (mapcar #'linedef->lineseg *coincident-linedefs*))
-           (bsp (build-bsp (car segs) (cdr segs))))
+           (bsp (build-bsp segs)))
       (is (back-to-front (v -0.5d0 1.5d0) bsp)
           (list (make-lineseg :orig-line (second *coincident-linedefs*)
                               :t-start 0.5d0 :t-end 1d0)
