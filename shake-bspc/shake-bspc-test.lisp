@@ -77,8 +77,8 @@
       (is (back-to-front (v -0.5d0 1.5d0) bsp)
           (list (make-lineseg :orig-line (second *coincident-linedefs*)
                               :t-start 0.5d0 :t-end 1d0)
-                (third segs)
                 (first segs)
+                (third segs)
                 (make-lineseg :orig-line (second *coincident-linedefs*)
                               :t-start 0d0 :t-end 0.5d0)) :test #'equalp))))
 

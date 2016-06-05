@@ -88,7 +88,7 @@
           (multiple-value-bind (num den) (line-intersect-ratio rootseg seg)
             (if (double-float-rel-eq den 0d0)
                 ;; parallel lines
-                (if (< num 0d0)
+                (if (plusp num)
                     (push seg front)
                     (push seg back))
                 ;; lines intersect
@@ -102,12 +102,12 @@
                                 (sl-vec (v- (lineseg-end seg)
                                             (lineseg-start rootseg))))
                             (setf num (vdot n sl-vec))))
-                        (if (< num 0d0)
+                        (if (plusp num)
                             (push seg front)
                             (push seg back)))
                       ;; split
                       (cond
-                        ((< num 0d0)
+                        ((plusp num)
                          (push (car splitted) front)
                          (push (cdr splitted) back))
                         (t
@@ -195,8 +195,7 @@
   "Determine on which side of a LINESEG is the given POINT located.
 Returns BACK or FRONT."
   (let* ((normal (linedef-normal (lineseg-orig-line lineseg))))
-    (if (>= 0 (- (vdot normal point)
-                 (vdot normal (lineseg-start lineseg))))
+    (if (plusp (vdot normal (v- point (lineseg-start lineseg))))
         'front
         'back)))
 
