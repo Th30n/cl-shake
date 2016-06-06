@@ -47,6 +47,9 @@
          (l-vec (linedef-vec line)))
     (v+ (linedef-start line) (vscale (lineseg-t-end lineseg) l-vec))))
 
+(defun lineseg-normal (lineseg)
+  (linedef-normal (lineseg-orig-line lineseg)))
+
 (defstruct leaf
   "A leaf node in the BSP tree. The SEGS slot stores the geometry as a LIST of
   LINESEGs. The CONTENTS stores the type of the leaf, used for collision
@@ -98,7 +101,7 @@
 (defun determine-side (point lineseg)
   "Determine on which side of a LINESEG is the given POINT located.
   Returns BACK or FRONT."
-  (let* ((normal (linedef-normal (lineseg-orig-line lineseg))))
+  (let ((normal (linedef-normal (lineseg-orig-line lineseg))))
     (if (minusp (vdot normal (v- point (lineseg-start lineseg))))
         'back
         'front)))

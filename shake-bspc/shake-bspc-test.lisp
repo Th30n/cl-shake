@@ -50,13 +50,13 @@
                 (make-lineseg :orig-line line
                               :t-start t-split))
           :test #'equalp)
-      (is (sbsp::lineseg-start (car split-segs))
-          (sbsp::linedef-start line) :test #'v=)
-      (is (sbsp::lineseg-end (cdr split-segs))
-          (sbsp::linedef-end line) :test #'v=)
-      (is (sbsp::lineseg-start (cdr split-segs)) (v 0 3.6d0) :test #'v=)
-      (is (sbsp::lineseg-start (cdr split-segs))
-          (sbsp::lineseg-end (car split-segs)) :test #'v=))))
+      (is (lineseg-start (car split-segs))
+          (linedef-start line) :test #'v=)
+      (is (lineseg-end (cdr split-segs))
+          (linedef-end line) :test #'v=)
+      (is (lineseg-start (cdr split-segs)) (v 0 3.6d0) :test #'v=)
+      (is (lineseg-start (cdr split-segs))
+          (lineseg-end (car split-segs)) :test #'v=))))
 
 (subtest "Test serialization"
   (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
@@ -100,20 +100,5 @@
                               :t-start 0d0 :t-end 0.25d0)
                 (third segs))
           :test #'equalp))))
-
-(defparameter *square-linedefs*
-  (list (make-linedef :start (v -0.5d0 0.5d0) :end (v -0.5d0 -0.5d0))
-        (make-linedef :start (v -0.5d0 -0.5d0) :end (v 0.5d0 -0.5d0))
-        (make-linedef :start (v 0.5d0 -0.5d0) :end (v 0.5d0 0.5d0))
-        (make-linedef :start (v 0.5d0 0.5d0) :end (v -0.5d0 0.5d0))))
-
-(subtest "Test collision detection"
-  (subtest "hull-point-contents"
-    (let* ((segs (mapcar #'linedef->lineseg *square-linedefs*))
-           (hull (build-bsp segs)))
-      (is (hull-point-contents hull (v 0d0 0d0)) :contents-solid)
-      (is (hull-point-contents hull (v 1d0 0d0)) :contents-empty)
-      (is (hull-point-contents hull (v 0.5d0 0.5d0)) :contents-empty)
-      (is (hull-point-contents hull (v 0.49d0 0.49d0)) :contents-solid))))
 
 (finalize)

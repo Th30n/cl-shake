@@ -289,8 +289,8 @@ DRAW and DELETE for drawing and deleting respectively."
       (if noclip
           (setf (camera-position player) end-pos)
           (when (eq :contents-empty
-                    (sbsp:hull-point-contents *bsp*
-                                              (v (vx end-pos) (vz end-pos))))
+                    (hull-point-contents *bsp*
+                                         (v (vx end-pos) (vz end-pos))))
             (setf (camera-position player) end-pos))))))
 
 (defun run-tic (camera cmd)

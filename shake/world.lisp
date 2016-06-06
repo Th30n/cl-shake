@@ -14,35 +14,16 @@
 ;;;; with this program; if not, write to the Free Software Foundation, Inc.,
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-(in-package #:cl-user)
+(in-package #:shake)
 
-(defpackage #:shake-bspc
-  (:nicknames #:shake-bsp #:sbsp)
-  (:use #:cl #:shiva)
-  (:export #:linedef
-           #:make-linedef
-           #:linedef-start
-           #:linedef-end
-           #:linedef-normal
-           #:lineseg
-           #:make-lineseg
-           #:lineseg-orig-line
-           #:lineseg-start
-           #:lineseg-end
-           #:lineseg-normal
-           #:linedef->lineseg
-           #:node
-           #:node-p
-           #:node-line
-           #:node-front
-           #:node-back
-           #:leaf
-           #:leaf-p
-           #:leaf-contents
-           #:read-map
-           #:build-bsp
-           #:read-and-compile-map
-           #:read-bsp
-           #:compile-map-file
-           #:back-to-front
-           #:hull-point-contents))
+(defun hull-point-contents (hull point)
+  "Traverse the HULL to the leaf where POINT is located and return
+  LEAF-CONTENTS. Splitting line is offset by given RADIUS."
+  (if (sbsp:leaf-p hull)
+      (sbsp:leaf-contents hull)
+      (let* ((lineseg (sbsp:node-line hull))
+             (d (vdot (sbsp:lineseg-normal lineseg)
+                      (v- point (sbsp:lineseg-start lineseg)))))
+        (if (minusp d)
+            (hull-point-contents (sbsp:node-back hull) point)
+            (hull-point-contents (sbsp:node-front hull) point)))))

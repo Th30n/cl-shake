@@ -14,35 +14,14 @@
 ;;;; with this program; if not, write to the Free Software Foundation, Inc.,
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-(in-package #:cl-user)
+(in-package #:asdf-user)
 
-(defpackage #:shake-bspc
-  (:nicknames #:shake-bsp #:sbsp)
-  (:use #:cl #:shiva)
-  (:export #:linedef
-           #:make-linedef
-           #:linedef-start
-           #:linedef-end
-           #:linedef-normal
-           #:lineseg
-           #:make-lineseg
-           #:lineseg-orig-line
-           #:lineseg-start
-           #:lineseg-end
-           #:lineseg-normal
-           #:linedef->lineseg
-           #:node
-           #:node-p
-           #:node-line
-           #:node-front
-           #:node-back
-           #:leaf
-           #:leaf-p
-           #:leaf-contents
-           #:read-map
-           #:build-bsp
-           #:read-and-compile-map
-           #:read-bsp
-           #:compile-map-file
-           #:back-to-front
-           #:hull-point-contents))
+(defsystem "shake-test"
+  :depends-on ("shake"
+               "prove")
+  :defsystem-depends-on ("prove-asdf")
+  :components
+  ((:module "shake"
+            :components ((:test-file "world-test"))))
+  :perform (test-op :after (op c)
+                    (funcall (intern #.(string :run) :prove) c)))
