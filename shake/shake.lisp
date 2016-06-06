@@ -282,11 +282,16 @@ DRAW and DELETE for drawing and deleting respectively."
     (unless noclip
       ;; Project forward-dir to plane of movement.
       (setf forward-dir (vnormalize (v (vx forward-dir) 0 (vz forward-dir)))))
-    (let ;; Intentionally make diagonal movement faster.
+    (let* ;; Intentionally make diagonal movement faster.
         ((move-vec (v+ (vscale forward-move forward-dir)
                        (vscale side-move (view-dir :right player))))
-         (start-pos (camera-position player)))
-      (setf (camera-position player) (v+ start-pos move-vec)))))
+         (end-pos (v+ move-vec (camera-position player))))
+      (if noclip
+          (setf (camera-position player) end-pos)
+          (when (eq :contents-empty
+                    (sbsp:hull-point-contents *bsp*
+                                              (v (vx end-pos) (vz end-pos))))
+            (setf (camera-position player) end-pos))))))
 
 (defun run-tic (camera cmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
