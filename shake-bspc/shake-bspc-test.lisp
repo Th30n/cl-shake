@@ -101,4 +101,19 @@
                 (third segs))
           :test #'equalp))))
 
+(defparameter *square-linedefs*
+  (list (make-linedef :start (v -0.5d0 0.5d0) :end (v -0.5d0 -0.5d0))
+        (make-linedef :start (v -0.5d0 -0.5d0) :end (v 0.5d0 -0.5d0))
+        (make-linedef :start (v 0.5d0 -0.5d0) :end (v 0.5d0 0.5d0))
+        (make-linedef :start (v 0.5d0 0.5d0) :end (v -0.5d0 0.5d0))))
+
+(subtest "Test collision detection"
+  (subtest "hull-point-contents"
+    (let* ((segs (mapcar #'linedef->lineseg *square-linedefs*))
+           (hull (build-bsp segs)))
+      (is (hull-point-contents hull (v 0d0 0d0)) :contents-solid)
+      (is (hull-point-contents hull (v 1d0 0d0)) :contents-empty)
+      (is (hull-point-contents hull (v 0.5d0 0.5d0)) :contents-empty)
+      (is (hull-point-contents hull (v 0.49d0 0.49d0)) :contents-solid))))
+
 (finalize)

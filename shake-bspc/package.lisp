@@ -29,4 +29,5 @@
            #:read-and-compile-map
            #:read-bsp
            #:compile-map-file
-           #:back-to-front))
+           #:back-to-front
+           #:hull-point-contents))

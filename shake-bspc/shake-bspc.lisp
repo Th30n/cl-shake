@@ -286,3 +286,12 @@
                          (back-to-front point (node-front bsp))))
           (back (append (back-to-front point (node-front bsp))
                         (back-to-front point (node-back bsp))))))))
+
+(defun hull-point-contents (hull-bsp point)
+  "Traverse the HULL-BSP to the leaf where POINT is located and return
+  LEAF-CONTENTS."
+  (if (leaf-p hull-bsp)
+      (leaf-contents hull-bsp)
+      (ecase (determine-side point (node-line hull-bsp))
+        (front (hull-point-contents (node-front hull-bsp) point))
+        (back (hull-point-contents (node-back hull-bsp) point)))))
