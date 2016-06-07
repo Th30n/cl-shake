@@ -98,13 +98,15 @@
       (setf (lineseg-t-start l2) t-split)
       (cons l1 l2))))
 
-(defun determine-side (point lineseg)
-  "Determine on which side of a LINESEG is the given POINT located.
-  Returns BACK or FRONT."
-  (let ((normal (linedef-normal (lineseg-orig-line lineseg))))
-    (if (minusp (vdot normal (v- point (lineseg-start lineseg))))
-        'back
-        'front)))
+(defun determine-side (lineseg point)
+  "Determine on which side of a LINESEG is the given POINT located.  Returns
+  :BACK or :FRONT as the primary value and distance as the second."
+  (let ((d (vdot (lineseg-normal lineseg)
+                 (v- point (lineseg-start lineseg)))))
+    (values (if (or (plusp d) (double-float-rel-eq d 0d0))
+                :front
+                :back)
+            d)))
 
 (defun convex-hull-p (linesegs)
   "Checks if the given list of LINESEG instances forms a convex hull."
@@ -112,9 +114,9 @@
     (dolist (test-seg linesegs)
       (dolist (seg linesegs)
         (unless (eq seg test-seg)
-          (when (eq 'back (determine-side (lineseg-start test-seg) seg))
+          (when (eq :back (determine-side seg (lineseg-start test-seg)))
             (return-from test nil))
-          (when (eq 'back (determine-side (lineseg-end test-seg) seg))
+          (when (eq :back (determine-side seg (lineseg-end test-seg)))
             (return-from test nil)))))
     t))
 
@@ -284,17 +286,8 @@
   (if (leaf-p bsp)
       (leaf-segs bsp)
       (let ((seg (node-line bsp)))
-        (ecase (determine-side point seg)
-          (front (append (back-to-front point (node-back bsp))
-                         (back-to-front point (node-front bsp))))
-          (back (append (back-to-front point (node-front bsp))
-                        (back-to-front point (node-back bsp))))))))
-
-(defun hull-point-contents (hull-bsp point)
-  "Traverse the HULL-BSP to the leaf where POINT is located and return
-  LEAF-CONTENTS."
-  (if (leaf-p hull-bsp)
-      (leaf-contents hull-bsp)
-      (ecase (determine-side point (node-line hull-bsp))
-        (front (hull-point-contents (node-front hull-bsp) point))
-        (back (hull-point-contents (node-back hull-bsp) point)))))
+        (ecase (determine-side seg point)
+          (:front (append (back-to-front point (node-back bsp))
+                          (back-to-front point (node-front bsp))))
+          (:back (append (back-to-front point (node-front bsp))
+                         (back-to-front point (node-back bsp))))))))

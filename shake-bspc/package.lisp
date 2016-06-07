@@ -24,6 +24,7 @@
            #:linedef-start
            #:linedef-end
            #:linedef-normal
+           ;; line segment
            #:lineseg
            #:make-lineseg
            #:lineseg-orig-line
@@ -31,6 +32,7 @@
            #:lineseg-end
            #:lineseg-normal
            #:linedef->lineseg
+           ;; bsp nodes
            #:node
            #:node-p
            #:node-line
@@ -39,10 +41,12 @@
            #:leaf
            #:leaf-p
            #:leaf-contents
+           ;; build interface
            #:read-map
            #:build-bsp
            #:read-and-compile-map
            #:read-bsp
            #:compile-map-file
-           #:back-to-front
-           #:hull-point-contents))
+           ;; bsp queries
+           #:determine-side
+           #:back-to-front))
