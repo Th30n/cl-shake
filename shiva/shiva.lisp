@@ -194,6 +194,9 @@
 	  (setf (out ii col) (tmp ii))))
    out))
 
+(deftype vec (size)
+  `(simple-array double-float (,size)))
+
 (defun v (&rest elements)
   "Create a vector of double-float and will it with ELEMENTS."
   (let* ((n (length elements))

@@ -23,7 +23,7 @@
         #:metabang.bind)
   (:export #:double-float-rel-eq
            #:rad->deg #:deg->rad
-           #:v #:vx #:vy #:vz #:vw
+           #:vec #:v #:vx #:vy #:vz #:vw
            #:v- #:v+ #:v= #:vnorm #:vnormalize
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
            #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x
