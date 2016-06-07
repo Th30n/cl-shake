@@ -52,53 +52,78 @@
             (hull-point-contents (sbsp:node-back hull) point)
             (hull-point-contents (sbsp:node-front hull) point)))))
 
+(defparameter *dist-epsilon* 1d-10)
+
 (defun cross-fraction (t1 t2)
   "Calculate the crosspoint fraction."
-  (let ((frac (clamp (/ t1 (- t1 t2))
+  (let ((frac (clamp (/ (if (minusp t1)
+                            (+ t1 *dist-epsilon*)
+                            (- t1 *dist-epsilon*))
+                        (- t1 t2))
                      0d0 1d0)))
     (format t "Frac: ~S, T1: ~S, T2: ~S~%" frac t1 t2)
     frac))
 
-(defun recursive-hull-check (hull p1 p2 &optional (p1f 0d0) (p2f 1d0))
+(defun adjust-midf (hull p1 p2 p1f p2f mid midf frac)
+  (do ()
+      ((not (eq (hull-point-contents hull (v3->v2 mid)) :contents-solid))
+       (values midf mid))
+    (decf frac 0.01d0)
+    (if (minusp frac)
+        (return (values midf mid))
+        (setf midf (+ p1f (* frac (- p2f p1f)))
+              mid (v+ p1 (vscale frac (v- p2 p1)))))))
+
+(defun split-hull-check (hull node t1 t2 p1 p2 p1f p2f)
+  (declare (optimize (debug 3)))
+  (let* ((frac (cross-fraction t1 t2))
+         (midf (+ p1f (* frac (- p2f p1f))))
+         (mid (v+ p1 (vscale frac (v- p2 p1)))))
+    (multiple-value-bind (pre-trace hit-p)
+        (recursive-hull-check hull p1 mid
+                              (if (minusp t1)
+                                  (sbsp:node-back node)
+                                  (sbsp:node-front node))
+                              p1f midf)
+      (if hit-p
+          ;; Collision in front part.
+          (progn
+            (values pre-trace hit-p))
+          ;; Check the other part.
+          (let ((other-side (if (minusp t1)
+                                (sbsp:node-front node)
+                                (sbsp:node-back node))))
+            (if (not (eq (hull-point-contents other-side (v3->v2 mid))
+                         :contents-solid))
+                ;; Continue through the other part.
+                (recursive-hull-check hull mid p2 other-side midf p2f)
+                ;; Other side is solid, this is the impact point.
+                (let ((normal (sbsp:lineseg-normal (sbsp:node-line node))))
+                  (when (minusp t1)
+                    (setf normal (v- normal)))
+                  (multiple-value-bind (adj-midf adj-mid)
+                      (adjust-midf hull p1 p2 p1f p2f mid midf frac)
+                    ;; (format t "Collision ~S~%" (sbsp:node-line node))
+                    (values
+                     (make-mtrace :fraction adj-midf :endpos adj-mid
+                                  :normal (v2->v3 normal))
+                     t)))))))))
+
+(defun recursive-hull-check (hull p1 p2 &optional (node nil) (p1f 0d0) (p2f 1d0))
   "Checks the HULL for the nearest collision on the way from P1 to P2."
   (declare (type (vec 3) p1 p2))
-  (if (sbsp:leaf-p hull)
+  (unless node
+    (setf node hull))
+  (if (sbsp:leaf-p node)
       (values (make-mtrace :endpos p2) nil)
-      (let ((t1 (dist-line-point (sbsp:node-line hull) (v3->v2 p1)))
-            (t2 (dist-line-point (sbsp:node-line hull) (v3->v2 p2))))
+      (let ((t1 (dist-line-point (sbsp:node-line node) (v3->v2 p1)))
+            (t2 (dist-line-point (sbsp:node-line node) (v3->v2 p2))))
         (cond
           ((and (minusp t1) (minusp t2))
            ;; Path is behind the line.
-           (recursive-hull-check (sbsp:node-back hull) p1 p2 p1f p2f))
+           (recursive-hull-check hull p1 p2 (sbsp:node-back node) p1f p2f))
           ((and (<= 0d0 t1) (<= 0d0 t2))
            ;; Path is in front of the line.
-           (recursive-hull-check (sbsp:node-front hull) p1 p2 p1f p2f))
+           (recursive-hull-check hull p1 p2 (sbsp:node-front node) p1f p2f))
           (t
-           ;; Path crosses the line, needs to be split.
-           (let* ((frac (cross-fraction t1 t2))
-                  (midf (+ p1f (* frac (- p2f p1f))))
-                  (mid (v+ p1 (vscale frac (v- p2 p1)))))
-             (multiple-value-bind (pre-trace hit-p)
-                 (recursive-hull-check (if (minusp t1)
-                                           (sbsp:node-back hull)
-                                           (sbsp:node-front hull))
-                                       p1 mid p1f midf)
-               (if hit-p
-                   ;; Collision in front part.
-                   (values pre-trace hit-p)
-                   ;; Check the other part.
-                   (let ((other-side (if (minusp t1)
-                                         (sbsp:node-front hull)
-                                         (sbsp:node-back hull))))
-                     (if (not (eq (hull-point-contents other-side (v3->v2 mid))
-                                  :contents-solid))
-                         ;; Continue through the other part.
-                         (recursive-hull-check other-side mid p2 midf p2f)
-                         ;; Other side is solid, this is the impact point.
-                         (let ((normal (sbsp:lineseg-normal (sbsp:node-line hull))))
-                           (when (minusp t1)
-                             (setf normal (v- normal)))
-                           (values
-                            (make-mtrace :fraction midf :endpos mid
-                                         :normal (v2->v3 normal))
-                            t))))))))))))
+           (split-hull-check hull node t1 t2 p1 p2 p1f p2f))))))

@@ -75,17 +75,28 @@
     (test-recursive-hull-check
      (v 0.5d0 1d0 -0.5d0) (v -0.5d0 1d0 -0.5d0)
      :fraction 0.5d0 :endpos (v 0d0 1d0 -0.5d0) :normal (v 1d0 0d0 0d0))
-    (subtest "pathological float error"
-      (let-mtrace
-          (v 0.059055107469946466d0 0.5d0 -0.45058874753714245d0)
-          (v -0.023507212569340574d0 0.5d0 -0.46189837857333405d0)
-        (ok (not (= (shake::mtrace-fraction mtrace) 1d0)))
-        (is (shake::mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
-        (is (shake::hull-point-contents
-             hull (shake::v3->v2 (shake::mtrace-endpos mtrace)))
-            :contents-empty)))
     (test-recursive-hull-check
      (v -0.5d0 0d0 -1.5d0) (v -0.5d0 0d0 0.5d0)
      :fraction 0.25d0 :endpos (v -0.5d0 0d0 -1d0) :normal (v 0d0 0d0 -1d0))))
+
+(subtest "pathological recursive-hull-check"
+  (let* ((segs (mapcar #'linedef->lineseg *square-linedefs*))
+         (hull (build-bsp segs)))
+    (let-mtrace
+        (v 0.059055107469946466d0 0.5d0 -0.45058874753714245d0)
+        (v -0.023507212569340574d0 0.5d0 -0.46189837857333405d0)
+      (ok (not (= (shake::mtrace-fraction mtrace) 1d0)))
+      (is (shake::mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
+      (is (shake::hull-point-contents
+           hull (shake::v3->v2 (shake::mtrace-endpos mtrace)))
+          :contents-empty))
+    (let-mtrace
+        (v 0.00654330262651126d0 0.5d0 -0.5254935858404913d0)
+        (v -0.07672578372688232d0 0.5d0 -0.5222219345272358d0)
+      (ok (not (= (shake::mtrace-fraction mtrace) 1d0)))
+      (is (shake::mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
+      (is (shake::hull-point-contents
+           hull (shake::v3->v2 (shake::mtrace-endpos mtrace)))
+          :contents-empty))))
 
 (finalize)
