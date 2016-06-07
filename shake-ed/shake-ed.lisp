@@ -66,7 +66,8 @@
       (q+:set-pen painter color)
       (let ((items (q+:items map-scene)))
         (dolist (item items)
-          (draw-lineitem-normal item painter)))))
+          (unless (eq drawing-line item)
+            (draw-lineitem-normal item painter))))))
   (stop-overriding))
 
 (defun update-lineitem-p2 (lineitem p2)
