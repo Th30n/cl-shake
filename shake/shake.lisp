@@ -285,13 +285,19 @@ DRAW and DELETE for drawing and deleting respectively."
     (let* ;; Intentionally make diagonal movement faster.
         ((move-vec (v+ (vscale forward-move forward-dir)
                        (vscale side-move (view-dir :right player))))
-         (end-pos (v+ move-vec (camera-position player))))
+         (start-pos (camera-position player))
+         (end-pos (v+ move-vec start-pos)))
       (if noclip
           (setf (camera-position player) end-pos)
-          (when (eq :contents-empty
+          (progn
+            (setf (camera-position player)
+                  (mtrace-endpos (recursive-hull-check *bsp*
+                                                       start-pos end-pos)))
+            (format t "Start: ~S~%End: ~S~%Pos: ~S~%Contents: ~S~%"
+                    start-pos end-pos
+                    (camera-position player)
                     (hull-point-contents *bsp*
-                                         (v (vx end-pos) (vz end-pos))))
-            (setf (camera-position player) end-pos))))))
+                                         (v3->v2 (camera-position player)))))))))
 
 (defun run-tic (camera cmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
