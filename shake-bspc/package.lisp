@@ -50,3 +50,7 @@
            ;; bsp queries
            #:determine-side
            #:back-to-front))
+
+(defpackage #:shake-bspc.brush
+  (:nicknames #:sbrush)
+  (:use #:cl #:shiva #:sbsp))

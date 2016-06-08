@@ -71,8 +71,8 @@
   "Takes a SPLITTER and LINESEG linesegs. Returns numerator and denominator
   values for calculating the parameter T of the intersection."
   (declare (type lineseg splitter lineseg))
-  (let* ((n (linedef-normal (lineseg-orig-line splitter)))
-         (-n (v- (v 0 0) n))
+  (let* ((n (lineseg-normal splitter))
+         (-n (v- n))
          (l-vec (v- (lineseg-end lineseg) (lineseg-start lineseg)))
          (s-start (lineseg-start splitter))
          (l-start (lineseg-start lineseg))
@@ -130,6 +130,28 @@
           (setf splitter-seg seg)))
     (values splitter-seg rest)))
 
+(defun split-partition (splitter-seg seg num den)
+  (let ((splitted (split-lineseg seg (/ num den) :relative-t t)))
+    (if (null splitted)
+        ;; no split
+        (progn
+          (when (double-float-rel-eq num 0d0)
+            ;; Points are collinear, use other end for numerator.
+            (let ((n (lineseg-normal splitter-seg))
+                  (sl-vec (v- (lineseg-end seg)
+                              (lineseg-start splitter-seg))))
+              (setf num (vdot n sl-vec))))
+          (if (plusp num)
+              (cons seg nil)
+              (cons nil seg)))
+        ;; split
+        (cond
+          ((plusp num)
+           splitted)
+          (t
+           ;; reverse the split order
+           (cons (cdr splitted) (car splitted)))))))
+
 (defun partition-linesegs (splitter-seg linesegs)
   (declare (type lineseg splitter-seg) (type list linesegs))
   (let (front
@@ -153,27 +175,12 @@
               (t
                (push seg back)))
             ;; lines intersect
-            (let ((splitted (split-lineseg seg (/ num den) :relative-t t)))
-              (if (null splitted)
-                  ;; no split
-                  (progn
-                    (when (double-float-rel-eq num 0d0)
-                      ;; Points are collinear, use other end for numerator.
-                      (let ((n (linedef-normal splitter))
-                            (sl-vec (v- (lineseg-end seg)
-                                        (lineseg-start splitter-seg))))
-                        (setf num (vdot n sl-vec))))
-                    (if (plusp num)
-                        (push seg front)
-                        (push seg back)))
-                  ;; split
-                  (cond
-                    ((plusp num)
-                     (push (car splitted) front)
-                     (push (cdr splitted) back))
-                    (t
-                     (push (car splitted) back)
-                     (push (cdr splitted) front))))))))
+            (destructuring-bind (split-front . split-back)
+                (split-partition splitter-seg seg num den)
+              (when split-front
+                (push split-front front))
+              (when split-back
+                (push split-back back))))))
     (values front back)))
 
 (defun build-bsp (linesegs &optional (splitters nil))

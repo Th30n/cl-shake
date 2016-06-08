@@ -21,7 +21,9 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("shiva")
+  :depends-on ("alexandria" "shiva")
+  :serial t
   :components ((:file "package")
-               (:file "shake-bspc" :depends-on ("package")))
+               (:file "shake-bspc")
+               (:file "brush"))
   :in-order-to ((test-op (test-op shake-bspc-test))))
