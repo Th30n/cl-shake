@@ -16,16 +16,12 @@
 
 (in-package #:asdf-user)
 
-(defsystem "shake"
-  :description "shake: A Doom like game"
+(defsystem "shiva"
+  :description "shiva: A matrix computation libary"
   :version "0.0.1"
-  :author "Teon Banek <theongugl@gmail.com>"
+  :author "Miroslav Šilović, Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("sdl2" "alexandria" "shiva" "shake-bspc" "shake-gl")
-  :serial t
-  :components
-  ((:module "shake"
-            :components ((:file "package")
-                         (:file "world")
-                         (:file "shake"))))
-  :in-order-to ((test-op (test-op shake-test))))
+  :depends-on ("iterate" "metabang-bind" "alexandria")
+  :components ((:file "package")
+               (:file "shiva" :depends-on ("package")))
+  :in-order-to ((test-op (test-op shiva-test))))

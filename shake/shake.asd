@@ -16,14 +16,14 @@
 
 (in-package #:asdf-user)
 
-(defsystem "shake-bspc"
-  :description "shake-bspc: BSP compiler for shake, a Doom like game"
+(defsystem "shake"
+  :description "shake: A Doom like game"
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("shiva")
-  :components
-  ((:module "shake-bspc"
-            :components ((:file "package")
-                         (:file "shake-bspc" :depends-on ("package")))))
-  :in-order-to ((test-op (test-op shake-bspc-test))))
+  :depends-on ("sdl2" "alexandria" "shiva" "shake-bspc" "shake-gl")
+  :serial t
+  :components ((:file "package")
+               (:file "world")
+               (:file "shake"))
+  :in-order-to ((test-op (test-op shake-test))))

@@ -16,14 +16,12 @@
 
 (in-package #:asdf-user)
 
-(defsystem "shiva"
-  :description "shiva: A matrix computation libary"
+(defsystem "shake-ed"
+  :description "shake-ed: A map editor for shake"
   :version "0.0.1"
-  :author "Miroslav Šilović, Teon Banek <theongugl@gmail.com>"
+  :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("iterate" "metabang-bind" "alexandria")
-  :components
-  ((:module "shiva"
-            :components ((:file "package")
-                         (:file "shiva" :depends-on ("package")))))
-  :in-order-to ((test-op (test-op shiva-test))))
+  :depends-on ("alexandria" "shiva" "shake-bspc"
+               "qtools" "qtcore" "qtgui" "qtopengl")
+  :components ((:file "package")
+               (:file "shake-ed" :depends-on ("package"))))

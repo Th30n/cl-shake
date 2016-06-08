@@ -16,12 +16,12 @@
 
 (in-package #:asdf-user)
 
-(defsystem "shiva-test"
-  :depends-on ("shiva"
-               "prove")
-  :defsystem-depends-on ("prove-asdf")
-  :components
-  ((:module "shiva"
-            :components ((:test-file "shiva-test"))))
-  :perform (test-op :after (op c)
-                    (funcall (intern #.(string :run) :prove) c)))
+(defsystem "shake-bspc"
+  :description "shake-bspc: BSP compiler for shake, a Doom like game"
+  :version "0.0.1"
+  :author "Teon Banek <theongugl@gmail.com>"
+  :licence "GPL2"
+  :depends-on ("shiva")
+  :components ((:file "package")
+               (:file "shake-bspc" :depends-on ("package")))
+  :in-order-to ((test-op (test-op shake-bspc-test))))

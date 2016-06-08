@@ -16,12 +16,11 @@
 
 (in-package #:asdf-user)
 
-(defsystem "shake-test"
-  :depends-on ("shake"
-               "prove")
-  :defsystem-depends-on ("prove-asdf")
-  :components
-  ((:module "shake"
-            :components ((:test-file "world-test"))))
-  :perform (test-op :after (op c)
-                    (funcall (intern #.(string :run) :prove) c)))
+(defsystem "shake-gl"
+  :description "shake-gl: A wrapper around cl-opengl for shake"
+  :version "0.0.1"
+  :author "Teon Banek <theongugl@gmail.com>"
+  :licence "GPL2"
+  :depends-on ("cl-opengl" "cffi" "alexandria" "cl-ppcre")
+  :components ((:file "package")
+               (:file "gl" :depends-on ("package"))))
