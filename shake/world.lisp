@@ -54,13 +54,13 @@
 (defparameter *dist-epsilon* 1d-10)
 
 (defun cross-fraction (t1 t2)
-  "Calculate the crosspoint fraction."
+  "Calculate the crosspoint fraction. The fraction is offset by *DIST-EPSILON*
+  towards the near side."
   (let ((frac (clamp (/ (if (minusp t1)
                             (+ t1 *dist-epsilon*)
                             (- t1 *dist-epsilon*))
                         (- t1 t2))
                      0d0 1d0)))
-    (format t "Frac: ~S, T1: ~S, T2: ~S~%" frac t1 t2)
     frac))
 
 (defun adjust-midf (hull p1 p2 p1f p2f mid midf frac)
@@ -102,7 +102,6 @@
                     (setf normal (v- normal)))
                   (multiple-value-bind (adj-midf adj-mid)
                       (adjust-midf hull p1 p2 p1f p2f mid midf frac)
-                    ;; (format t "Collision ~S~%" (sbsp:node-line node))
                     (values
                      (make-mtrace :fraction adj-midf :endpos adj-mid
                                   :normal (v2->v3 normal))

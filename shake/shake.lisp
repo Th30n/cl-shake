@@ -277,24 +277,42 @@ DRAW and DELETE for drawing and deleting respectively."
     (setf (cdr *mouse*) 0)
     cmd))
 
+(defun clip-velocity (velocity normal)
+  "Clip the given VELOCITY by projecting it on NORMAL and return a parallel
+  vector to the surface."
+  (let ((change (vscale (vdot velocity normal) normal)))
+    (v- velocity change)))
+
+(defun player-ground-move (origin velocity hull)
+  (let ((mtrace (recursive-hull-check hull origin (v+ origin velocity))))
+    (if (= (mtrace-fraction mtrace) 1d0)
+        ;; Completed the whole move.
+        (mtrace-endpos mtrace)
+        ;; Partial move, try sliding
+        (let ((time-left (- 1d0 (mtrace-fraction mtrace)))
+              (new-origin (mtrace-endpos mtrace))
+              (new-vel (clip-velocity velocity (mtrace-normal mtrace))))
+          (mtrace-endpos
+           (recursive-hull-check hull new-origin
+                                 (v+ new-origin (vscale time-left new-vel))))))))
+
 (defun move-player (player forward-move side-move &key (noclip nil))
   (let ((forward-dir (view-dir :forward player)))
     (unless noclip
       ;; Project forward-dir to plane of movement.
       (setf forward-dir (vnormalize (v (vx forward-dir) 0 (vz forward-dir)))))
     (let* ;; Intentionally make diagonal movement faster.
-        ((move-vec (v+ (vscale forward-move forward-dir)
+        ((velocity (v+ (vscale forward-move forward-dir)
                        (vscale side-move (view-dir :right player))))
-         (start-pos (camera-position player))
-         (end-pos (v+ move-vec start-pos)))
+         (origin (camera-position player))
+         (end-pos (v+ origin velocity)))
       (if noclip
           (setf (camera-position player) end-pos)
           (progn
             (setf (camera-position player)
-                  (mtrace-endpos (recursive-hull-check *bsp*
-                                                       start-pos end-pos)))
+                  (player-ground-move origin velocity *bsp*))
             (format t "Start: ~S~%End: ~S~%Pos: ~S~%Contents: ~S~%"
-                    start-pos end-pos
+                    origin end-pos
                     (camera-position player)
                     (hull-point-contents *bsp*
                                          (v3->v2 (camera-position player)))))))))
