@@ -70,18 +70,18 @@
 (defun line-intersect-ratio (splitter lineseg)
   "Takes a SPLITTER and LINESEG linesegs. Returns numerator and denominator
   values for calculating the parameter T of the intersection."
-  (declare (type lineseg splitter lineseg))
-  (let* ((n (lineseg-normal splitter))
+  (declare (type linedef splitter) (type lineseg lineseg))
+  (let* ((n (linedef-normal splitter))
          (-n (v- n))
          (l-vec (v- (lineseg-end lineseg) (lineseg-start lineseg)))
-         (s-start (lineseg-start splitter))
+         (s-start (linedef-start splitter))
          (l-start (lineseg-start lineseg))
          (sl-vec (v- l-start s-start))
          (numer (vdot n sl-vec))
          (denom (vdot -n l-vec)))
     (values numer denom)))
 
-(defun split-lineseg (lineseg t-split &key (relative-t nil))
+(defun split-lineseg (lineseg t-split &key (relative-t t))
   "Split the given LINESEG at the given T-SPLIT parameter into a pair of
   LINESEG. Returns NIL if T-SPLIT does not split the line segment. When
   RELATIVE-T is not NIL, T-SPLIT parameter is treated relative to the
@@ -130,16 +130,17 @@
           (setf splitter-seg seg)))
     (values splitter-seg rest)))
 
-(defun split-partition (splitter-seg seg num den)
-  (let ((splitted (split-lineseg seg (/ num den) :relative-t t)))
+(defun split-partition (splitter seg num den)
+  (declare (type linedef splitter) (type lineseg seg)
+           (type double-float num den))
+  (let ((splitted (split-lineseg seg (/ num den))))
     (if (null splitted)
         ;; no split
         (progn
           (when (double-float-rel-eq num 0d0)
             ;; Points are collinear, use other end for numerator.
-            (let ((n (lineseg-normal splitter-seg))
-                  (sl-vec (v- (lineseg-end seg)
-                              (lineseg-start splitter-seg))))
+            (let ((n (linedef-normal splitter))
+                  (sl-vec (v- (lineseg-end seg) (linedef-start splitter))))
               (setf num (vdot n sl-vec))))
           (if (plusp num)
               (cons seg nil)
@@ -152,18 +153,19 @@
            ;; reverse the split order
            (cons (cdr splitted) (car splitted)))))))
 
-(defun partition-linesegs (splitter-seg linesegs)
-  (declare (type lineseg splitter-seg) (type list linesegs))
+(defun partition-linesegs (splitter linesegs)
+  (declare (type linedef splitter) (type list linesegs))
   (let (front
         back
-        (splitter (lineseg-orig-line splitter-seg)))
+        (on-splitter (list splitter)))
     (dolist (seg linesegs)
-      (multiple-value-bind (num den) (line-intersect-ratio splitter-seg seg)
+      (multiple-value-bind (num den) (line-intersect-ratio splitter seg)
         (if (double-float-rel-eq den 0d0)
             ;; parallel lines
             (cond
               ((double-float-rel-eq num 0d0)
                ;; on the same line
+               (push (lineseg-orig-line seg) on-splitter)
                (if (v= (linedef-normal splitter)
                        (linedef-normal (lineseg-orig-line seg)))
                    ;; same facing
@@ -176,12 +178,12 @@
                (push seg back)))
             ;; lines intersect
             (destructuring-bind (split-front . split-back)
-                (split-partition splitter-seg seg num den)
+                (split-partition splitter seg num den)
               (when split-front
                 (push split-front front))
               (when split-back
                 (push split-back back))))))
-    (values front back)))
+    (values front back on-splitter)))
 
 (defun build-bsp (linesegs &optional (splitters nil))
   (declare (optimize (speed 0) (debug 3)))
@@ -195,15 +197,15 @@
               (assert (convex-hull-p rest))
               (make-leaf :segs rest))
             ;; Split the remaining into front and back.
-            (multiple-value-bind
-                  (front back) (partition-linesegs splitter-seg rest)
-              (let ((splitter (lineseg-orig-line splitter-seg)))
-                (make-node :line splitter-seg
-                           ;; Add the splitter itself to front.
-                           :front (build-bsp (cons splitter-seg front)
-                                             (cons splitter splitters))
-                           :back (build-bsp back
-                                            (cons splitter splitters)))))))))
+            (let ((splitter (lineseg-orig-line splitter-seg)))
+              (multiple-value-bind
+                    (front back on-splitter) (partition-linesegs splitter rest)
+                (let ((used-splitters (append on-splitter splitters)))
+                  (make-node :line splitter-seg
+                             ;; Add the splitter itself to front.
+                             :front (build-bsp (cons splitter-seg front)
+                                               used-splitters)
+                             :back (build-bsp back used-splitters)))))))))
 
 (defun linedef->lineseg (linedef)
   (declare (type linedef linedef))

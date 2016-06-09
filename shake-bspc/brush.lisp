@@ -42,13 +42,12 @@
   remaining LINESEGs on the outside. Second value are removed segments."
   (let (outside inside)
     (dolist (split-line (brush-lines b2))
-      (let ((split-normal (linedef-normal split-line))
-            (split-seg (linedef->lineseg split-line)))
+      (let ((split-normal (linedef-normal split-line)))
         (dolist (line (brush-lines b1))
           ;; XXX: duplicated from sbsp::partition-linesegs
           (let ((lineseg (linedef->lineseg line)))
             (multiple-value-bind (num den)
-                (sbsp::line-intersect-ratio split-seg lineseg)
+                (sbsp::line-intersect-ratio split-line lineseg)
               (if (double-float-rel-eq 0d0 den)
                   ;; parallel lines
                   (cond
@@ -65,7 +64,7 @@
                      (push lineseg inside)))
                   ;; split
                   (destructuring-bind (front . back)
-                      (sbsp::split-partition split-seg lineseg num den)
+                      (sbsp::split-partition split-line lineseg num den)
                     (when front
                       (push front outside))
                     (when back
