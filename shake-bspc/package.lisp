@@ -24,6 +24,7 @@
            #:linedef-start
            #:linedef-end
            #:linedef-normal
+           #:linedef-vec
            ;; line segment
            #:lineseg
            #:make-lineseg

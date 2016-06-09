@@ -18,23 +18,23 @@
 (in-readtable :qtools)
 
 (defun qcolor->vector (qcolor)
-  (shiva:v (q+:red-f qcolor) (q+:green-f qcolor) (q+:blue-f qcolor)))
+  (v (q+:red-f qcolor) (q+:green-f qcolor) (q+:blue-f qcolor)))
 
 (defun vector->qcolor (color)
   (let ((qcolor (q+:make-qcolor)))
     (setf (q+:rgb-f qcolor)
-          (values (shiva:vx color) (shiva:vy color) (shiva:vz color)))
+          (values (vx color) (vy color) (vz color)))
     qcolor))
 
 (defun lineitem-normal (lineitem)
   ;; This needs to be the same as linedef-normal in shake-bspc.
   (let ((p1 (q+:p1 (q+:line lineitem)))
         (p2 (q+:p2 (q+:line lineitem))))
-    (shiva:vnormalize (shiva:v (- (q+:y p2) (q+:y p1))
-                               (- (q+:x p1) (q+:x p2))))))
+    (vnormalize (v (- (q+:y p2) (q+:y p1))
+                   (- (q+:x p1) (q+:x p2))))))
 
 (define-widget map-scene (QGraphicsScene)
-  ((drawing-line :initform nil)
+  ((drawing-rect :initform nil)
    (line-color-map :initform (make-hash-table))
    (view-normals-p :initform t)))
 
@@ -51,13 +51,33 @@
                            (p2 (q+:make-qpointf (q+:right rect) y)))
            (q+:draw-line painter p1 p2)))))
 
+(defun make-linedef-loop (p1 p2 p3 &rest points)
+  (let ((start-points (append (list p1 p2 p3) points))
+        (end-points (append (list p2 p3) points (list p1))))
+    (mapcar (lambda (start end) (sbsp:make-linedef :start start :end end))
+            start-points end-points)))
+
+(defun polygonitem->linedefs (item)
+  (let ((polygon (q+:polygon item)))
+    (format t "Polygon ~S~%" polygon)))
+    ;; (make-linedef-loop (v right bot) (v left bot) (v left top) (v right top))))
+
+(defun draw-polygonitem-normals (item painter &key (scale 0.25d0))
+  (dolist (line (polygonitem->linedefs item))
+    (let* ((center (v+ (sbsp:linedef-start line)
+                      (vscale 0.5d0 (sbsp:linedef-vec line))))
+           (dest (v+ center (vscale scale (sbsp:linedef-normal line)))))
+      (with-finalizing* ((p1 (q+:make-qpointf (vx center) (vy center)))
+                         (p2 (q+:make-qpointf (vx dest) (vy dest))))
+        (q+:draw-line painter p1 p2)))))
+
 (defun draw-lineitem-normal (item painter &key (scale 0.25d0))
   (let ((item-center (q+:center (q+:bounding-rect item)))
-        (normal (shiva:vscale scale (lineitem-normal item))))
+        (normal (vscale scale (lineitem-normal item))))
     (with-finalizing ((endpoint (q+:make-qpointf (+ (q+:x item-center)
-                                                    (shiva:vx normal))
+                                                    (vx normal))
                                                  (+ (q+:y item-center)
-                                                    (shiva:vy normal)))))
+                                                    (vy normal)))))
       (q+:draw-line painter item-center endpoint))))
 
 (define-override (map-scene draw-foreground) (painter rect)
@@ -66,13 +86,27 @@
       (q+:set-pen painter color)
       (let ((items (q+:items map-scene)))
         (dolist (item items)
-          (unless (eq drawing-line item)
-            (draw-lineitem-normal item painter))))))
+          (unless (eq (car drawing-rect) item)
+            (cond
+              ((qinstancep item 'qgraphics-line-item)
+               (draw-lineitem-normal item painter))
+              ((qinstancep item 'qgraphics-polygon-item)
+               (draw-polygonitem-normals item painter))))))))
   (stop-overriding))
 
-(defun update-lineitem-p2 (lineitem p2)
-  (with-finalizing ((new-line (q+:make-qlinef (q+:p1 (q+:line lineitem)) p2)))
-    (setf (q+:line lineitem) new-line)))
+(defun update-rectitem (rectitem-and-start-pos bot-right)
+  (destructuring-bind (rectitem . (x . y)) rectitem-and-start-pos
+    (with-finalizing* ((top-left (q+:make-qpointf x y))
+                       (new-rect (q+:make-qrectf top-left bot-right))
+                       (new-poly (q+:make-qpolygonf (q+:normalized new-rect))))
+      (setf (q+:polygon rectitem) new-poly))))
+
+(defun new-rectitem (top-left bot-right)
+  (with-finalizing* ((rect (q+:make-qrectf top-left bot-right))
+                     (polygon (q+:make-qpolygonf rect)))
+    (let ((polygon-item (q+:make-qgraphicspolygonitem polygon)))
+      (q+:set-flag polygon-item (q+:qgraphicsitem.item-is-selectable) t)
+      polygon-item)))
 
 (defun new-lineitem (p1 p2)
   (with-finalizing ((new-line (q+:make-qlinef p1 p2)))
@@ -84,6 +118,13 @@
   (q+:contains (q+:scene-rect scene) point))
 
 (define-signal (map-scene mouse-scene-pos) (double double))
+
+(defun add-rect-to-scene (scene rect)
+  (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                     (pen (q+:make-qpen color)))
+    (setf (q+:width-f pen) 0.05
+          (q+:pen rect) pen))
+  (q+:add-item scene rect))
 
 (defun add-line-to-scene (scene line)
   (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
@@ -102,23 +143,24 @@
         (cons (round x) (round y))
         (cons x y))))
 
-(defun add-or-update-line (map-scene scene-pos)
-  (with-slots (drawing-line) map-scene
+(defun add-or-update-rect (map-scene scene-pos)
+  (with-slots (drawing-rect) map-scene
     (with-finalizing ((scene-point (q+:make-qpointf (car scene-pos)
                                                     (cdr scene-pos))))
-      (if drawing-line
+      (if drawing-rect
           (progn
-            (update-lineitem-p2 drawing-line scene-point)
-            (setf drawing-line nil))
+            (update-rectitem drawing-rect scene-point)
+            (setf drawing-rect nil))
           (progn
-            (setf drawing-line (new-lineitem scene-point scene-point))
-            (add-line-to-scene map-scene drawing-line))))))
+            (setf drawing-rect
+                  (cons (new-rectitem scene-point scene-point) scene-pos))
+            (add-rect-to-scene map-scene (car drawing-rect)))))))
 
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
-       (add-or-update-line map-scene (scene-pos-from-mouse mouse-event)))
+       (add-or-update-rect map-scene (scene-pos-from-mouse mouse-event)))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
        (let* ((view (car (q+:views map-scene)))
               (item (q+:item-at map-scene (q+:scene-pos mouse-event)
@@ -129,11 +171,11 @@
       (t (stop-overriding)))))
 
 (define-override (map-scene mouse-move-event) (mouse-event)
-  (when (and drawing-line (within-scene-p map-scene (q+:scene-pos mouse-event)))
+  (when (and drawing-rect (within-scene-p map-scene (q+:scene-pos mouse-event)))
     (let ((scene-pos (scene-pos-from-mouse mouse-event)))
       (with-finalizing ((scene-point (q+:make-qpointf (car scene-pos)
                                                       (cdr scene-pos))))
-        (update-lineitem-p2 drawing-line scene-point))))
+        (update-rectitem drawing-rect scene-point))))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
@@ -142,8 +184,8 @@
   (let ((items (q+:selected-items scene)))
     (dolist (item items)
       (q+:remove-item scene item)
-      (with-slots (drawing-line line-color-map) scene
-        (setf drawing-line nil)
+      (with-slots (drawing-rect line-color-map) scene
+        (setf drawing-rect nil)
         (remhash item line-color-map)))))
 
 (define-override (map-scene key-press-event) (key-event)
@@ -207,17 +249,17 @@
       (loop for i from 0 and lineitem in items do
            (let ((p1 (q+:p1 (q+:line lineitem)))
                  (p2 (q+:p2 (q+:line lineitem)))
-                 (color (gethash lineitem line-color-map (shiva:v 1 0 1))))
+                 (color (gethash lineitem line-color-map (v 1 0 1))))
              (format stream "~S~%~S ~S ~S~%"
                      (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
-                     (shiva:vx color) (shiva:vy color) (shiva:vz color)))))))
+                     (vx color) (vy color) (vz color)))))))
 
 (defun read-map (stream scene)
   (with-slots (line-color-map) scene
     (let ((n (read stream)))
       (loop repeat n doing
            (let ((points (read stream))
-                 (color (shiva:v (read stream) (read stream) (read stream))))
+                 (color (v (read stream) (read stream) (read stream))))
              (with-finalizing ((p1 (q+:make-qpointf (first points)
                                                     (second points)))
                                (p2 (q+:make-qpointf (third points)
@@ -279,7 +321,7 @@
   (with-slots-bound (w main)
     (when-let ((items (q+:selected-items scene)))
       (with-slots (line-color-map) scene
-        (let ((old-color (gethash (car items) line-color-map (shiva:v 1 0 1))))
+        (let ((old-color (gethash (car items) line-color-map (v 1 0 1))))
           (with-finalizing* ((qcolor (vector->qcolor old-color))
                              (new-qcolor (q+:qcolordialog-get-color qcolor w)))
             (when (q+:is-valid new-qcolor)
@@ -289,8 +331,7 @@
 
 (define-menu (main Edit)
   (:item ("Color" (c)) (edit-color main))
-  (:item "Delete" (remove-selected scene))
-  (:item ("Flip facing" (f)) (flip-normal-on-selected scene)))
+  (:item ("Delete" (backspace)) (remove-selected scene)))
 
 (define-menu (main View)
   (:item "Normals" (toggle-view-normals scene)))

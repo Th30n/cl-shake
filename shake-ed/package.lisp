@@ -19,7 +19,11 @@
 (defpackage #:shake-ed
   (:use #:cl+qt)
   (:export #:main)
+  (:import-from #:shiva
+                #:v #:vx #:vy #:vz
+                #:vnormalize
+                #:v+ #:v- #:vscale)
   (:import-from #:alexandria
-                #:when-let
                 #:emptyp
-                #:ends-with-subseq))
+                #:ends-with-subseq
+                #:when-let))
