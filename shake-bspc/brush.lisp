@@ -37,49 +37,21 @@
     (make-brush :lines (mapcar #'linedef-translate (brush-lines brush))
                 :contents (brush-contents brush))))
 
-(defun brush-clip (b1 b2)
-  "Subtracts the geometry of brush B2 from brush B1. The result is a list of
-  remaining LINESEGs on the outside. Second value are removed segments."
-  (let (outside inside)
-    (dolist (split-line (brush-lines b2))
-      (let ((split-normal (linedef-normal split-line)))
-        (dolist (line (brush-lines b1))
-          ;; XXX: duplicated from sbsp::partition-linesegs
-          (let ((lineseg (linedef->lineseg line)))
-            (multiple-value-bind (num den)
-                (sbsp::line-intersect-ratio split-line lineseg)
-              (if (double-float-rel-eq 0d0 den)
-                  ;; parallel lines
-                  (cond
-                    ((double-float-rel-eq num 0d0)
-                     ;; on the same line
-                     (if (v= split-normal (linedef-normal line))
-                         ;; leave same facing on the outside
-                         (push lineseg outside)
-                         ;; clip opposite facing
-                         (push lineseg inside)))
-                    ((plusp num)
-                     (push lineseg outside))
-                    (t
-                     (push lineseg inside)))
-                  ;; split
-                  (destructuring-bind (front . back)
-                      (sbsp::split-partition split-line lineseg num den)
-                    (when front
-                      (push front outside))
-                    (when back
-                      (push back inside)))))))))
-    (values (delete-duplicates outside :test #'equalp)
-            (delete-duplicates (nset-difference inside outside :test #'equalp)
-                               :test #'equalp))))
-
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns LINESEGs
   ready for binary space partitioning."
   (let (segs)
     (dolist (b1 brushes)
-      (dolist (b2 brushes)
-        (unless (eq b1 b2)
-          (let ((outside-segs (brush-clip b1 b2)))
-            (setf segs (nconc segs outside-segs))))))
+      (let ((outside (mapcar #'linedef->lineseg (brush-lines b1)))
+            inside)
+        (dolist (b2 brushes)
+          (unless (eq b1 b2)
+            (shiftf inside outside nil)
+            ;; clip brush b1 against b2
+            (dolist (split-line (brush-lines b2))
+              (multiple-value-bind (new-outside new-inside)
+                  (sbsp::partition-linesegs split-line inside)
+                (unionf outside new-outside)
+                (setf inside new-inside)))))
+        (nconcf segs outside)))
     segs))

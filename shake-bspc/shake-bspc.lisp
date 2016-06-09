@@ -168,9 +168,9 @@
                (push (lineseg-orig-line seg) on-splitter)
                (if (v= (linedef-normal splitter)
                        (linedef-normal (lineseg-orig-line seg)))
-                   ;; same facing
+                   ;; same facing go to the front
                    (push seg front)
-                   ;; opposite facing
+                   ;; opposite facing go in the back
                    (push seg back)))
               ((plusp num)
                (push seg front))

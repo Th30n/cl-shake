@@ -32,10 +32,10 @@
 (plan nil)
 
 (defparameter *square-linedefs*
-  (list (make-linedef :start (v -1d0 0d0) :end (v -1d0 -1d0))
-        (make-linedef :start (v -1d0 -1d0) :end (v 0d0 -1d0))
-        (make-linedef :start (v 0d0 -1d0) :end (v 0d0 0d0))
-        (make-linedef :start (v 0d0 0d0) :end (v -1d0 0d0))))
+  (list (make-linedef :start (v -1d0 0d0) :end (v -1d0 -1d0)) ;; left
+        (make-linedef :start (v -1d0 -1d0) :end (v 0d0 -1d0)) ;; bottom
+        (make-linedef :start (v 0d0 -1d0) :end (v 0d0 0d0))   ;; right
+        (make-linedef :start (v 0d0 0d0) :end (v -1d0 0d0)))) ;; top
 
 (defmacro select-brush-lines (brush (&rest selectors))
   (when selectors
@@ -46,20 +46,26 @@
 (defun lineseg-set-equal (list1 list2)
   (set-equal list1 list2 :test #'equalp))
 
-(subtest "brush-clip on neighbour square brushes"
+(subtest "Clipping two neighbour square brushes"
   (let* ((b1 (sbrush::make-brush :lines *square-linedefs*))
          (b2 (sbrush::brush-translate b1 (v 1d0 0d0))))
-    (multiple-value-bind (outside inside) (sbrush::brush-clip b1 b2)
-      (let ((expected-outside
-             (mapcar #'linedef->lineseg
-                     (select-brush-lines b1 (first second fourth)))))
-        (is inside (list (linedef->lineseg (third *square-linedefs*)))
-            :test #'equalp)
-        (is outside expected-outside :test #'lineseg-set-equal)
-        (is (sbrush::prepare-brushes-for-bsp (list b1 b2))
-            (append expected-outside
-                    (mapcar #'linedef->lineseg
-                            (select-brush-lines b2 (second third fourth))))
-            :test #'lineseg-set-equal)))))
+    (let ((expected
+           (mapcar #'linedef->lineseg
+                   (append (select-brush-lines b1 (first second fourth))
+                           (select-brush-lines b2 (second third fourth))))))
+      (is (sbrush::prepare-brushes-for-bsp (list b1 b2))
+          expected :test #'lineseg-set-equal))))
+
+(subtest "Brush is clipped twice."
+  (let* ((b1 (sbrush::make-brush :lines *square-linedefs*))
+         (b2 (sbrush::brush-translate b1 (v 1d0 0d0)))
+         (b3 (sbrush::brush-translate b1 (v 0d0 1d0)))
+         (expected
+          (mapcar #'linedef->lineseg
+                  (append (select-brush-lines b1 (first second))
+                          (select-brush-lines b2 (second third fourth))
+                          (select-brush-lines b3 (first third fourth))))))
+    (is (sbrush::prepare-brushes-for-bsp (list b1 b2 b3))
+        expected :test #'lineseg-set-equal)))
 
 (finalize)

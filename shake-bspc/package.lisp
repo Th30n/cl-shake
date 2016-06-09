@@ -53,4 +53,7 @@
 
 (defpackage #:shake-bspc.brush
   (:nicknames #:sbrush)
-  (:use #:cl #:shiva #:sbsp))
+  (:use #:cl #:shiva #:sbsp)
+  (:import-from #:alexandria
+                #:unionf
+                #:nconcf))
