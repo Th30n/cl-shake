@@ -57,4 +57,10 @@
   (:use #:cl #:shiva #:sbsp)
   (:import-from #:alexandria
                 #:unionf
-                #:nconcf))
+                #:nconcf)
+  (:export #:brush
+           #:brush-p
+           #:make-brush
+           #:brush-lines
+           #:brush-contents
+           #:copy-brush))
