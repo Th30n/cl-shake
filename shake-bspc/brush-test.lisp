@@ -79,4 +79,10 @@
                          (and (length= got exp)
                               (every #'linedef= got exp))))))
 
+(subtest "Test serialization"
+  (let ((brush (make-brush :lines *square-linedefs*)))
+    (with-input-from-string (in (with-output-to-string (out)
+                                  (sbrush::write-brush brush out)))
+      (is (sbrush::read-brush in) brush :test #'equalp))))
+
 (finalize)

@@ -28,6 +28,24 @@
   lines
   (contents :contents-solid))
 
+(defun write-brush (brush stream)
+  (let ((lines (brush-lines brush))
+        (contents (brush-contents brush)))
+    (format stream "~@{~S~%~}"
+            :brush
+            contents
+            (length lines))
+    (dolist (line lines)
+      (sbsp::write-linedef line stream))))
+
+(defun read-brush (stream)
+  (let ((name (read stream))
+        (contents (read stream))
+        (lines-count (read stream)))
+    (make-brush :contents contents
+                :lines (loop repeat lines-count collecting
+                            (sbsp::read-linedef stream)))))
+
 (defun bounds-of-linedefs (lines)
   (let ((mins (copy-seq (linedef-start (car lines))))
         (maxs (copy-seq (linedef-start (car lines)))))
