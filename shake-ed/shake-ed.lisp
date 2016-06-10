@@ -303,22 +303,41 @@
     (setf (sbrush:brush-lines brush)
           (mapcar #'change-line-color (sbrush:brush-lines brush)))))
 
+(defun selected-brushes (scene)
+  (with-slots (graphics-item-brush-map) scene
+    (mapcar (rcurry #'gethash graphics-item-brush-map)
+            (q+:selected-items scene))))
+
 (defun edit-color (w)
   (with-slots-bound (w main)
-    (with-slots (graphics-item-brush-map) scene
-      (when-let* ((items (q+:selected-items scene))
-                  (brushes (mapcar (rcurry #'gethash graphics-item-brush-map)
-                                   items))
-                  (old-color (sbsp::linedef-color
-                              (car (sbrush:brush-lines (car brushes))))))
-        (with-finalizing* ((qcolor (vector->qcolor old-color))
-                           (new-qcolor (q+:qcolordialog-get-color qcolor w)))
-          (when (q+:is-valid new-qcolor)
-            (dolist (brush brushes)
-              (set-brush-color brush (qcolor->vector new-qcolor)))))))))
+    (when-let* ((brushes (selected-brushes scene))
+                (old-color (sbsp::linedef-color
+                            (car (sbrush:brush-lines (car brushes))))))
+      (with-finalizing* ((qcolor (vector->qcolor old-color))
+                         (new-qcolor (q+:qcolordialog-get-color qcolor w)))
+        (when (q+:is-valid new-qcolor)
+          (dolist (brush brushes)
+            (set-brush-color brush (qcolor->vector new-qcolor))))))))
+
+(defun rotate-selected (scene)
+  (with-slots (graphics-item-brush-map) scene
+    (when-let ((items (q+:selected-items scene)))
+      (dolist (item items)
+        (let* ((brush (gethash item graphics-item-brush-map))
+               (old-deg (q+:rotation item))
+               (new-deg (+ old-deg 10))
+               (rounds (floor new-deg 360))
+               (clamped-deg (- new-deg (* rounds 360))))
+          (format t "~S From ~S To ~S Rounds ~S~%"
+                  item old-deg clamped-deg rounds)
+          (q+:set-transform-origin-point item (q+:center (q+:bounding-rect item)))
+          (q+:set-rotation item clamped-deg)
+          (setf (gethash item graphics-item-brush-map)
+                (sbrush::brush-rotate brush (* deg->rad 10))))))))
 
 (define-menu (main Edit)
   (:item ("Color" (c)) (edit-color main))
+  (:item ("Rotate" (r)) (rotate-selected scene))
   (:item ("Delete" (backspace)) (remove-selected scene)))
 
 (define-menu (main View)

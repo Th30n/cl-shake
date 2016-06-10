@@ -20,6 +20,7 @@
   (:use #:cl+qt)
   (:export #:main)
   (:import-from #:shiva
+                #:deg->rad
                 #:v #:vx #:vy #:vz
                 #:vnormalize
                 #:v+ #:v- #:vscale)
