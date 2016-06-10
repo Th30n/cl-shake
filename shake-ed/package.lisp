@@ -27,4 +27,6 @@
                 #:emptyp
                 #:ends-with-subseq
                 #:hash-table-values
-                #:when-let))
+                #:rcurry
+                #:when-let
+                #:when-let*))

@@ -28,7 +28,6 @@
 
 (define-widget map-scene (QGraphicsScene)
   ((drawing-rect :initform nil)
-   (line-color-map :initform (make-hash-table))
    (graphics-item-brush-map :initform (make-hash-table))
    (view-normals-p :initform t)))
 
@@ -124,9 +123,6 @@
 
 (define-signal (map-scene mouse-scene-pos) (double double))
 
-(defun add-item-to-scene (scene item)
-  (q+:add-item scene item))
-
 (defun scene-pos-from-mouse (mouse-event)
   (let* ((scene-pos (q+:scene-pos mouse-event))
          (x (q+:x scene-pos))
@@ -151,7 +147,7 @@
           (progn
             (setf drawing-rect
                   (cons (new-rectitem scene-point scene-point) scene-pos))
-            (add-item-to-scene map-scene (car drawing-rect)))))))
+            (q+:add-item map-scene (car drawing-rect)))))))
 
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
@@ -179,12 +175,11 @@
 
 (defun remove-selected (scene)
   (let ((items (q+:selected-items scene)))
-    (with-slots (drawing-rect line-color-map graphics-item-brush-map) scene
+    (with-slots (drawing-rect graphics-item-brush-map) scene
       (dolist (item items)
         (when (eq item (car drawing-rect))
           (setf drawing-rect nil))
         (remhash item graphics-item-brush-map)
-        (remhash item line-color-map)
         (q+:remove-item scene item)
         (finalize item))))
   (q+:update scene (q+:scene-rect scene)))
@@ -248,7 +243,8 @@
     (let ((brushes (sbsp:read-map stream)))
       (dolist (brush brushes)
         (let ((item (make-itemgroup-from-lines (sbrush:brush-lines brush))))
-          (add-item-to-scene scene item)
+          (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) t)
+          (q+:add-item scene item)
           (setf (gethash item graphics-item-brush-map) brush))))))
 
 (defun save-map (w &optional filename)
@@ -299,17 +295,27 @@
   (:item ("Quit" (ctrl q))
          (q+:close main)))
 
+(defun set-brush-color (brush color)
+  (flet ((change-line-color (line)
+           (sbsp:make-linedef :start (sbsp:linedef-start line)
+                              :end (sbsp:linedef-end line)
+                              :color color)))
+    (setf (sbrush:brush-lines brush)
+          (mapcar #'change-line-color (sbrush:brush-lines brush)))))
+
 (defun edit-color (w)
   (with-slots-bound (w main)
-    (when-let ((items (q+:selected-items scene)))
-      (with-slots (line-color-map) scene
-        (let ((old-color (gethash (car items) line-color-map (v 1 0 1))))
-          (with-finalizing* ((qcolor (vector->qcolor old-color))
-                             (new-qcolor (q+:qcolordialog-get-color qcolor w)))
-            (when (q+:is-valid new-qcolor)
-              (dolist (item items)
-                (setf (gethash item line-color-map)
-                      (qcolor->vector new-qcolor))))))))))
+    (with-slots (graphics-item-brush-map) scene
+      (when-let* ((items (q+:selected-items scene))
+                  (brushes (mapcar (rcurry #'gethash graphics-item-brush-map)
+                                   items))
+                  (old-color (sbsp::linedef-color
+                              (car (sbrush:brush-lines (car brushes))))))
+        (with-finalizing* ((qcolor (vector->qcolor old-color))
+                           (new-qcolor (q+:qcolordialog-get-color qcolor w)))
+          (when (q+:is-valid new-qcolor)
+            (dolist (brush brushes)
+              (set-brush-color brush (qcolor->vector new-qcolor)))))))))
 
 (define-menu (main Edit)
   (:item ("Color" (c)) (edit-color main))
