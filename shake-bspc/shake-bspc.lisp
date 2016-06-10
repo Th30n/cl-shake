@@ -30,6 +30,14 @@
     (setf (aref vec 1) (- (aref vec 1)))
     (vnormalize vec)))
 
+(defun linedef= (a b)
+  (declare (type linedef a))
+  (or (eq a b)
+      (and (linedef-p b)
+           (v= (linedef-start a) (linedef-start b))
+           (v= (linedef-end a) (linedef-end b))
+           (v= (linedef-color a) (linedef-color b)))))
+
 (defstruct lineseg
   "Segment of a line. Each line starts as a full segment, but may be split
   into multiple segments."

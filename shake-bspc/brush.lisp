@@ -28,6 +28,38 @@
   lines
   (contents :contents-solid))
 
+(defun bounds-of-linedefs (lines)
+  (let ((mins (copy-seq (linedef-start (car lines))))
+        (maxs (copy-seq (linedef-start (car lines)))))
+    (dolist (line lines (cons mins maxs))
+      (dolist (point (list (linedef-start line) (linedef-end line)))
+        (dotimes (i (length mins))
+          (let ((x (aref point i))
+                (max-x (aref maxs i))
+                (min-x (aref mins i)))
+            (setf (aref maxs i) (max x max-x))
+            (setf (aref mins i) (min x min-x))))))))
+
+(defun brush-center (brush)
+  (destructuring-bind (mins . maxs) (bounds-of-linedefs (brush-lines brush))
+    (vscale 0.5d0 (v+ mins maxs))))
+
+(defun brush-rotate (brush rad-angle)
+  "Rotate the given BRUSH for RAD-ANGLE around the center."
+  (let ((rot (rotation (v 0 0 1) rad-angle))
+        (center (brush-center brush)))
+    (labels ((rotate-point (point)
+               (let* ((translated (v- point center))
+                      (rotated (vtransform
+                                rot (v (vx translated) (vy translated) 0 1))))
+                 (v+ (v (vx rotated) (vy rotated)) center)))
+             (rotate-line (line)
+               (make-linedef :start (rotate-point (linedef-start line))
+                             :end (rotate-point (linedef-end line))
+                             :color (sbsp::linedef-color line))))
+      (make-brush :lines (mapcar #'rotate-line (brush-lines brush))
+                  :contents (brush-contents brush)))))
+
 (defun brush-translate (brush vector)
   "Translate the given BRUSH along the given VECTOR."
   (flet ((linedef-translate (line)

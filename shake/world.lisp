@@ -26,16 +26,6 @@
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
-(defun v3->v2 (v)
-  "Convert VEC 3 to VEC 2 by dropping the y axis."
-  (declare (type (vec 3) v))
-  (v (vx v) (vz v)))
-
-(defun v2->v3 (v)
-  "Convert VEC 2 to VEC 3 by adding the y axis, set to 0."
-  (declare (type (vec 2) v))
-  (v (vx v) 0d0 (vy v)))
-
 (defun dist-line-point (lineseg point)
   (declare (type sbsp:lineseg lineseg) (type (vec 2) point))
   (vdot (sbsp:lineseg-normal lineseg)

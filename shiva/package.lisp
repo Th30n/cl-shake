@@ -24,6 +24,7 @@
   (:export #:double-float-rel-eq
            #:rad->deg #:deg->rad
            #:vec #:v #:vx #:vy #:vz #:vw
+           #:v3->v2 #:v2->v3
            #:v- #:v+ #:v= #:vnorm #:vnormalize
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
            #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x

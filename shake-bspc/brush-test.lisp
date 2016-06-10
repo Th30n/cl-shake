@@ -22,8 +22,11 @@
         #:sbsp
         #:sbrush)
   (:import-from #:alexandria
+                #:length=
+                #:rotate
                 #:set-equal)
   (:import-from #:shiva
+                #:deg->rad
                 #:v=
                 #:v))
 
@@ -40,14 +43,14 @@
 (defmacro select-brush-lines (brush (&rest selectors))
   (when selectors
     `(list
-      ,@(mapcar (lambda (sel) `(,sel (sbrush::brush-lines ,brush)))
+      ,@(mapcar (lambda (sel) `(,sel (brush-lines ,brush)))
                 selectors))))
 
 (defun lineseg-set-equal (list1 list2)
   (set-equal list1 list2 :test #'equalp))
 
 (subtest "Clipping two neighbour square brushes"
-  (let* ((b1 (sbrush::make-brush :lines *square-linedefs*))
+  (let* ((b1 (make-brush :lines *square-linedefs*))
          (b2 (sbrush::brush-translate b1 (v 1d0 0d0))))
     (let ((expected
            (mapcar #'linedef->lineseg
@@ -57,7 +60,7 @@
           expected :test #'lineseg-set-equal))))
 
 (subtest "Brush is clipped twice."
-  (let* ((b1 (sbrush::make-brush :lines *square-linedefs*))
+  (let* ((b1 (make-brush :lines *square-linedefs*))
          (b2 (sbrush::brush-translate b1 (v 1d0 0d0)))
          (b3 (sbrush::brush-translate b1 (v 0d0 1d0)))
          (expected
@@ -67,5 +70,13 @@
                           (select-brush-lines b3 (first third fourth))))))
     (is (sbrush::prepare-brushes-for-bsp (list b1 b2 b3))
         expected :test #'lineseg-set-equal)))
+
+(subtest "Brush is correctly rotated."
+  (let* ((b (make-brush :lines *square-linedefs*))
+         (expected (rotate (copy-seq (brush-lines b)) -1)))
+    (is (brush-lines (sbrush::brush-rotate b (* deg->rad 90)))
+        expected :test (lambda (got exp)
+                         (and (length= got exp)
+                              (every #'linedef= got exp))))))
 
 (finalize)
