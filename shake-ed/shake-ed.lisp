@@ -77,26 +77,47 @@
               (draw-linedef-normal line painter)))))))
   (stop-overriding))
 
+(defun new-lineitem (p1 p2)
+  (with-finalizing ((new-line (q+:make-qlinef p1 p2)))
+    (let ((item (q+:make-qgraphicslineitem new-line)))
+      (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                         (pen (q+:make-qpen color)))
+        (setf (q+:width-f pen) 0.05
+              (q+:pen item) pen
+              (q+:flag item) (values (q+:qgraphicsitem.item-is-selectable) t)))
+      item)))
+
+(defun v2->qpoint (vector-2d)
+  (q+:make-qpointf (vx vector-2d) (vy vector-2d)))
+
+(defun linedef->lineitem (line)
+  (with-finalizing ((p1 (v2->qpoint (sbsp:linedef-start line)))
+                    (p2 (v2->qpoint (sbsp:linedef-end line))))
+    (new-lineitem p1 p2)))
+
+(defun make-itemgroup-from-lines (lines)
+  (let ((itemgroup (q+:make-qgraphicsitemgroup)))
+    (dolist (line lines itemgroup)
+      (q+:add-to-group itemgroup (linedef->lineitem line)))))
+
+(defun new-rectitem (top-left bot-right)
+  (with-finalizing ((rect (q+:make-qrectf top-left bot-right)))
+    (let* ((lines (qrect->linedefs (q+:normalized rect)))
+           (item (make-itemgroup-from-lines lines)))
+      (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) t)
+      item)))
+
 (defun update-rectitem (rectitem-and-start-pos bot-right)
   (destructuring-bind (rectitem . (x . y)) rectitem-and-start-pos
     (with-finalizing* ((top-left (q+:make-qpointf x y))
-                       (new-rect (q+:make-qrectf top-left bot-right))
-                       (new-poly (q+:make-qpolygonf (q+:normalized new-rect))))
-      (setf (q+:polygon rectitem) new-poly)
-      (qrect->linedefs (q+:normalized new-rect)))))
-
-(defun new-rectitem (top-left bot-right)
-  (with-finalizing* ((rect (q+:make-qrectf top-left bot-right))
-                     (polygon (q+:make-qpolygonf rect)))
-    (let ((polygon-item (q+:make-qgraphicspolygonitem polygon)))
-      (q+:set-flag polygon-item (q+:qgraphicsitem.item-is-selectable) t)
-      polygon-item)))
-
-(defun new-lineitem (p1 p2)
-  (with-finalizing ((new-line (q+:make-qlinef p1 p2)))
-    (let ((lineitem (q+:make-qgraphicslineitem new-line)))
-      (setf (q+:flag lineitem) (values (q+:qgraphicsitem.item-is-selectable) t))
-      lineitem)))
+                       (new-rect (q+:make-qrectf top-left bot-right)))
+      (let ((lines (qrect->linedefs (q+:normalized new-rect))))
+        (dolist (child (q+:child-items rectitem))
+          (q+:remove-from-group rectitem child)
+          (finalize child))
+        (dolist (line lines)
+          (q+:add-to-group rectitem (linedef->lineitem line)))
+        lines))))
 
 (defun within-scene-p (scene point)
   (q+:contains (q+:scene-rect scene) point))
@@ -104,10 +125,6 @@
 (define-signal (map-scene mouse-scene-pos) (double double))
 
 (defun add-item-to-scene (scene item)
-  (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
-                     (pen (q+:make-qpen color)))
-    (setf (q+:width-f pen) 0.05
-          (q+:pen item) pen))
   (q+:add-item scene item))
 
 (defun scene-pos-from-mouse (mouse-event)
@@ -162,13 +179,15 @@
 
 (defun remove-selected (scene)
   (let ((items (q+:selected-items scene)))
-    (dolist (item items)
-      (q+:remove-item scene item)
-      (with-slots (drawing-rect line-color-map graphics-item-brush-map) scene
-        (setf drawing-rect nil)
+    (with-slots (drawing-rect line-color-map graphics-item-brush-map) scene
+      (dolist (item items)
+        (when (eq item (car drawing-rect))
+          (setf drawing-rect nil))
         (remhash item graphics-item-brush-map)
         (remhash item line-color-map)
-        (q+:update scene (q+:scene-rect scene))))))
+        (q+:remove-item scene item)
+        (finalize item))))
+  (q+:update scene (q+:scene-rect scene)))
 
 (define-override (map-scene key-press-event) (key-event)
   (cond
@@ -208,37 +227,29 @@
     (setf (q+:layout widget) layout)
     (setf (q+:central-widget main) widget)))
 
+(defun clear-map (scene)
+  (with-slots (graphics-item-brush-map) scene
+    (q+:clear scene)
+    (setf graphics-item-brush-map (make-hash-table))))
+
 (defun new-map (w)
   (with-slots (scene map-file) w
-    (q+:clear scene)
+    (clear-map scene)
     (setf map-file nil)))
 
 (defun write-map (stream scene)
-  (with-slots (line-color-map) scene
-    (let* ((items (q+:items scene))
-           (items-count (length items)))
-      (format stream "~S~%" items-count)
-      (loop for i from 0 and lineitem in items do
-           (let ((p1 (q+:p1 (q+:line lineitem)))
-                 (p2 (q+:p2 (q+:line lineitem)))
-                 (color (gethash lineitem line-color-map (v 1 0 1))))
-             (format stream "~S~%~S ~S ~S~%"
-                     (list (q+:x p1) (q+:y p1) (q+:x p2) (q+:y p2))
-                     (vx color) (vy color) (vz color)))))))
+  (with-slots (graphics-item-brush-map) scene
+    (let ((brushes (hash-table-values graphics-item-brush-map)))
+      (sbsp:write-map brushes stream))))
 
 (defun read-map (stream scene)
-  (with-slots (line-color-map) scene
-    (let ((n (read stream)))
-      (loop repeat n doing
-           (let ((points (read stream))
-                 (color (v (read stream) (read stream) (read stream))))
-             (with-finalizing ((p1 (q+:make-qpointf (first points)
-                                                    (second points)))
-                               (p2 (q+:make-qpointf (third points)
-                                                    (fourth points))))
-               (let ((lineitem (new-lineitem p1 p2)))
-                 (add-item-to-scene scene lineitem)
-                 (setf (gethash lineitem line-color-map) color))))))))
+  (clear-map scene)
+  (with-slots (graphics-item-brush-map) scene
+    (let ((brushes (sbsp:read-map stream)))
+      (dolist (brush brushes)
+        (let ((item (make-itemgroup-from-lines (sbrush:brush-lines brush))))
+          (add-item-to-scene scene item)
+          (setf (gethash item graphics-item-brush-map) brush))))))
 
 (defun save-map (w &optional filename)
   (let ((filepath filename))
@@ -262,7 +273,6 @@
     (when (and filepath (ends-with-subseq ".map" filepath))
       (with-slots (scene map-file) w
         (with-open-file (file filepath)
-          (q+:clear scene)
           (read-map file scene)
           (q+:show-message (q+:status-bar w)
                            (format nil "Loaded '~S'" filepath))

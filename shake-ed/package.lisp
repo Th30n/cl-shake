@@ -26,4 +26,5 @@
   (:import-from #:alexandria
                 #:emptyp
                 #:ends-with-subseq
+                #:hash-table-values
                 #:when-let))
