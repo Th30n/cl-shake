@@ -43,12 +43,12 @@
            #:leaf
            #:leaf-p
            #:leaf-contents
-           ;; build interface
+           ;; map editor interface
+           #:write-map
            #:read-map
-           #:build-bsp
-           #:read-and-compile-map
-           #:read-bsp
            #:compile-map-file
+           #:build-bsp
+           #:read-bsp
            ;; bsp queries
            #:determine-side
            #:back-to-front))

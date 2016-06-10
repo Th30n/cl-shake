@@ -14,17 +14,26 @@
 ;;;; with this program; if not, write to the Free Software Foundation, Inc.,
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-(in-package #:asdf-user)
+(in-package #:shake-bspc)
 
-(defsystem "shake-bspc"
-  :description "shake-bspc: BSP compiler for shake, a Doom like game"
-  :version "0.0.1"
-  :author "Teon Banek <theongugl@gmail.com>"
-  :licence "GPL2"
-  :depends-on ("alexandria" "shiva")
-  :serial t
-  :components ((:file "package")
-               (:file "shake-bspc")
-               (:file "brush")
-               (:file "map"))
-  :in-order-to ((test-op (test-op shake-bspc-test))))
+(defun write-map (brushes stream)
+  (format stream "~S~%" (length brushes))
+  (dolist (brush brushes)
+    (sbrush::write-brush brush stream)))
+
+(defun read-map (stream)
+  (let ((n (read stream)))
+    (loop repeat n collecting (sbrush::read-brush stream))))
+
+(defun read-and-compile-map (stream)
+  (let ((brushes (read-map stream)))
+    (build-bsp (sbrush::prepare-brushes-for-bsp brushes))))
+
+(defun compile-map-file (map-file bsp-file)
+  "Compile a map from MAP-FILE and store it into BSP-FILE"
+  (let ((bsp))
+    (with-open-file (mf map-file)
+      (setf bsp (read-and-compile-map mf)))
+    (with-open-file (bf bsp-file :direction :output :if-exists :supersede
+                        :if-does-not-exist :create)
+      (write-bsp bsp bf))))

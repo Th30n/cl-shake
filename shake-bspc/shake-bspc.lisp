@@ -219,20 +219,6 @@
   (declare (type linedef linedef))
   (make-lineseg :orig-line linedef))
 
-(defun read-map-linedef (stream)
-  (destructuring-bind (x1 y1 x2 y2) (read stream)
-    (let ((color (v (read stream) (read stream) (read stream))))
-      (make-linedef :start (v x1 y1) :end (v x2 y2) :color color))))
-
-(defun read-map (stream)
-  (let ((n (read stream)))
-    (loop repeat n collecting (read-map-linedef stream))))
-
-(defun read-and-compile-map (stream)
-  (let* ((map (read-map stream))
-         (segs (mapcar #'linedef->lineseg map)))
-    (build-bsp segs)))
-
 (defun write-linedef (linedef stream)
   (let ((start (linedef-start linedef))
         (end (linedef-end linedef))
@@ -288,15 +274,6 @@
                (loop repeat num-segs do
                     (push (read-lineseg stream) segs))
                (make-leaf :segs (reverse segs) :contents contents))))))
-
-(defun compile-map-file (map-file bsp-file)
-  "Compile a map from MAP-FILE and store it into BSP-FILE"
-  (let ((bsp))
-    (with-open-file (mf map-file)
-      (setf bsp (read-and-compile-map mf)))
-    (with-open-file (bf bsp-file :direction :output :if-exists :supersede
-                        :if-does-not-exist :create)
-      (write-bsp bsp bf))))
 
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."
