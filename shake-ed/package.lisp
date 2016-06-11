@@ -21,13 +21,14 @@
   (:export #:main)
   (:import-from #:shiva
                 #:deg->rad
-                #:v #:vx #:vy #:vz
+                #:v #:vx #:vy #:vz #:v=
                 #:vnormalize
                 #:v+ #:v- #:vscale)
   (:import-from #:alexandria
                 #:emptyp
                 #:ends-with-subseq
                 #:hash-table-values
+                #:lastcar
                 #:rcurry
                 #:when-let
                 #:when-let*))

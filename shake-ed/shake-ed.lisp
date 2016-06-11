@@ -27,7 +27,8 @@
     qcolor))
 
 (define-widget map-scene (QGraphicsScene)
-  ((drawing-rect :initform nil)
+  ((draw-info :initform nil)
+   (edit-mode :initform :mode-brush-create)
    (graphics-item-brush-map :initform (make-hash-table))
    (view-normals-p :initform t)))
 
@@ -35,6 +36,7 @@
   (q+:fill-rect painter rect (q+:qt.black))
   (with-finalizing ((color (q+:make-qcolor 40 40 40)))
     (q+:set-pen painter color)
+    ;; draw grid
     (loop for x from (ceiling (q+:left rect)) upto (floor (q+:right rect)) do
          (with-finalizing ((p1 (q+:make-qpointf x (q+:top rect)))
                            (p2 (q+:make-qpointf x (q+:bottom rect))))
@@ -61,8 +63,8 @@
   (let* ((center (v+ (sbsp:linedef-start line)
                      (vscale 0.5d0 (sbsp:linedef-vec line))))
          (dest (v+ center (vscale scale (sbsp:linedef-normal line)))))
-    (with-finalizing* ((p1 (q+:make-qpointf (vx center) (vy center)))
-                       (p2 (q+:make-qpointf (vx dest) (vy dest))))
+    (with-finalizing* ((p1 (v2->qpoint center))
+                       (p2 (v2->qpoint dest)))
       (q+:draw-line painter p1 p2))))
 
 (define-override (map-scene draw-foreground) (painter rect)
@@ -107,8 +109,8 @@
       item)))
 
 (defun update-rectitem (rectitem-and-start-pos bot-right)
-  (destructuring-bind (rectitem . (x . y)) rectitem-and-start-pos
-    (with-finalizing* ((top-left (q+:make-qpointf x y))
+  (destructuring-bind (rectitem . start-pos) rectitem-and-start-pos
+    (with-finalizing* ((top-left (v2->qpoint start-pos))
                        (new-rect (q+:make-qrectf top-left bot-right)))
       (let ((lines (qrect->linedefs (q+:normalized new-rect))))
         (dolist (child (q+:child-items rectitem))
@@ -130,30 +132,74 @@
          (snap-to-grid-p (enum-equal (q+:modifiers mouse-event)
                                      (q+:qt.control-modifier))))
     (if snap-to-grid-p
-        (cons (round x) (round y))
-        (cons x y))))
+        (v (round x) (round y))
+        (v x y))))
 
 (defun add-or-update-rect (map-scene scene-pos)
-  (with-slots (drawing-rect graphics-item-brush-map) map-scene
-    (with-finalizing ((scene-point (q+:make-qpointf (car scene-pos)
-                                                    (cdr scene-pos))))
-      (if drawing-rect
+  (with-slots (draw-info graphics-item-brush-map) map-scene
+    (with-finalizing ((scene-point (v2->qpoint scene-pos)))
+      (if draw-info
           (progn
-            (let ((linedefs (update-rectitem drawing-rect scene-point)))
-              (setf (gethash (car drawing-rect) graphics-item-brush-map)
+            (let ((linedefs (update-rectitem draw-info scene-point)))
+              (setf (gethash (car draw-info) graphics-item-brush-map)
                     (sbrush:make-brush :lines linedefs))
-              (setf drawing-rect nil)
+              (setf draw-info nil)
               (q+:update map-scene (q+:scene-rect map-scene))))
           (progn
-            (setf drawing-rect
+            (setf draw-info
                   (cons (new-rectitem scene-point scene-point) scene-pos))
-            (q+:add-item map-scene (car drawing-rect)))))))
+            (q+:add-item map-scene (car draw-info)))))))
+
+(defun update-brush-drawing (draw-info scene-pos)
+  (let ((line-item (second draw-info))
+        (last-pos (lastcar draw-info)))
+    (q+:set-line line-item
+                 (vx last-pos) (vy last-pos)
+                 (vx scene-pos) (vy scene-pos))))
+
+(defun add-or-update-brush (map-scene scene-pos)
+  (with-slots (draw-info graphics-item-brush-map) map-scene
+    (with-finalizing ((scene-point (v2->qpoint scene-pos)))
+      (if draw-info
+          (progn
+            (let ((first-pos (third draw-info)))
+              (if (v= scene-pos first-pos)
+                  ;; finish line loop
+                  (let* ((group (first draw-info))
+                         (points (cddr draw-info))
+                         (linedefs (apply #'make-linedef-loop points)))
+                    (dolist (child (q+:child-items group))
+                      (q+:remove-from-group group child)
+                      (finalize child))
+                    (dolist (line linedefs)
+                      (q+:add-to-group group (linedef->lineitem line)))
+                    (setf (gethash group graphics-item-brush-map)
+                          (sbrush:make-brush :lines linedefs)
+                          draw-info nil)
+                    (q+:update map-scene (q+:scene-rect map-scene)))
+                  ;; end current line and continue with new
+                  (let* ((group (first draw-info))
+                         (points (cddr draw-info))
+                         (new-line-item (new-lineitem scene-point scene-point)))
+                    (update-brush-drawing draw-info scene-pos)
+                    (q+:add-to-group group new-line-item)
+                    (setf draw-info
+                          (append (list group new-line-item) points
+                                  (list scene-pos)))))))
+          (progn
+            (let ((group (q+:make-qgraphicsitemgroup))
+                  (line-item (new-lineitem scene-point scene-point)))
+              (setf draw-info (list group line-item scene-pos))
+              (q+:set-flag group (q+:qgraphicsitem.item-is-selectable) t)
+              (q+:add-to-group group line-item)
+              (q+:add-item map-scene group)))))))
 
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
-       (add-or-update-rect map-scene (scene-pos-from-mouse mouse-event)))
+       (add-or-update-brush map-scene (scene-pos-from-mouse mouse-event)))
+       ;;(add-or-update-rect map-scene (scene-pos-from-mouse mouse-event)))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
        (let* ((view (car (q+:views map-scene)))
               (item (q+:item-at map-scene (q+:scene-pos mouse-event)
@@ -164,21 +210,21 @@
       (t (stop-overriding)))))
 
 (define-override (map-scene mouse-move-event) (mouse-event)
-  (when (and drawing-rect (within-scene-p map-scene (q+:scene-pos mouse-event)))
+  (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
     (let ((scene-pos (scene-pos-from-mouse mouse-event)))
-      (with-finalizing ((scene-point (q+:make-qpointf (car scene-pos)
-                                                      (cdr scene-pos))))
-        (update-rectitem drawing-rect scene-point))))
+      (with-finalizing ((scene-point (v2->qpoint scene-pos)))
+        (update-brush-drawing draw-info scene-pos))))
+        ;; (update-rectitem draw-info scene-point))))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
 
 (defun remove-selected (scene)
   (let ((items (q+:selected-items scene)))
-    (with-slots (drawing-rect graphics-item-brush-map) scene
+    (with-slots (draw-info graphics-item-brush-map) scene
       (dolist (item items)
-        (when (eq item (car drawing-rect))
-          (setf drawing-rect nil))
+        (when (eq item (car draw-info))
+          (setf draw-info nil))
         (remhash item graphics-item-brush-map)
         (q+:remove-item scene item)
         (finalize item))))
