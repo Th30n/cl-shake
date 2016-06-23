@@ -45,19 +45,31 @@
    (graphics-item-brush-map :initform (make-hash-table))
    (view-normals-p :initform t)))
 
+(defun draw-grid (painter start-x end-x start-y end-y grid-step)
+  (flet ((draw-lines (start end axis)
+           (loop for x from start upto end by grid-step
+              as scene-x = (map->scene-unit x)
+              as start-coords = (if (= 0 axis)
+                                    (list scene-x start-y)
+                                    (list start-x scene-x))
+              and end-coords = (if (= 0 axis)
+                                   (list scene-x end-y)
+                                   (list end-x scene-x))
+              do (with-finalizing ((p1 (apply #'q+:make-qpointf start-coords))
+                                   (p2 (apply #'q+:make-qpointf end-coords)))
+                   (q+:draw-line painter p1 p2)))))
+    (draw-lines (scene->map-unit (ceiling start-x))
+                (scene->map-unit (floor end-x)) 0)
+    (draw-lines (scene->map-unit (ceiling start-y))
+                (scene->map-unit (floor end-y)) 1)))
+
 (define-override (map-scene draw-background) (painter rect)
   (q+:fill-rect painter rect (q+:qt.black))
-  (with-finalizing ((color (q+:make-qcolor 40 40 40)))
-    (q+:set-pen painter color)
-    ;; draw grid
-    (loop for x from (ceiling (q+:left rect)) upto (floor (q+:right rect)) do
-         (with-finalizing ((p1 (q+:make-qpointf x (q+:top rect)))
-                           (p2 (q+:make-qpointf x (q+:bottom rect))))
-           (q+:draw-line painter p1 p2)))
-    (loop for y from (ceiling (q+:top rect)) upto (floor (q+:bottom rect)) do
-         (with-finalizing ((p1 (q+:make-qpointf (q+:left rect) y))
-                           (p2 (q+:make-qpointf (q+:right rect) y)))
-           (q+:draw-line painter p1 p2)))))
+  (let ((grid-step 64))
+    (with-finalizing ((color (q+:make-qcolor 40 40 40)))
+      (q+:set-pen painter color)
+      (draw-grid painter (q+:left rect) (q+:right rect)
+                 (q+:top rect) (q+:bottom rect) grid-step))))
 
 (defun make-linedef-loop (p1 p2 p3 &rest points)
   (let ((start-points (append (list p1 p2 p3) points))
