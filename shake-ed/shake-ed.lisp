@@ -26,6 +26,19 @@
           (values (vx color) (vy color) (vz color)))
     qcolor))
 
+(defun scene->map-unit (x)
+  "Convert a scene coordinate into a map unit. Each unit in scene coordinates
+  consists of 64 map units."
+  (round (* 64d0 x)))
+
+(defun map->scene-unit (x)
+  "Divides a map unit by 64 to obtain the scene coordinate."
+  (/ x 64d0))
+
+(defun snap-scene-to-map-unit (x)
+  "Snaps the scene coordinate to match with nearest map unit."
+  (map->scene-unit (scene->map-unit x)))
+
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
    (edit-mode :initform :mode-brush-create)
@@ -133,7 +146,7 @@
                                      (q+:qt.control-modifier))))
     (if snap-to-grid-p
         (v (round x) (round y))
-        (v x y))))
+        (v (snap-scene-to-map-unit x) (snap-scene-to-map-unit y)))))
 
 (defun add-or-update-rect (map-scene scene-pos)
   (with-slots (draw-info graphics-item-brush-map) map-scene
@@ -248,7 +261,10 @@
 
 (define-slot (main mouse-scene-pos) ((x double) (y double))
   (declare (connected scene (mouse-scene-pos double double)))
-  (q+:show-message (q+:status-bar main) (format nil "Pos ~,2F, ~,2F" x y)))
+  (let ((map-x (scene->map-unit x))
+        (map-y (scene->map-unit y)))
+    (q+:show-message (q+:status-bar main)
+                     (format nil "Pos ~,2S, ~,2S" map-x map-y))))
 
 (define-subwidget (main map-view) (q+:make-qgraphicsview)
   (with-finalizing ((cursor (q+:make-qcursor (q+:qt.cross-cursor))))
