@@ -66,10 +66,15 @@
 (define-override (map-scene draw-background) (painter rect)
   (q+:fill-rect painter rect (q+:qt.black))
   (let ((grid-step 64))
-    (with-finalizing ((color (q+:make-qcolor 40 40 40)))
+    (with-finalizing ((color (q+:make-qcolor 40 40 40))
+                      (axis-color (q+:make-qcolor 60 60 0)))
       (q+:set-pen painter color)
       (draw-grid painter (q+:left rect) (q+:right rect)
-                 (q+:top rect) (q+:bottom rect) grid-step))))
+                 (q+:top rect) (q+:bottom rect) grid-step)
+      ;; Draw axis in different color.
+      (q+:set-pen painter axis-color)
+      (draw-grid painter (q+:left rect) (q+:right rect) 0 0 grid-step)
+      (draw-grid painter 0 0 (q+:top rect) (q+:bottom rect) grid-step))))
 
 (defun make-linedef-loop (p1 p2 p3 &rest points)
   (let ((start-points (append (list p1 p2 p3) points))
