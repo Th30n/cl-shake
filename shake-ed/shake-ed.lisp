@@ -271,6 +271,35 @@
     (setf view-normals-p (not view-normals-p))
     (q+:update scene (q+:scene-rect scene))))
 
+(define-widget map-view (QGraphicsView)
+  ((zoom-lvl :initform 4)))
+
+(defun map-view-scale-zoom (map-view)
+  (with-slots (zoom-lvl) map-view
+    (let* ((max-zoom 8) (min-zoom 1) (initial-scale 50)
+           (scale (* initial-scale
+                     (/ zoom-lvl (* 0.5 (1+ (- max-zoom min-zoom)))))))
+      (q+:reset-transform map-view)
+      (q+:scale map-view scale scale)
+      (format t "Zooming to ~S ~S~%" zoom-lvl scale))))
+
+(define-override (map-view wheel-event) (event)
+  (let ((zoom-p (and (enum-equal (q+:modifiers event)
+                                 (q+:qt.control-modifier))
+                     (enum-equal (q+:orientation event)
+                                 (q+:qt.vertical))))
+        (max-zoom 8) (min-zoom 1))
+    (if zoom-p
+        ;; zoom
+        (let ((prev-zoom-lvl zoom-lvl))
+          (setf zoom-lvl (clamp (if (plusp (q+:delta event))
+                                    (1+ zoom-lvl)
+                                    (1- zoom-lvl))
+                                min-zoom max-zoom))
+          (unless (= prev-zoom-lvl zoom-lvl)
+            (map-view-scale-zoom map-view)))
+        (stop-overriding))))
+
 (define-widget main (QMainWindow)
   ((map-file :initform nil)))
 
@@ -283,12 +312,12 @@
     (q+:show-message (q+:status-bar main)
                      (format nil "Pos ~,2S, ~,2S" map-x map-y))))
 
-(define-subwidget (main map-view) (q+:make-qgraphicsview)
+(define-subwidget (main map-view) (make-instance 'map-view)
   (with-finalizing ((cursor (q+:make-qcursor (q+:qt.cross-cursor))))
     (setf (q+:minimum-size map-view) (values 200 200)
           (q+:mouse-tracking map-view) t
           (q+:cursor map-view) cursor))
-  (q+:scale map-view 25 25)
+  (map-view-scale-zoom map-view)
   (with-finalizing ((rect (q+:make-qrectf -200 -200 400 400))
                     (brush (q+:make-qbrush (q+:qt.black) (q+:qt.solid-pattern))))
     (setf (q+:scene-rect scene) rect

@@ -25,6 +25,7 @@
                 #:vnormalize
                 #:v+ #:v- #:vscale)
   (:import-from #:alexandria
+                #:clamp
                 #:emptyp
                 #:ends-with-subseq
                 #:hash-table-values
