@@ -39,6 +39,11 @@
   "Snaps the scene coordinate to match with nearest map unit."
   (map->scene-unit (scene->map-unit x)))
 
+(defun snap-scene-to-grid (x grid-step)
+  "Snaps the scene coordinate to grid designated in map units."
+  (let ((map-x (scene->map-unit x)))
+    (map->scene-unit (* grid-step (round map-x grid-step)))))
+
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
    (edit-mode :initform :mode-brush-create)
@@ -161,14 +166,14 @@
 
 (define-signal (map-scene mouse-scene-pos) (double double))
 
-(defun scene-pos-from-mouse (mouse-event)
+(defun scene-pos-from-mouse (mouse-event grid-step)
   (let* ((scene-pos (q+:scene-pos mouse-event))
          (x (q+:x scene-pos))
          (y (q+:y scene-pos))
          (snap-to-grid-p (enum-equal (q+:modifiers mouse-event)
                                      (q+:qt.control-modifier))))
     (if snap-to-grid-p
-        (v (round x) (round y))
+        (v (snap-scene-to-grid x grid-step) (snap-scene-to-grid y grid-step))
         (v (snap-scene-to-map-unit x) (snap-scene-to-map-unit y)))))
 
 (defun add-or-update-rect (map-scene scene-pos)
@@ -234,7 +239,8 @@
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
-       (add-or-update-brush map-scene (scene-pos-from-mouse mouse-event)))
+       (add-or-update-brush map-scene
+                            (scene-pos-from-mouse mouse-event grid-step)))
        ;;(add-or-update-rect map-scene (scene-pos-from-mouse mouse-event)))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
        (let* ((view (car (q+:views map-scene)))
@@ -247,7 +253,7 @@
 
 (define-override (map-scene mouse-move-event) (mouse-event)
   (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
-    (let ((scene-pos (scene-pos-from-mouse mouse-event)))
+    (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
       (with-finalizing ((scene-point (v2->qpoint scene-pos)))
         (update-brush-drawing draw-info scene-pos))))
         ;; (update-rectitem draw-info scene-point))))
