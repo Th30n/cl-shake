@@ -297,7 +297,13 @@
                                     (1- zoom-lvl))
                                 min-zoom max-zoom))
           (unless (= prev-zoom-lvl zoom-lvl)
-            (map-view-scale-zoom map-view)))
+            (if (plusp zoom-lvl)
+                ;; Zoom in towards mouse position.
+                (with-finalizing ((scene-pos
+                                   (q+:map-to-scene map-view (q+:pos event))))
+                  (map-view-scale-zoom map-view)
+                  (q+:center-on map-view scene-pos))
+                (map-view-scale-zoom map-view))))
         (stop-overriding))))
 
 (define-widget main (QMainWindow)
