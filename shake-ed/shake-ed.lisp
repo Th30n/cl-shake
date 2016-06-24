@@ -43,7 +43,13 @@
   ((draw-info :initform nil)
    (edit-mode :initform :mode-brush-create)
    (graphics-item-brush-map :initform (make-hash-table))
-   (view-normals-p :initform t)))
+   (view-normals-p :initform t)
+   (grid-step :initform 64)))
+
+(defun scale-grid-step (map-scene &key (scale 2))
+  (with-slots (grid-step) map-scene
+    (setf grid-step (clamp (round (* scale grid-step)) 1 256))
+    (q+:update map-scene (q+:scene-rect map-scene))))
 
 (defun draw-grid (painter start-x end-x start-y end-y grid-step)
   (flet ((draw-lines (start end axis)
@@ -57,24 +63,24 @@
                                    (list end-x scene-x))
               do (with-finalizing ((p1 (apply #'q+:make-qpointf start-coords))
                                    (p2 (apply #'q+:make-qpointf end-coords)))
-                   (q+:draw-line painter p1 p2)))))
-    (draw-lines (scene->map-unit (ceiling start-x))
-                (scene->map-unit (floor end-x)) 0)
-    (draw-lines (scene->map-unit (ceiling start-y))
-                (scene->map-unit (floor end-y)) 1)))
+                   (q+:draw-line painter p1 p2))))
+         (grid-end (scene-pos round-fun)
+           (* grid-step (funcall round-fun
+                                 (scene->map-unit scene-pos) grid-step))))
+    (draw-lines (grid-end start-x #'ceiling) (grid-end end-x #'floor) 0)
+    (draw-lines (grid-end start-y #'ceiling) (grid-end end-y #'floor) 1)))
 
 (define-override (map-scene draw-background) (painter rect)
   (q+:fill-rect painter rect (q+:qt.black))
-  (let ((grid-step 64))
-    (with-finalizing ((color (q+:make-qcolor 40 40 40))
-                      (axis-color (q+:make-qcolor 60 60 0)))
-      (q+:set-pen painter color)
-      (draw-grid painter (q+:left rect) (q+:right rect)
-                 (q+:top rect) (q+:bottom rect) grid-step)
-      ;; Draw axis in different color.
-      (q+:set-pen painter axis-color)
-      (draw-grid painter (q+:left rect) (q+:right rect) 0 0 grid-step)
-      (draw-grid painter 0 0 (q+:top rect) (q+:bottom rect) grid-step))))
+  (with-finalizing ((color (q+:make-qcolor 40 40 40))
+                    (axis-color (q+:make-qcolor 60 60 0)))
+    (q+:set-pen painter color)
+    (draw-grid painter (q+:left rect) (q+:right rect)
+               (q+:top rect) (q+:bottom rect) grid-step)
+    ;; Draw axis in different color.
+    (q+:set-pen painter axis-color)
+    (draw-grid painter (q+:left rect) (q+:right rect) 0 0 grid-step)
+    (draw-grid painter 0 0 (q+:top rect) (q+:bottom rect) grid-step)))
 
 (defun make-linedef-loop (p1 p2 p3 &rest points)
   (let ((start-points (append (list p1 p2 p3) points))
@@ -277,8 +283,10 @@
 (defun map-view-scale-zoom (map-view)
   (with-slots (zoom-lvl) map-view
     (let* ((max-zoom 8) (min-zoom 1) (initial-scale 50)
-           (scale (* initial-scale
-                     (/ zoom-lvl (* 0.5 (1+ (- max-zoom min-zoom)))))))
+           (scale (if (> 4 zoom-lvl)
+                      (* initial-scale
+                         (/ zoom-lvl (* 0.5 (1+ (- max-zoom min-zoom)))))
+                      (* initial-scale (- zoom-lvl 3)))))
       (q+:reset-transform map-view)
       (q+:scale map-view scale scale)
       (format t "Zooming to ~S ~S~%" zoom-lvl scale))))
@@ -452,7 +460,9 @@
 (define-menu (main Edit)
   (:item ("Color" (c)) (edit-color main))
   (:item ("Rotate" (r)) (rotate-selected scene))
-  (:item ("Delete" (backspace)) (remove-selected scene)))
+  (:item ("Delete" (backspace)) (remove-selected scene))
+  (:item ("Increase Grid" (])) (scale-grid-step scene :scale 0.5))
+  (:item ("Decrease Grid" ([)) (scale-grid-step scene :scale 2)))
 
 (define-menu (main View)
   (:item "Normals" (toggle-view-normals scene)))
