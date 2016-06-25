@@ -56,9 +56,9 @@ http://slproweb.com/products/Win32OpenSSL.html.
 The SDL2 can be downloaded from https://www.libsdl.org/download-2.0.php.
 
 The Qt 4.8 can be downloaded from
-https://download.qt.io/archive/qt/4.8/. Unfortunately, the 64bit version does
-not have a prebuilt binary. You will need to download the source and build it
-yourself for 64bit Windows. Build instructions are here:
+https://download.qt.io/official_releases/qt/4.8/. Unfortunately, the 64bit
+version does not have a prebuilt binary. You will need to download the source
+and build it yourself for 64bit Windows. Build instructions are here:
 http://doc.qt.io/qt-4.8/install-win.html.
 
 All of the libraries and `/bin/` directory of Qt need to be on `PATH`
