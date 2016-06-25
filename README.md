@@ -46,8 +46,9 @@ Simple calls to your favorite package manager should be enough.
 
 ## Windows
 
-As usual, setting up libraries on Windows is harder than on GNU/Linux. For
-64bit Windows, libraries need to be compiled as such.
+As usual, setting up libraries on Windows is harder than on GNU/Linux. If you
+installed a 64bit Common Lisp compiler, libraries need to be compiled for
+64bit.
 
 The unofficial OpenSSL binary can be downloaded from
 http://slproweb.com/products/Win32OpenSSL.html.
