@@ -119,15 +119,28 @@
               (draw-linedef-normal line painter)))))))
   (stop-overriding))
 
+(defun setup-graphicsitem (item)
+  (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                     (pen (q+:make-qpen color)))
+    (setf (q+:width-f pen) (map->scene-unit 2)
+          (q+:pen item) pen
+          (q+:flag item) (values (q+:qgraphicsitem.item-is-selectable) t)))
+  item)
+
+(defun new-pointitem (center &key radius)
+  "Return a QGraphicsEllipseItem representing a point."
+  (let* ((r (if radius radius (map->scene-unit 2)))
+         (x (- (q+:x center) r))
+         (y (- (q+:y center) r))
+         (item (q+:make-qgraphicsellipseitem x y (* 2 r) (* 2 r))))
+    (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
+                       (brush (q+:make-qbrush color (q+:qt.solid-pattern))))
+      (setf (q+:brush (setup-graphicsitem item)) brush))
+    item))
+
 (defun new-lineitem (p1 p2)
   (with-finalizing ((new-line (q+:make-qlinef p1 p2)))
-    (let ((item (q+:make-qgraphicslineitem new-line)))
-      (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
-                         (pen (q+:make-qpen color)))
-        (setf (q+:width-f pen) 0.05
-              (q+:pen item) pen
-              (q+:flag item) (values (q+:qgraphicsitem.item-is-selectable) t)))
-      item)))
+    (setup-graphicsitem (q+:make-qgraphicslineitem new-line))))
 
 (defun v2->qpoint (vector-2d)
   (q+:make-qpointf (vx vector-2d) (vy vector-2d)))
@@ -192,47 +205,69 @@
             (q+:add-item map-scene (car draw-info)))))))
 
 (defun update-brush-drawing (draw-info scene-pos)
-  (let ((line-item (second draw-info))
+  (let ((group (first draw-info))
+        (item (second draw-info))
         (last-pos (lastcar draw-info)))
-    (q+:set-line line-item
-                 (vx last-pos) (vy last-pos)
-                 (vx scene-pos) (vy scene-pos))))
+    (qtypecase item
+      (qgraphicsellipseitem
+       (unless (v= last-pos scene-pos)
+         (q+:remove-from-group group item)
+         (finalize item)
+         (with-finalizing ((start-point (v2->qpoint last-pos))
+                           (end-point (v2->qpoint scene-pos)))
+           (let ((line-item (new-lineitem start-point end-point)))
+             (setf (second draw-info) line-item)
+             (q+:add-to-group group line-item)))))
+      (qgraphicslineitem
+       (if (not (v= last-pos scene-pos))
+           (q+:set-line item
+                        (vx last-pos) (vy last-pos)
+                        (vx scene-pos) (vy scene-pos))
+           (progn
+             (q+:remove-from-group group item)
+             (finalize item)
+             (with-finalizing ((point (v2->qpoint last-pos)))
+               (let ((point-item (new-pointitem point)))
+                 (setf (second draw-info) point-item)
+                 (q+:add-to-group group point-item)))))))))
+
+(defun length>= (n sequence) (>= (length sequence) n))
 
 (defun add-or-update-brush (map-scene scene-pos)
   (with-slots (draw-info graphics-item-brush-map) map-scene
     (with-finalizing ((scene-point (v2->qpoint scene-pos)))
       (if draw-info
           (progn
-            (let ((first-pos (third draw-info)))
-              (if (v= scene-pos first-pos)
-                  ;; finish line loop
-                  (let* ((group (first draw-info))
-                         (points (cddr draw-info))
-                         (linedefs (apply #'make-linedef-loop points)))
-                    (dolist (child (q+:child-items group))
-                      (q+:remove-from-group group child)
-                      (finalize child))
-                    (dolist (line linedefs)
-                      (q+:add-to-group group (linedef->lineitem line)))
-                    (setf (gethash group graphics-item-brush-map)
-                          (sbrush:make-brush :lines linedefs)
-                          draw-info nil)
-                    (q+:update map-scene (q+:scene-rect map-scene)))
-                  ;; end current line and continue with new
-                  (let* ((group (first draw-info))
-                         (points (cddr draw-info))
-                         (new-line-item (new-lineitem scene-point scene-point)))
-                    (update-brush-drawing draw-info scene-pos)
-                    (q+:add-to-group group new-line-item)
-                    (setf draw-info
-                          (append (list group new-line-item) points
-                                  (list scene-pos)))))))
+            (let ((first-pos (third draw-info))
+                  (group (first draw-info))
+                  (points (cddr draw-info)))
+              (cond
+                ((and (v= scene-pos first-pos) (length>= 3 points))
+                 ;; finish line loop
+                 (let ((linedefs (apply #'make-linedef-loop points)))
+                   (dolist (child (q+:child-items group))
+                     (q+:remove-from-group group child)
+                     (finalize child))
+                   (dolist (line linedefs)
+                     (q+:add-to-group group (linedef->lineitem line)))
+                   (setf (gethash group graphics-item-brush-map)
+                         (sbrush:make-brush :lines linedefs)
+                         draw-info nil)
+                   (q+:update map-scene (q+:scene-rect map-scene))))
+                ;; end current line and continue with new
+                ((not (v= scene-pos first-pos))
+                 (let ((new-point-item (new-pointitem scene-point)))
+                   (update-brush-drawing draw-info scene-pos)
+                   (q+:add-to-group group new-point-item)
+                   (setf draw-info
+                         (append (list group new-point-item) points
+                                 (list scene-pos))))))))
           (progn
             (let ((group (q+:make-qgraphicsitemgroup))
-                  (line-item (new-lineitem scene-point scene-point)))
-              (setf draw-info (list group line-item scene-pos))
+                  (point-item (new-pointitem scene-point)))
+              (setf draw-info (list group point-item scene-pos))
               (q+:set-flag group (q+:qgraphicsitem.item-is-selectable) t)
-              (q+:add-to-group group line-item)
+              (q+:add-to-group group point-item)
               (q+:add-item map-scene group)))))))
 
 (define-override (map-scene mouse-press-event) (mouse-event)
@@ -241,7 +276,6 @@
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
        (add-or-update-brush map-scene
                             (scene-pos-from-mouse mouse-event grid-step)))
-       ;;(add-or-update-rect map-scene (scene-pos-from-mouse mouse-event)))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
        (let* ((view (car (q+:views map-scene)))
               (item (q+:item-at map-scene (q+:scene-pos mouse-event)
@@ -256,7 +290,6 @@
     (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
       (with-finalizing ((scene-point (v2->qpoint scene-pos)))
         (update-brush-drawing draw-info scene-pos))))
-        ;; (update-rectitem draw-info scene-point))))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
