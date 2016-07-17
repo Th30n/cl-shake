@@ -44,6 +44,17 @@
   (let ((map-x (scene->map-unit x)))
     (map->scene-unit (* grid-step (round map-x grid-step)))))
 
+(defstruct mbrush
+  "Map representation of SBRUSH:BRUSH."
+  (brush nil :type sbrush:brush)
+  (rotation 0d0 :type double-float))
+
+(defun mbrush-lines (mbrush)
+  "Returns LINEDEFS after applying transformations from MBRUSH."
+  (sbrush:brush-lines
+   (sbrush::brush-rotate (mbrush-brush mbrush)
+                         (* deg->rad (mbrush-rotation mbrush)))))
+
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
    (edit-mode :initform :mode-brush-create)
@@ -114,8 +125,8 @@
       (q+:set-pen painter color)
       (let ((items (q+:items map-scene)))
         (dolist (item items)
-          (when-let ((brush (gethash item graphics-item-brush-map)))
-            (dolist (line (sbrush:brush-lines brush))
+          (when-let ((mbrush (gethash item graphics-item-brush-map)))
+            (dolist (line (mbrush-lines mbrush))
               (draw-linedef-normal line painter)))))))
   (stop-overriding))
 
@@ -189,21 +200,6 @@
         (v (snap-scene-to-grid x grid-step) (snap-scene-to-grid y grid-step))
         (v (snap-scene-to-map-unit x) (snap-scene-to-map-unit y)))))
 
-(defun add-or-update-rect (map-scene scene-pos)
-  (with-slots (draw-info graphics-item-brush-map) map-scene
-    (with-finalizing ((scene-point (v2->qpoint scene-pos)))
-      (if draw-info
-          (progn
-            (let ((linedefs (update-rectitem draw-info scene-point)))
-              (setf (gethash (car draw-info) graphics-item-brush-map)
-                    (sbrush:make-brush :lines linedefs))
-              (setf draw-info nil)
-              (q+:update map-scene (q+:scene-rect map-scene))))
-          (progn
-            (setf draw-info
-                  (cons (new-rectitem scene-point scene-point) scene-pos))
-            (q+:add-item map-scene (car draw-info)))))))
-
 (defun update-brush-drawing (draw-info scene-pos)
   (let ((group (first draw-info))
         (item (second draw-info))
@@ -251,7 +247,7 @@
                    (dolist (line linedefs)
                      (q+:add-to-group group (linedef->lineitem line)))
                    (setf (gethash group graphics-item-brush-map)
-                         (sbrush:make-brush :lines linedefs)
+                         (make-mbrush :brush (sbrush:make-brush :lines linedefs))
                          draw-info nil)
                    (q+:update map-scene (q+:scene-rect map-scene))))
                 ;; end current line and continue with new
@@ -288,8 +284,7 @@
 (define-override (map-scene mouse-move-event) (mouse-event)
   (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
     (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
-      (with-finalizing ((scene-point (v2->qpoint scene-pos)))
-        (update-brush-drawing draw-info scene-pos))))
+      (update-brush-drawing draw-info scene-pos)))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
@@ -395,8 +390,12 @@
 
 (defun write-map (stream scene)
   (with-slots (graphics-item-brush-map) scene
-    (let ((brushes (hash-table-values graphics-item-brush-map)))
-      (sbsp:write-map brushes stream))))
+    (let ((mbrushes (hash-table-values graphics-item-brush-map)))
+      (sbsp:write-map
+       (mapcar (lambda (mbrush)
+                 (sbrush::brush-rotate (mbrush-brush mbrush)
+                                       (* deg->rad (mbrush-rotation mbrush))))
+               mbrushes) stream))))
 
 (defun read-map (stream scene)
   (clear-map scene)
@@ -406,7 +405,8 @@
         (let ((item (make-itemgroup-from-lines (sbrush:brush-lines brush))))
           (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) t)
           (q+:add-item scene item)
-          (setf (gethash item graphics-item-brush-map) brush))))))
+          (setf (gethash item graphics-item-brush-map)
+                (make-mbrush :brush brush)))))))
 
 (defun save-map (w &optional filename)
   (let ((filepath filename))
@@ -471,7 +471,7 @@
 
 (defun edit-color (w)
   (with-slots-bound (w main)
-    (when-let* ((brushes (selected-brushes scene))
+    (when-let* ((brushes (mapcar #'mbrush-brush (selected-brushes scene)))
                 (old-color (sbsp::linedef-color
                             (car (sbrush:brush-lines (car brushes))))))
       (with-finalizing* ((qcolor (vector->qcolor old-color))
@@ -484,17 +484,14 @@
   (with-slots (graphics-item-brush-map) scene
     (when-let ((items (q+:selected-items scene)))
       (dolist (item items)
-        (let* ((brush (gethash item graphics-item-brush-map))
-               (old-deg (q+:rotation item))
+        (let* ((old-deg (q+:rotation item))
                (new-deg (+ old-deg 10))
                (rounds (floor new-deg 360))
                (clamped-deg (- new-deg (* rounds 360))))
-          (format t "~S From ~S To ~S Rounds ~S~%"
-                  item old-deg clamped-deg rounds)
           (q+:set-transform-origin-point item (q+:center (q+:bounding-rect item)))
           (q+:set-rotation item clamped-deg)
-          (setf (gethash item graphics-item-brush-map)
-                (sbrush::brush-rotate brush (* deg->rad 10))))))))
+          (setf (mbrush-rotation (gethash item graphics-item-brush-map))
+                new-deg))))))
 
 (define-menu (main Edit)
   (:item ("Color" (c)) (edit-color main))
