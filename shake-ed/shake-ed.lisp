@@ -17,6 +17,9 @@
 (in-package #:shake-ed)
 (in-readtable :qtools)
 
+(defconstant +initial-scale+ 50d0)
+(defconstant +initial-grid-step+ 64)
+
 (defun qcolor->vector (qcolor)
   (v (q+:red-f qcolor) (q+:green-f qcolor) (q+:blue-f qcolor)))
 
@@ -60,12 +63,15 @@
    (edit-mode :initform :mode-brush-create)
    (graphics-item-brush-map :initform (make-hash-table))
    (view-normals-p :initform t)
-   (grid-step :initform 64)))
+   (grid-step :initform +initial-grid-step+)))
+
+(define-signal (map-scene grid-step-changed) (int))
 
 (defun scale-grid-step (map-scene &key (scale 2))
   (with-slots (grid-step) map-scene
     (setf grid-step (clamp (round (* scale grid-step)) 1 256))
-    (q+:update map-scene (q+:scene-rect map-scene))))
+    (q+:update map-scene (q+:scene-rect map-scene))
+    (signal! map-scene (grid-step-changed int) grid-step)))
 
 (defun draw-grid (painter start-x end-x start-y end-y grid-step)
   (flet ((draw-lines (start end axis)
@@ -314,23 +320,23 @@
 (define-widget map-view (QGraphicsView)
   ((zoom-lvl :initform 4)))
 
+(define-signal (map-view zoom-lvl-changed) (double))
+
 (defun map-view-scale-zoom (map-view)
   (with-slots (zoom-lvl) map-view
-    (let* ((max-zoom 8) (min-zoom 1) (initial-scale 50)
-           (scale (if (> 4 zoom-lvl)
-                      (* initial-scale
-                         (/ zoom-lvl (* 0.5 (1+ (- max-zoom min-zoom)))))
-                      (* initial-scale (- zoom-lvl 3)))))
+    (let ((scale (if (>= 4 zoom-lvl)
+                     (* +initial-scale+ (/ zoom-lvl 4))
+                     (* 2d0 +initial-scale+ (- zoom-lvl 4)))))
       (q+:reset-transform map-view)
       (q+:scale map-view scale scale)
-      (format t "Zooming to ~S ~S~%" zoom-lvl scale))))
+      (signal! map-view (zoom-lvl-changed double) scale))))
 
 (define-override (map-view wheel-event) (event)
   (let ((zoom-p (and (enum-equal (q+:modifiers event)
                                  (q+:qt.control-modifier))
                      (enum-equal (q+:orientation event)
                                  (q+:qt.vertical))))
-        (max-zoom 8) (min-zoom 1))
+        (max-zoom 20) (min-zoom 1))
     (if zoom-p
         ;; zoom
         (let ((prev-zoom-lvl zoom-lvl))
@@ -348,8 +354,24 @@
                 (map-view-scale-zoom map-view))))
         (stop-overriding))))
 
+(defstruct status-info
+  (map-pos (cons 0 0))
+  (zoom-lvl +initial-scale+)
+  (grid-step +initial-grid-step+))
+
 (define-widget main (QMainWindow)
-  ((map-file :initform nil)))
+  ((map-file :initform nil)
+   (status-info :initform (make-status-info))))
+
+(defun show-status-info (main)
+  (with-slots (status-info) main
+    (let ((map-x (car (status-info-map-pos status-info)))
+          (map-y (cdr (status-info-map-pos status-info))))
+      (q+:show-message (q+:status-bar main)
+                       (format nil "Pos ~4D, ~4D Zoom: ~,2F% Grid: ~3D"
+                               map-x map-y
+                               (status-info-zoom-lvl status-info)
+                               (status-info-grid-step status-info))))))
 
 (define-subwidget (main scene) (make-instance 'map-scene))
 
@@ -357,8 +379,8 @@
   (declare (connected scene (mouse-scene-pos double double)))
   (let ((map-x (scene->map-unit x))
         (map-y (scene->map-unit y)))
-    (q+:show-message (q+:status-bar main)
-                     (format nil "Pos ~,2S, ~,2S" map-x map-y))))
+    (setf (status-info-map-pos status-info) (cons map-x map-y))
+    (show-status-info main)))
 
 (define-subwidget (main map-view) (make-instance 'map-view)
   (with-finalizing ((cursor (q+:make-qcursor (q+:qt.cross-cursor))))
@@ -371,6 +393,16 @@
     (setf (q+:scene-rect scene) rect
           (q+:background-brush scene) brush))
   (setf (q+:scene map-view) scene))
+
+(define-slot (main zoom-lvl-changed) ((zoom-lvl double))
+  (declare (connected map-view (zoom-lvl-changed double)))
+  (setf (status-info-zoom-lvl status-info) zoom-lvl)
+  (show-status-info main))
+
+(define-slot (main grid-step-changed) ((grid-step int))
+  (declare (connected scene (grid-step-changed int)))
+  (setf (status-info-grid-step status-info) grid-step)
+  (show-status-info main))
 
 (define-subwidget (main layout) (q+:make-qvboxlayout)
   (let ((widget (q+:make-qwidget)))
@@ -506,7 +538,7 @@
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd")
   (q+:resize main 800 600)
-  (q+:show-message (q+:status-bar main) "Status"))
+  (show-status-info main))
 
 (defun main ()
   (let ((gl-format (q+:make-qglformat)))
