@@ -104,8 +104,7 @@
     (when (and
            ;; Comparing if t-split is within t-start and t-end with < is
            ;; not good enough for floats.
-           (not (or (double-float-rel-eq t-split t-start)
-                    (double-float-rel-eq t-split t-end)))
+           (not (or (double= t-split t-start) (double= t-split t-end)))
            (< t-start t-split t-end))
         (let ((l1 (copy-lineseg lineseg))
               (l2 (copy-lineseg lineseg)))
@@ -118,7 +117,7 @@
   :BACK or :FRONT as the primary value and distance as the second."
   (let ((d (vdot (lineseg-normal lineseg)
                  (v- point (lineseg-start lineseg)))))
-    (values (if (or (plusp d) (double-float-rel-eq d 0d0))
+    (values (if (or (plusp d) (double= d 0d0))
                 :front
                 :back)
             d)))
@@ -152,7 +151,7 @@
     (if (null splitted)
         ;; no split
         (progn
-          (when (double-float-rel-eq num 0d0)
+          (when (double= num 0d0)
             ;; Points are collinear, use other end for numerator.
             (let ((n (linedef-normal splitter))
                   (sl-vec (v- (lineseg-end seg) (linedef-start splitter))))
@@ -175,10 +174,10 @@
         (on-splitter (list splitter)))
     (dolist (seg linesegs)
       (multiple-value-bind (num den) (line-intersect-ratio splitter seg)
-        (if (double-float-rel-eq den 0d0)
+        (if (double= den 0d0)
             ;; parallel lines
             (cond
-              ((double-float-rel-eq num 0d0)
+              ((double= num 0d0)
                ;; on the same line
                (push (lineseg-orig-line seg) on-splitter)
                (if (v= (linedef-normal splitter)

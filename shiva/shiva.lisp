@@ -287,8 +287,7 @@ with ROWS."
          (list 0d0 0d0 (- (/ fpn fmn)) (/ (* -2d0 far near) fmn))
          (list 0d0 0d0 -1d0 0d0))))
 
-(defun double-float-rel-eq
-    (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
+(defun double= (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
   "Compare floating points using epsilon difference and fallback to relative
 epsilon. Doesn't handle infinities."
   (declare (type double-float a b))
@@ -297,7 +296,7 @@ epsilon. Doesn't handle infinities."
     (or (<= diff epsilon) ;; Needed when near zero.
         (<= diff (* max rel-epsilon)))))
 
-(defun v= (v1 v2 &key (test #'double-float-rel-eq))
+(defun v= (v1 v2 &key (test #'double=))
   "Perform a comparison of two vectors."
   (let ((n1 (array-dimension v1 0))
         (n2 (array-dimension v2 0)))
