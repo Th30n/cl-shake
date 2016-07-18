@@ -99,12 +99,19 @@
     (let ((t-diff (- (lineseg-t-end lineseg) (lineseg-t-start lineseg))))
       (setf t-split (+ (lineseg-t-start lineseg)
                        (* t-split t-diff)))))
-  (when (< (lineseg-t-start lineseg) t-split (lineseg-t-end lineseg))
-    (let ((l1 (copy-lineseg lineseg))
-          (l2 (copy-lineseg lineseg)))
-      (setf (lineseg-t-end l1) t-split)
-      (setf (lineseg-t-start l2) t-split)
-      (cons l1 l2))))
+  (let ((t-start (lineseg-t-start lineseg))
+        (t-end (lineseg-t-end lineseg)))
+    (when (and
+           ;; Comparing if t-split is within t-start and t-end with < is
+           ;; not good enough for floats.
+           (not (or (double-float-rel-eq t-split t-start)
+                    (double-float-rel-eq t-split t-end)))
+           (< t-start t-split t-end))
+        (let ((l1 (copy-lineseg lineseg))
+              (l2 (copy-lineseg lineseg)))
+          (setf (lineseg-t-end l1) t-split)
+          (setf (lineseg-t-start l2) t-split)
+          (cons l1 l2)))))
 
 (defun determine-side (lineseg point)
   "Determine on which side of a LINESEG is the given POINT located.  Returns
