@@ -21,7 +21,7 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("sdl2" "alexandria" "shiva" "shake-bspc" "shake-gl")
+  :depends-on ("sdl2" "alexandria" "shiva" "shake-bspc" "shake-gl" "shake-utils")
   :serial t
   :components ((:file "package")
                (:file "world")

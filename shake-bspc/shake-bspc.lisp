@@ -95,22 +95,20 @@
   RELATIVE-T is not NIL, T-SPLIT parameter is treated relative to the
   segment."
   (declare (type lineseg lineseg) (type double-float t-split))
-  (when relative-t
-    (let ((t-diff (- (lineseg-t-end lineseg) (lineseg-t-start lineseg))))
-      (setf t-split (+ (lineseg-t-start lineseg)
-                       (* t-split t-diff)))))
-  (let ((t-start (lineseg-t-start lineseg))
-        (t-end (lineseg-t-end lineseg)))
+  (with-struct (lineseg- t-start t-end) lineseg
+    (when relative-t
+      (let ((t-diff (- t-end t-start)))
+        (setf t-split (+ t-start (* t-split t-diff)))))
     (when (and
            ;; Comparing if t-split is within t-start and t-end with < is
            ;; not good enough for floats.
            (not (or (double= t-split t-start) (double= t-split t-end)))
            (< t-start t-split t-end))
-        (let ((l1 (copy-lineseg lineseg))
-              (l2 (copy-lineseg lineseg)))
-          (setf (lineseg-t-end l1) t-split)
-          (setf (lineseg-t-start l2) t-split)
-          (cons l1 l2)))))
+      (let ((l1 (copy-lineseg lineseg))
+            (l2 (copy-lineseg lineseg)))
+        (setf (lineseg-t-end l1) t-split)
+        (setf (lineseg-t-start l2) t-split)
+        (cons l1 l2)))))
 
 (defun determine-side (lineseg point)
   "Determine on which side of a LINESEG is the given POINT located.  Returns
@@ -226,9 +224,7 @@
   (make-lineseg :orig-line linedef))
 
 (defun write-linedef (linedef stream)
-  (let ((start (linedef-start linedef))
-        (end (linedef-end linedef))
-        (color (linedef-color linedef)))
+  (with-struct (linedef- start end color) linedef
     (format stream "~S ~S ~S ~S~%~S ~S ~S~%"
             (vx start) (vy start) (vx end) (vy end)
             (vx color) (vy color) (vz color))))
@@ -240,10 +236,8 @@
     (make-linedef :start start :end end :color color)))
 
 (defun write-lineseg (lineseg stream)
-  (let ((linedef (lineseg-orig-line lineseg))
-        (t-start (lineseg-t-start lineseg))
-        (t-end (lineseg-t-end lineseg)))
-    (write-linedef linedef stream)
+  (with-struct (lineseg- orig-line t-start t-end) lineseg
+    (write-linedef orig-line stream)
     (format stream "~S ~S~%" t-start t-end)))
 
 (defun read-lineseg (stream)
@@ -257,15 +251,17 @@
     ((node-p bsp)
      ;; preorder traverse write
      (format stream "~S~%" :node)
-     (write-lineseg (node-line bsp) stream)
-     (write-bsp (node-front bsp) stream)
-     (write-bsp (node-back bsp) stream))
+     (with-struct (node- line front back) bsp
+       (write-lineseg line stream)
+       (write-bsp front stream)
+       (write-bsp back stream)))
     (t
      (format stream "~S~%" :leaf)
-     (format stream "~S~%" (leaf-contents bsp))
-     (format stream "~S~%" (list-length (leaf-segs bsp)))
-     (dolist (seg (leaf-segs bsp))
-       (write-lineseg seg stream)))))
+     (with-struct (leaf- contents segs) bsp
+       (format stream "~S~%" contents)
+       (format stream "~S~%" (list-length segs))
+       (dolist (seg segs)
+         (write-lineseg seg stream))))))
 
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
@@ -285,9 +281,9 @@
   "Traverse the BSP in back to front order relative to given POINT."
   (if (leaf-p bsp)
       (leaf-segs bsp)
-      (let ((seg (node-line bsp)))
-        (ecase (determine-side seg point)
-          (:front (append (back-to-front point (node-back bsp))
-                          (back-to-front point (node-front bsp))))
-          (:back (append (back-to-front point (node-front bsp))
-                         (back-to-front point (node-back bsp))))))))
+      (with-struct (node- line front back) bsp
+        (ecase (determine-side line point)
+          (:front (append (back-to-front point back)
+                          (back-to-front point front)))
+          (:back (append (back-to-front point front)
+                         (back-to-front point back)))))))

@@ -18,7 +18,7 @@
 
 (defpackage #:shake-bspc
   (:nicknames #:shake-bsp #:sbsp)
-  (:use #:cl #:shiva)
+  (:use #:cl #:shiva #:shake-utils)
   (:export #:linedef
            #:make-linedef
            #:linedef-start
@@ -55,7 +55,7 @@
 
 (defpackage #:shake-bspc.brush
   (:nicknames #:sbrush)
-  (:use #:cl #:shiva #:sbsp)
+  (:use #:cl #:shiva #:sbsp #:shake-utils)
   (:import-from #:alexandria
                 #:unionf
                 #:nconcf)

@@ -21,7 +21,7 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("alexandria" "shiva")
+  :depends-on ("alexandria" "shake-utils" "shiva")
   :serial t
   :components ((:file "package")
                (:file "shake-bspc")

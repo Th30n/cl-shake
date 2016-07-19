@@ -29,8 +29,7 @@
   (contents :contents-solid))
 
 (defun write-brush (brush stream)
-  (let ((lines (brush-lines brush))
-        (contents (brush-contents brush)))
+  (with-struct (brush- lines contents) brush
     (format stream "~@{~S~%~}"
             :brush
             contents
@@ -42,6 +41,7 @@
   (let ((name (read stream))
         (contents (read stream))
         (lines-count (read stream)))
+    (declare (ignore name))
     (make-brush :contents contents
                 :lines (loop repeat lines-count collecting
                             (sbsp::read-linedef stream)))))

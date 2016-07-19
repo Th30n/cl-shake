@@ -17,5 +17,5 @@
 (in-package #:cl-user)
 
 (defpackage #:shake
-  (:use #:cl #:shiva #:shake-gl #:alexandria)
+  (:use #:cl #:shiva #:shake-gl #:alexandria #:shake-utils)
   (:export #:main))

@@ -25,16 +25,6 @@
   "Construct a path to FILENAME relative to *BASE-DIR*."
   (merge-pathnames filename *base-dir*))
 
-(defmacro with-struct ((name . fields) struct &body body)
-  "Bind variables to FIELDS from STRUCT. NAME is a prefix associated with
-the structure."
-  (let ((gs (gensym)))
-    `(let ((,gs ,struct))
-       (let ,(mapcar (lambda (f)
-                       `(,f (,(symbolicate name f) ,gs)))
-                     fields)
-         ,@body))))
-
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
 and rotation as a quaternion."
