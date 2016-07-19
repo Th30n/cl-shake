@@ -17,7 +17,7 @@
 (in-package #:cl-user)
 
 (defpackage #:shake-ed
-  (:use #:cl+qt)
+  (:use #:cl+qt #:shake-utils)
   (:export #:main)
   (:import-from #:shiva
                 #:deg->rad

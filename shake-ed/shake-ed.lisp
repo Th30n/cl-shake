@@ -110,13 +110,6 @@
     (mapcar (lambda (start end) (sbsp:make-linedef :start start :end end))
             start-points end-points)))
 
-(defun qrect->linedefs (rect)
-  (let ((right (q+:right rect))
-        (left (q+:left rect))
-        (top (q+:top rect))
-        (bot (q+:bottom rect)))
-    (make-linedef-loop (v right bot) (v left bot) (v left top) (v right top))))
-
 (defun draw-linedef-normal (line painter &key (scale 0.25d0))
   (let* ((center (v+ (sbsp:linedef-start line)
                      (vscale 0.5d0 (sbsp:linedef-vec line))))
@@ -172,25 +165,6 @@
     (dolist (line lines itemgroup)
       (q+:add-to-group itemgroup (linedef->lineitem line)))))
 
-(defun new-rectitem (top-left bot-right)
-  (with-finalizing ((rect (q+:make-qrectf top-left bot-right)))
-    (let* ((lines (qrect->linedefs (q+:normalized rect)))
-           (item (make-itemgroup-from-lines lines)))
-      (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) t)
-      item)))
-
-(defun update-rectitem (rectitem-and-start-pos bot-right)
-  (destructuring-bind (rectitem . start-pos) rectitem-and-start-pos
-    (with-finalizing* ((top-left (v2->qpoint start-pos))
-                       (new-rect (q+:make-qrectf top-left bot-right)))
-      (let ((lines (qrect->linedefs (q+:normalized new-rect))))
-        (dolist (child (q+:child-items rectitem))
-          (q+:remove-from-group rectitem child)
-          (finalize child))
-        (dolist (line lines)
-          (q+:add-to-group rectitem (linedef->lineitem line)))
-        lines))))
-
 (defun within-scene-p (scene point)
   (q+:contains (q+:scene-rect scene) point))
 
@@ -232,8 +206,6 @@
                (let ((point-item (new-pointitem point)))
                  (setf (second draw-info) point-item)
                  (q+:add-to-group group point-item)))))))))
-
-(defun length>= (n sequence) (>= (length sequence) n))
 
 (defun add-or-update-brush (map-scene scene-pos)
   (with-slots (draw-info graphics-item-brush-map) map-scene
@@ -314,7 +286,7 @@
 
 (defun toggle-view-normals (scene)
   (with-slots (view-normals-p) scene
-    (setf view-normals-p (not view-normals-p))
+    (notf view-normals-p)
     (q+:update scene (q+:scene-rect scene))))
 
 (define-widget map-view (QGraphicsView)
@@ -365,13 +337,12 @@
 
 (defun show-status-info (main)
   (with-slots (status-info) main
-    (let ((map-x (car (status-info-map-pos status-info)))
-          (map-y (cdr (status-info-map-pos status-info))))
-      (q+:show-message (q+:status-bar main)
-                       (format nil "Pos ~4D, ~4D Zoom: ~,2F% Grid: ~3D"
-                               map-x map-y
-                               (status-info-zoom-lvl status-info)
-                               (status-info-grid-step status-info))))))
+    (with-struct (status-info- map-pos zoom-lvl grid-step) status-info
+      (let ((map-x (car map-pos))
+            (map-y (cdr map-pos)))
+        (q+:show-message (q+:status-bar main)
+                         (format nil "Pos ~4D, ~4D Zoom: ~,2F% Grid: ~3D"
+                                 map-x map-y zoom-lvl grid-step))))))
 
 (define-subwidget (main scene) (make-instance 'map-scene))
 
