@@ -39,8 +39,8 @@ the structure."
   "A camera structure, storing the projection matrix, position in world space
 and rotation as a quaternion."
   projection
-  (position (v 0 0 0) :type (simple-array double-float (3)))
-  (rotation (q 0 0 0 1) :type (cons (simple-array double-float (3)) double-float)))
+  (position (v 0 0 0) :type (vec 3))
+  (rotation (q 0 0 0 1) :type quat))
 
 (defun camera-view-transform (camera)
   (declare (type camera camera))
@@ -66,9 +66,9 @@ and rotation as a quaternion."
 (defun get-triangles (lineseg)
   (let* ((endpoints (get-endpoints lineseg))
          (start-2d (car endpoints))
-         (start-3d (v (aref start-2d 0) 1 (aref start-2d 1)))
+         (start-3d (v (vx start-2d) 1 (vy start-2d)))
          (end-2d (cadr endpoints))
-         (end-3d (v (aref end-2d 0) 1 (aref end-2d 1))))
+         (end-3d (v (vx end-2d) 1 (vy end-2d))))
     (list start-3d end-3d (v- start-3d (v 0 1 0))
           (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 

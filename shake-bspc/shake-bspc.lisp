@@ -17,17 +17,17 @@
 (in-package #:shake-bspc)
 
 (defstruct linedef
-  (start (v 0 0) :type (simple-array double-float (2)) :read-only t)
-  (end  (v 0 0) :type (simple-array double-float (2)) :read-only t)
-  (color (v 1 0 1) :type (simple-array double-float (3)) :read-only t))
+  (start (v 0 0) :type (vec 2) :read-only t)
+  (end  (v 0 0) :type (vec 2) :read-only t)
+  (color (v 1 0 1) :type (vec 3) :read-only t))
 
 (defun linedef-vec (linedef)
   (v- (linedef-end linedef) (linedef-start linedef)))
 
 (defun linedef-normal (linedef)
   (let ((vec (linedef-vec linedef)))
-    (rotatef (aref vec 0) (aref vec 1))
-    (setf (aref vec 1) (- (aref vec 1)))
+    (rotatef (vx vec) (vy vec))
+    (setf (vy vec) (- (vy vec)))
     (vnormalize vec)))
 
 (defun linedef= (a b)

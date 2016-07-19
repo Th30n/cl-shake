@@ -123,7 +123,7 @@
 (defun angle (v)
   "Return the angle in radians of vector V around the Z axis."
   (declare (type (simple-array double-float) v))
-  (atan (aref v 1) (aref v 0)))
+  (atan (vy v) (vx v)))
 (defun direction (v1 v2)
   "Return the direction angle in radians between points V1 and V2"
   (angle (v- v2 v1)))
@@ -221,6 +221,9 @@
   (declare (type (vec 2) v))
   (v (vx v) 0d0 (vy v)))
 
+(deftype mat (n &optional m)
+  `(simple-array double-float (,n ,(if (null m) n m))))
+
 (defun mat (&rest rows)
   "Construct a row major matrix as a 2D vector of double-float and fill it
 with ROWS."
@@ -311,6 +314,8 @@ epsilon. Doesn't handle infinities."
                 (k (mod (1+ j) 3)))
            (setf (out i) (- (* (v1 j) (v2 k)) (* (v1 k) (v2 j))))))
     out))
+
+(deftype quat () `(cons (vec 3) double-float))
 
 (defun q (x y z w)
   "Construct a quaternion as a cons of vector X Y Z and W."

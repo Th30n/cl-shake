@@ -52,7 +52,7 @@
                     '(3 4))
                (mat '(1 0)
                     '(0 1)))
-           '(simple-array double-float (2 2))))
+           '(mat 2)))
 
 (subtest "Testing transforms"
   (is (vtransform (translation :x 2 :z -2) (v 3 5 0 1))

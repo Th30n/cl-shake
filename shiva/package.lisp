@@ -27,8 +27,7 @@
            #:v3->v2 #:v2->v3
            #:v- #:v+ #:v= #:vnorm #:vnormalize
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
-           #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x
-           #:mat
-           #:m*
+           #:quat #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x
+           #:mat #:m*
            #:translation #:scale #:rotation
            #:ortho #:perspective))
