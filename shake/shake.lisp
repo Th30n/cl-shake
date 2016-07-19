@@ -44,14 +44,7 @@ and rotation as a quaternion."
   (with-open-file (file (data-path "test.bsp")) (sbsp:read-bsp file)))
 
 (defun get-endpoints (lineseg)
-  (let* ((linedef (sbsp::lineseg-orig-line lineseg))
-         (line-vec (v- (sbsp::linedef-end linedef)
-                       (sbsp::linedef-start linedef)))
-         (start (v+ (sbsp::linedef-start linedef)
-                    (vscale (sbsp::lineseg-t-start lineseg) line-vec)))
-         (end (v+ (sbsp::linedef-start linedef)
-                  (vscale (sbsp::lineseg-t-end lineseg) line-vec))))
-    (list start end)))
+  (list (sbsp:lineseg-start lineseg) (sbsp:lineseg-end lineseg)))
 
 (defun get-triangles (lineseg)
   (let* ((endpoints (get-endpoints lineseg))
@@ -64,11 +57,6 @@ and rotation as a quaternion."
 
 (defun get-color (lineseg)
   (sbsp::linedef-color (sbsp::lineseg-orig-line lineseg)))
-
-(defun repeat (obj n)
-  "Repeat N times the given OBJ."
-  (declare (type fixnum n))
-  (loop repeat n collecting obj))
 
 (defun nrotate-camera (xrel yrel camera)
   "Rotate the CAMERA for XREL degrees around the world Y axis and YREL degrees
