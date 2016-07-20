@@ -204,9 +204,9 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun try-run-tics (build-ticcmd run-tic)
   (let ((new-tics (- (get-time) *last-time*)))
     (incf *last-time* new-tics)
-    (loop repeat (min new-tics +max-frame-skip+) do
-         (funcall run-tic (funcall build-ticcmd))
-         (incf *gametic*))))
+    (repeat (min new-tics +max-frame-skip+)
+      (funcall run-tic (funcall build-ticcmd))
+      (incf *gametic*))))
 
 (defvar *mouse* (cons 0 0))
 
@@ -401,7 +401,8 @@ DRAW and DELETE for drawing and deleting respectively."
          (pos-2d (v (vx pos) (vz pos)))
          (segs (sbsp:back-to-front pos-2d bsp)))
     (values (mapcan #'get-triangles segs)
-            (mapcan (lambda (s) (repeat (get-color s) 6)) segs))))
+            (mapcan (lambda (s) (make-list 6 :initial-element (get-color s)))
+                    segs))))
 
 (defun render (win vertex-array camera)
   (let ((vbo (car (gl:gen-buffers 1)))

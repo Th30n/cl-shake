@@ -43,8 +43,7 @@
         (lines-count (read stream)))
     (declare (ignore name))
     (make-brush :contents contents
-                :lines (loop repeat lines-count collecting
-                            (sbsp::read-linedef stream)))))
+                :lines (repeat lines-count (sbsp::read-linedef stream)))))
 
 (defun bounds-of-linedefs (lines)
   (let ((mins (copy-seq (linedef-start (car lines))))

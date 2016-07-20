@@ -32,7 +32,6 @@ the structure."
 
 (defun length>= (n sequence) (>= (length sequence) n))
 
-(defun repeat (obj n)
-  "Repeat N times the given OBJ."
-  (declare (type fixnum n))
-  (loop repeat n collecting obj))
+(defmacro repeat (n &body body)
+  "Evaluate N times the given BODY and collect the results into a list."
+  `(loop repeat ,n collecting (progn ,@body)))

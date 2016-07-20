@@ -270,12 +270,10 @@
                    (front (read-bsp stream))
                    (back (read-bsp stream)))
                (make-node :line seg :front front :back back)))
-      (:leaf (let ((contents (read stream))
-                   (num-segs (read stream))
-                   segs)
-               (loop repeat num-segs do
-                    (push (read-lineseg stream) segs))
-               (make-leaf :segs (reverse segs) :contents contents))))))
+      (:leaf (let* ((contents (read stream))
+                    (num-segs (read stream))
+                    (segs (repeat num-segs (read-lineseg stream))))
+               (make-leaf :segs segs :contents contents))))))
 
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."

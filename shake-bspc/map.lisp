@@ -23,7 +23,7 @@
 
 (defun read-map (stream)
   (let ((n (read stream)))
-    (loop repeat n collecting (sbrush::read-brush stream))))
+    (repeat n (sbrush::read-brush stream))))
 
 (defun read-and-compile-map (stream)
   (let ((brushes (read-map stream)))
