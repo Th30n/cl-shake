@@ -278,10 +278,20 @@
         (finalize item))))
   (q+:update scene (q+:scene-rect scene)))
 
+(defun cancel-editing (map-scene)
+  (with-slots (draw-info) map-scene
+    (when draw-info
+      (let ((group (first draw-info)))
+        (q+:remove-item map-scene group)
+        (finalize group)
+        (setf draw-info nil)))))
+
 (define-override (map-scene key-press-event) (key-event)
   (cond
     ((q+:matches key-event (q+:qkeysequence.delete))
      (remove-selected map-scene))
+    ((enum-equal (q+:key key-event) (q+:qt.key_escape))
+     (cancel-editing map-scene))
     (t (stop-overriding))))
 
 (defun toggle-view-normals (scene)
