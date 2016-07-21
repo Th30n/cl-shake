@@ -224,9 +224,13 @@
                      (finalize child))
                    (dolist (line linedefs)
                      (q+:add-to-group group (linedef->lineitem line)))
-                   (setf (gethash group graphics-item-brush-map)
-                         (make-mbrush :brush (sbrush:make-brush :lines linedefs))
-                         draw-info nil)
+                   (handler-case
+                       (setf (gethash group graphics-item-brush-map)
+                             (make-mbrush :brush
+                                          (sbrush:make-brush :lines linedefs))
+                             draw-info nil)
+                     (sbrush:non-convex-brush-error ()
+                       (cancel-editing map-scene)))
                    (q+:update map-scene (q+:scene-rect map-scene))))
                 ;; end current line and continue with new
                 ((not (v= scene-pos first-pos))
