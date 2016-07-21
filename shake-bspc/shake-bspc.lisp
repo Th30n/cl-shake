@@ -111,26 +111,35 @@
         (cons l1 l2)))))
 
 (defun determine-side (lineseg point)
-  "Determine on which side of a LINESEG is the given POINT located.  Returns
-  :BACK or :FRONT as the primary value and distance as the second."
+  "Determine on which side of a LINESEG is the given POINT located. Returns
+  :BACK, :FRONT or :ON-LINE as the primary value and distance as the second."
   (let ((d (vdot (lineseg-normal lineseg)
                  (v- point (lineseg-start lineseg)))))
-    (values (if (or (plusp d) (double= d 0d0))
-                :front
-                :back)
+    (values (cond
+              ((double= d 0d0) :on-line)
+              ((plusp d) :front)
+              ((minusp d) :back))
             d)))
 
 (defun convex-hull-p (linesegs)
   "Checks if the given list of LINESEG instances forms a convex hull."
   (block test
-    (dolist (test-seg linesegs)
-      (dolist (seg linesegs)
-        (unless (eq seg test-seg)
-          (when (eq :back (determine-side seg (lineseg-start test-seg)))
-            (return-from test nil))
-          (when (eq :back (determine-side seg (lineseg-end test-seg)))
-            (return-from test nil)))))
-    t))
+    (let (picked-side)
+      (dolist (test-seg linesegs)
+        (dolist (seg linesegs)
+          (unless (eq seg test-seg)
+            (let ((p1-side (determine-side seg (lineseg-start test-seg)))
+                  (p2-side (determine-side seg (lineseg-end test-seg))))
+              (unless picked-side
+                (cond
+                  ((not (eq p1-side :on-line)) (setf picked-side p1-side))
+                  ((not (eq p2-side :on-line)) (setf picked-side p2-side))))
+              (when picked-side
+                (dolist (side (list p1-side p2-side))
+                  (when (and (not (eq side :on-line))
+                             (not (eq side picked-side)))
+                    (return-from test nil))))))))
+      t)))
 
 (defun choose-splitter (linesegs splitters)
   (declare (type list linesegs splitters))
@@ -281,7 +290,7 @@
       (leaf-segs bsp)
       (with-struct (node- line front back) bsp
         (ecase (determine-side line point)
-          (:front (append (back-to-front point back)
-                          (back-to-front point front)))
+          ((or :front :on-line) (append (back-to-front point back)
+                                        (back-to-front point front)))
           (:back (append (back-to-front point front)
                          (back-to-front point back)))))))

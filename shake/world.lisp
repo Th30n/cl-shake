@@ -37,9 +37,9 @@
   (declare (type (vec 2) point))
   (if (sbsp:leaf-p hull)
       (sbsp:leaf-contents hull)
-      (if (eq :front (sbsp:determine-side (sbsp:node-line hull) point))
-          (hull-point-contents (sbsp:node-front hull) point)
-          (hull-point-contents (sbsp:node-back hull) point))))
+      (ecase (sbsp:determine-side (sbsp:node-line hull) point)
+        ((or :front :on-line) (hull-point-contents (sbsp:node-front hull) point))
+        (:back (hull-point-contents (sbsp:node-back hull) point)))))
 
 (defparameter *dist-epsilon* 1d-10)
 

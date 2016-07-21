@@ -19,7 +19,7 @@
 
 (in-package #:shake-bspc.brush)
 
-(defstruct brush
+(defstruct (brush (:constructor make-brush-raw))
   "A convex polygon defining a geometry with contents.
   LINES is a list of LINEDEFs defining the polygon.
   CONTENTS can be one of:
@@ -27,6 +27,14 @@
   * :CONTENTS-SOLID"
   lines
   (contents :contents-solid))
+
+(define-condition non-convex-brush-error (error)
+  ((lines :initarg :lines :reader lines)))
+
+(defun make-brush (&key lines (contents :contents-solid))
+  (if (sbsp::convex-hull-p (mapcar #'linedef->lineseg lines))
+      (make-brush-raw :lines lines :contents contents)
+      (error 'non-convex-brush-error :lines lines)))
 
 (defun write-brush (brush stream)
   (with-struct (brush- lines contents) brush

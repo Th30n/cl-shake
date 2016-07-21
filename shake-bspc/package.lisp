@@ -64,4 +64,5 @@
            #:make-brush
            #:brush-lines
            #:brush-contents
-           #:copy-brush))
+           #:copy-brush
+           #:non-convex-brush-error))
