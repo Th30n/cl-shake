@@ -58,6 +58,13 @@
 (defun lineseg-normal (lineseg)
   (linedef-normal (lineseg-orig-line lineseg)))
 
+(defun make-linedef-loop (p1 p2 p3 &rest points)
+  "Create a list of linedefs by making a loop through the given points."
+  (let ((start-points (append (list p1 p2 p3) points))
+        (end-points (append (list p2 p3) points (list p1))))
+    (mapcar (lambda (start end) (make-linedef :start start :end end))
+            start-points end-points)))
+
 (defstruct leaf
   "A leaf node in the BSP tree. The SEGS slot stores the geometry as a LIST of
   LINESEGs. The CONTENTS stores the type of the leaf, used for collision

@@ -25,7 +25,7 @@
                 #:v
                 #:v=)
   (:import-from #:sbsp
-                #:make-linedef
+                #:make-linedef-loop
                 #:linedef->lineseg
                 #:build-bsp))
 
@@ -33,11 +33,11 @@
 
 (plan nil)
 
+;; XXX: Duplicated from brush-test
 (defparameter *square-linedefs*
-  (list (make-linedef :start (v -1d0 0d0) :end (v -1d0 -1d0))
-        (make-linedef :start (v -1d0 -1d0) :end (v 0d0 -1d0))
-        (make-linedef :start (v 0d0 -1d0) :end (v 0d0 0d0))
-        (make-linedef :start (v 0d0 0d0) :end (v -1d0 0d0))))
+  (make-linedef-loop
+   ;; top left, bottom left, bottom right, top right
+   (v -1d0 0d0) (v -1d0 -1d0) (v 0d0 -1d0) (v 0d0 0d0)))
 
 (defmacro let-mtrace (p1 p2 &body body)
   `(let* ((p1 ,p1)

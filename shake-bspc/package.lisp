@@ -21,6 +21,7 @@
   (:use #:cl #:shiva #:shake-utils)
   (:export #:linedef
            #:make-linedef
+           #:make-linedef-loop
            #:linedef-start
            #:linedef-end
            #:linedef-normal

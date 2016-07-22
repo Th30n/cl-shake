@@ -104,12 +104,6 @@
     (draw-grid painter (q+:left rect) (q+:right rect) 0 0 grid-step)
     (draw-grid painter 0 0 (q+:top rect) (q+:bottom rect) grid-step)))
 
-(defun make-linedef-loop (p1 p2 p3 &rest points)
-  (let ((start-points (append (list p1 p2 p3) points))
-        (end-points (append (list p2 p3) points (list p1))))
-    (mapcar (lambda (start end) (sbsp:make-linedef :start start :end end))
-            start-points end-points)))
-
 (defun draw-linedef-normal (line painter &key (scale 0.25d0))
   (let* ((center (v+ (sbsp:linedef-start line)
                      (vscale 0.5d0 (sbsp:linedef-vec line))))
@@ -218,7 +212,7 @@
               (cond
                 ((and (v= scene-pos first-pos) (length>= 3 points))
                  ;; finish line loop
-                 (let ((linedefs (apply #'make-linedef-loop points)))
+                 (let ((linedefs (apply #'sbsp:make-linedef-loop points)))
                    (dolist (child (q+:child-items group))
                      (q+:remove-from-group group child)
                      (finalize child))

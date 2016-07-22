@@ -34,11 +34,11 @@
 
 (plan nil)
 
+;; XXX: Duplicated in world-test
 (defparameter *square-linedefs*
-  (list (make-linedef :start (v -1d0 0d0) :end (v -1d0 -1d0)) ;; left
-        (make-linedef :start (v -1d0 -1d0) :end (v 0d0 -1d0)) ;; bottom
-        (make-linedef :start (v 0d0 -1d0) :end (v 0d0 0d0))   ;; right
-        (make-linedef :start (v 0d0 0d0) :end (v -1d0 0d0)))) ;; top
+  (make-linedef-loop
+   ;; top left, bottom left, bottom right, top right
+   (v -1d0 0d0) (v -1d0 -1d0) (v 0d0 -1d0) (v 0d0 0d0)))
 
 (defmacro select-brush-lines (brush (&rest selectors))
   (when selectors
