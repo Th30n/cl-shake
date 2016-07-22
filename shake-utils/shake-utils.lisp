@@ -26,6 +26,12 @@ the structure."
                      fields)
          ,@body))))
 
+(defmacro doproduct (((var-a list-a) (var-b list-b) &optional result) &body body)
+  "Iterate over a Cartesian product of LIST-A and LIST-B."
+  `(dolist (,var-a ,list-a ,result)
+     (dolist (,var-b ,list-b)
+       ,@body)))
+
 (defmacro notf (&rest args)
   "Invert the values of places pointed to by ARGS."
   `(setf ,@(mapcan (lambda (a) `(,a (not ,a))) args)))

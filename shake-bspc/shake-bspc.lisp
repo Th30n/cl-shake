@@ -125,20 +125,19 @@
   "Checks if the given list of LINESEG instances forms a convex hull."
   (block test
     (let (picked-side)
-      (dolist (test-seg linesegs)
-        (dolist (seg linesegs)
-          (unless (eq seg test-seg)
-            (let ((p1-side (determine-side seg (lineseg-start test-seg)))
-                  (p2-side (determine-side seg (lineseg-end test-seg))))
-              (unless picked-side
-                (cond
-                  ((not (eq p1-side :on-line)) (setf picked-side p1-side))
-                  ((not (eq p2-side :on-line)) (setf picked-side p2-side))))
-              (when picked-side
-                (dolist (side (list p1-side p2-side))
-                  (when (and (not (eq side :on-line))
-                             (not (eq side picked-side)))
-                    (return-from test nil))))))))
+      (doproduct ((test-seg linesegs) (seg linesegs))
+        (unless (eq seg test-seg)
+          (let ((p1-side (determine-side seg (lineseg-start test-seg)))
+                (p2-side (determine-side seg (lineseg-end test-seg))))
+            (unless picked-side
+              (cond
+                ((not (eq p1-side :on-line)) (setf picked-side p1-side))
+                ((not (eq p2-side :on-line)) (setf picked-side p2-side))))
+            (when picked-side
+              (dolist (side (list p1-side p2-side))
+                (when (and (not (eq side :on-line))
+                           (not (eq side picked-side)))
+                  (return-from test nil)))))))
       t)))
 
 (defun choose-splitter (linesegs splitters)

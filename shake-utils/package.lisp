@@ -19,7 +19,8 @@
 (defpackage #:shake-utils
   (:nicknames #:shut #:sutils)
   (:use #:cl #:alexandria)
-  (:export #:length>=
+  (:export #:doproduct
+           #:length>=
            #:notf
            #:repeat
            #:with-struct))
