@@ -41,7 +41,7 @@ and rotation as a quaternion."
     (m* (q->mat q) translation)))
 
 (defparameter *bsp*
-  (with-open-file (file (data-path "test.bsp")) (sbsp:read-bsp file)))
+  (with-open-file (file (data-path "test.bsp")) (sbsp:read-bspfile file)))
 
 (defun get-endpoints (lineseg)
   (list (sbsp:lineseg-start lineseg) (sbsp:lineseg-end lineseg)))
@@ -287,19 +287,19 @@ DRAW and DELETE for drawing and deleting respectively."
       (if noclip
           (setf (camera-position player) end-pos)
           (progn
-            (setf (camera-position player)
-                  (player-ground-move origin velocity *bsp*))
-            (format t "Start: ~S~%End: ~S~%Pos: ~S~%Contents: ~S~%"
-                    origin end-pos
-                    (camera-position player)
-                    (hull-point-contents *bsp*
-                                         (v3->v2 (camera-position player)))))))))
+            (let ((hull (sbsp:bspfile-clip-nodes *bsp*)))
+              (setf (camera-position player)
+                    (player-ground-move origin velocity hull))
+              (format t "Start: ~S~%End: ~S~%Pos: ~S~%Contents: ~S~%"
+                      origin end-pos (camera-position player)
+                      (hull-point-contents
+                       hull (v3->v2 (camera-position player))))))))))
 
 (defun run-tic (camera cmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
     (let ((dt (coerce (/ +ticrate+) 'double-float)))
       (unless (and (zerop forward-move) (zerop side-move))
-        (move-player camera (* forward-move dt) (* side-move dt) :noclip t))
+        (move-player camera (* forward-move dt) (* side-move dt) :noclip nil))
       (destructuring-bind (x-turn . y-turn) angle-turn
         (unless (and (zerop x-turn) (zerop y-turn))
           (nrotate-camera x-turn y-turn camera))))))
@@ -399,7 +399,7 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun get-map-walls (camera bsp)
   (let* ((pos (camera-position camera))
          (pos-2d (v (vx pos) (vz pos)))
-         (segs (sbsp:back-to-front pos-2d bsp)))
+         (segs (sbsp:back-to-front pos-2d (sbsp:bspfile-nodes bsp))))
     (values (mapcan #'get-triangles segs)
             (mapcan (lambda (s) (make-list 6 :initial-element (get-color s)))
                     segs))))

@@ -16,6 +16,24 @@
 
 (in-package #:shake-bspc)
 
+(defconstant +clip-square+ 0.5
+  "Size of the square used for expanding brushes in order to perform movement
+  clipping (collision detection).")
+
+(defstruct bspfile
+  nodes
+  clip-nodes)
+
+(defun write-bspfile (bspfile stream)
+  (with-struct (bspfile- nodes clip-nodes) bspfile
+    (write-bsp nodes stream)
+    (write-bsp clip-nodes stream)))
+
+(defun read-bspfile (stream)
+  (let ((nodes (read-bsp stream))
+        (clip-nodes (read-bsp stream)))
+    (make-bspfile :nodes nodes :clip-nodes clip-nodes)))
+
 (defun write-map (brushes stream)
   (format stream "~S~%" (length brushes))
   (dolist (brush brushes)
@@ -27,13 +45,20 @@
 
 (defun read-and-compile-map (stream)
   (let ((brushes (read-map stream)))
-    (build-bsp (sbrush::prepare-brushes-for-bsp brushes))))
+    (flet ((compile-brushes (bs)
+             (build-bsp (sbrush:prepare-brushes-for-bsp bs))))
+      (make-bspfile :nodes (compile-brushes brushes)
+                    :clip-nodes (compile-brushes
+                                 (mapcar (lambda (b)
+                                           (sbrush:expand-brush
+                                            b :square +clip-square+))
+                                         brushes))))))
 
-(defun compile-map-file (map-file bsp-file)
-  "Compile a map from MAP-FILE and store it into BSP-FILE"
-  (let ((bsp))
+(defun compile-map-file (map-file bsp-filename)
+  "Compile a map from MAP-FILE and store it into BSP-FILENAME"
+  (let (bspfile)
     (with-open-file (mf map-file)
-      (setf bsp (read-and-compile-map mf)))
-    (with-open-file (bf bsp-file :direction :output :if-exists :supersede
+      (setf bspfile (read-and-compile-map mf)))
+    (with-open-file (bf bsp-filename :direction :output :if-exists :supersede
                         :if-does-not-exist :create)
-      (write-bsp bsp bf))))
+      (write-bspfile bspfile bf))))

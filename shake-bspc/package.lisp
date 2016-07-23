@@ -50,6 +50,12 @@
            #:compile-map-file
            #:build-bsp
            #:read-bsp
+           ;; bsp file structure
+           #:bspfile
+           #:bspfile-nodes
+           #:bspfile-clip-nodes
+           #:write-bspfile
+           #:read-bspfile
            ;; bsp queries
            #:determine-side
            #:back-to-front))
@@ -69,4 +75,5 @@
            #:brush-contents
            #:copy-brush
            #:non-convex-brush-error
-           #:expand-brush))
+           #:expand-brush
+           #:prepare-brushes-for-bsp))
