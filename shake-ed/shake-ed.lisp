@@ -331,6 +331,11 @@
             (map-view-scale-zoom map-view)))
         (stop-overriding))))
 
+(defun center-view-to-map (map-view)
+  (with-finalizing* ((rect (q+:items-bounding-rect (q+:scene map-view)))
+                     (center (q+:center rect)))
+    (q+:center-on map-view center)))
+
 (defstruct status-info
   (map-pos (cons 0 0))
   (zoom-lvl +initial-scale+)
@@ -436,12 +441,13 @@
   (let ((filepath (q+:qfiledialog-get-open-file-name
                    w "Open Map" "" "Maps (*.map)")))
     (when (and filepath (ends-with-subseq ".map" filepath))
-      (with-slots (scene map-file) w
+      (with-slots (scene map-view map-file) w
         (with-open-file (file filepath)
           (read-map file scene)
           (q+:show-message (q+:status-bar w)
                            (format nil "Loaded '~S'" filepath))
-          (setf map-file filepath))))))
+          (setf map-file filepath)
+          (center-view-to-map map-view))))))
 
 (defun compile-map (w)
   (with-slots (map-file) w
@@ -509,7 +515,8 @@
   (:item ("Decrease Grid" ([)) (scale-grid-step scene :scale 2)))
 
 (define-menu (main View)
-  (:item "Normals" (toggle-view-normals scene)))
+  (:item "Normals" (toggle-view-normals scene))
+  (:item "Center on Map" (center-view-to-map map-view)))
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd")
