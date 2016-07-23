@@ -21,10 +21,6 @@
 (defvar *base-dir*
   #.(directory-namestring (or *compile-file-truename* *load-truename*)))
 
-(defun data-path (filename)
-  "Construct a path to FILENAME relative to *BASE-DIR*."
-  (merge-pathnames filename *base-dir*))
-
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
 and rotation as a quaternion."
@@ -40,8 +36,7 @@ and rotation as a quaternion."
          (q (qconj (camera-rotation camera))))
     (m* (q->mat q) translation)))
 
-(defparameter *bsp*
-  (with-open-file (file (data-path "test.bsp")) (sbsp:read-bspfile file)))
+(defparameter *bsp* nil)
 
 (defun get-endpoints (lineseg)
   (list (sbsp:lineseg-start lineseg) (sbsp:lineseg-end lineseg)))
@@ -309,69 +304,72 @@ DRAW and DELETE for drawing and deleting respectively."
     (set-gl-attrs)
     (sdl2:with-window (win :title "shake" :flags '(:shown :opengl))
       (sdl2:with-gl-context (context win)
-        (sdl2:gl-set-swap-interval 0)
-        (print-gl-info)
-        (sdl2:set-relative-mouse-mode 1)
-        ;; (gl:enable :depth-test :cull-face)
-        (let* ((vertex-array (gl:gen-vertex-array))
-               (shader-prog (load-shader (data-path "shaders/pass.vert")
-                                         (data-path "shaders/color.frag")))
-               (text-shader (load-shader (data-path "shaders/billboard.vert")
-                                         (data-path "shaders/text.frag")
-                                         (data-path "shaders/billboard.geom")))
-               (font (load-font (data-path "share/font-16.bmp") 16 #\Space))
-               (proj (perspective (* deg->rad 60d0)
-                                  (/ 800d0 600d0) 0.1d0 100d0))
-               (camera (make-camera :projection proj :position (v 1 0.5 8)))
-               (start-time 0)
-               (current-time 0)
-               (delta-time 0d0) (max-time 0d0) (avg-time 0d0)
-               (frame-timer (make-frame-timer))
-               (point-renderer (make-point-renderer)))
-          (with-uniform-locations text-shader (tex-font)
-            (gl:use-program text-shader)
-            (gl:uniformi tex-font-loc 0))
-          (symbol-macrolet ((input-focus-p
-                             (member :input-focus (sdl2:get-window-flags win)))
-                            (minimized-p
-                             (member :minimized (sdl2:get-window-flags win))))
-            (start-game-loop)
-            (sdl2:with-event-loop (:method :poll)
-              (:quit () t)
-              (:keydown
-               (:keysym keysym)
-               (when input-focus-p
-                 (press-game-key (sdl2:scancode keysym))))
-              (:keyup
-               (:keysym keysym)
-               (when input-focus-p
-                 (release-game-key (sdl2:scancode keysym))))
-              (:mousemotion
-               (:xrel xrel :yrel yrel)
-               (when input-focus-p
-                 (update-mouse-relative xrel yrel)))
-              (:idle ()
-                     (try-run-tics #'build-ticcmd
-                                   (lambda (tic) (run-tic camera tic)))
-                     (setf delta-time (performance-delta start-time current-time)
-                           start-time current-time
-                           current-time (sdl2:get-performance-counter))
-                     (nupdate-frame-timer frame-timer delta-time)
-                     (when (>= (frame-timer-total-time frame-timer) 1d0)
-                       (setf avg-time (/ (frame-timer-total-time frame-timer)
-                                         (frame-timer-frame frame-timer))
-                             max-time (frame-timer-max-time frame-timer)
-                             frame-timer (make-frame-timer)))
-                     (unless minimized-p
-                       (clear-buffer-fv :color 0 0 0 0)
-                       (gl:use-program shader-prog)
-                       (uniform-mvp shader-prog
-                                    (m* (camera-projection camera)
-                                        (camera-view-transform camera)))
-                       (render win vertex-array camera)
-                       (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
-                                   point-renderer text-shader font)
-                       (sdl2:gl-swap-window win))))))))))
+        (with-data-dirs *base-dir*
+          (setf *bsp* (with-data-file (file  "test.bsp")
+                        (sbsp:read-bspfile file)))
+          (sdl2:gl-set-swap-interval 0)
+          (print-gl-info)
+          (sdl2:set-relative-mouse-mode 1)
+          ;; (gl:enable :depth-test :cull-face)
+          (let* ((vertex-array (gl:gen-vertex-array))
+                 (shader-prog (load-shader (data-path "shaders/pass.vert")
+                                           (data-path "shaders/color.frag")))
+                 (text-shader (load-shader (data-path "shaders/billboard.vert")
+                                           (data-path "shaders/text.frag")
+                                           (data-path "shaders/billboard.geom")))
+                 (font (load-font (data-path "share/font-16.bmp") 16 #\Space))
+                 (proj (perspective (* deg->rad 60d0)
+                                    (/ 800d0 600d0) 0.1d0 100d0))
+                 (camera (make-camera :projection proj :position (v 1 0.5 8)))
+                 (start-time 0)
+                 (current-time 0)
+                 (delta-time 0d0) (max-time 0d0) (avg-time 0d0)
+                 (frame-timer (make-frame-timer))
+                 (point-renderer (make-point-renderer)))
+            (with-uniform-locations text-shader (tex-font)
+              (gl:use-program text-shader)
+              (gl:uniformi tex-font-loc 0))
+            (symbol-macrolet ((input-focus-p
+                               (member :input-focus (sdl2:get-window-flags win)))
+                              (minimized-p
+                               (member :minimized (sdl2:get-window-flags win))))
+              (start-game-loop)
+              (sdl2:with-event-loop (:method :poll)
+                (:quit () t)
+                (:keydown
+                 (:keysym keysym)
+                 (when input-focus-p
+                   (press-game-key (sdl2:scancode keysym))))
+                (:keyup
+                 (:keysym keysym)
+                 (when input-focus-p
+                   (release-game-key (sdl2:scancode keysym))))
+                (:mousemotion
+                 (:xrel xrel :yrel yrel)
+                 (when input-focus-p
+                   (update-mouse-relative xrel yrel)))
+                (:idle ()
+                       (try-run-tics #'build-ticcmd
+                                     (lambda (tic) (run-tic camera tic)))
+                       (setf delta-time (performance-delta start-time current-time)
+                             start-time current-time
+                             current-time (sdl2:get-performance-counter))
+                       (nupdate-frame-timer frame-timer delta-time)
+                       (when (>= (frame-timer-total-time frame-timer) 1d0)
+                         (setf avg-time (/ (frame-timer-total-time frame-timer)
+                                           (frame-timer-frame frame-timer))
+                               max-time (frame-timer-max-time frame-timer)
+                               frame-timer (make-frame-timer)))
+                       (unless minimized-p
+                         (clear-buffer-fv :color 0 0 0 0)
+                         (gl:use-program shader-prog)
+                         (uniform-mvp shader-prog
+                                      (m* (camera-projection camera)
+                                          (camera-view-transform camera)))
+                         (render win vertex-array camera)
+                         (draw-stats (* 1d3 max-time) (* 1d3 avg-time)
+                                     point-renderer text-shader font)
+                         (sdl2:gl-swap-window win)))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window

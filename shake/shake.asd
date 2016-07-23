@@ -24,6 +24,7 @@
   :depends-on ("sdl2" "alexandria" "shiva" "shake-bspc" "shake-gl" "shake-utils")
   :serial t
   :components ((:file "package")
+               (:file "data")
                (:file "world")
                (:file "shake"))
   :in-order-to ((test-op (test-op shake-test))))

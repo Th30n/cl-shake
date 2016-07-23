@@ -16,6 +16,13 @@
 
 (in-package #:cl-user)
 
+(defpackage #:shake.data
+  (:nicknames #:sdata)
+  (:use #:cl #:shake-utils #:alexandria)
+  (:export #:data-path
+           #:with-data-dirs
+           #:with-data-file))
+
 (defpackage #:shake
-  (:use #:cl #:shiva #:shake-gl #:alexandria #:shake-utils)
+  (:use #:cl #:shiva #:shake-gl #:alexandria #:shake-utils #:shake.data)
   (:export #:main))
