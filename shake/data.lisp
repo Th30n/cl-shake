@@ -41,9 +41,26 @@
 	 :defaults pathname)
 	pathname)))
 
+(defun file-exists-p (pathname)
+  "Checks if given PATHNAME exists and returns it, otherwise returns NIL."
+  #+(or sbcl lispworks openmcl)
+  (probe-file pathname)
+  #+(or allegro cmu)
+  (or (probe-file (pathname-as-directory pathname))
+      (probe-file pathname))
+  #+clisp
+  (or (ignore-errors
+	(probe-file (pathname-as-file pathname)))
+      (ignore-errors
+	(let ((directory-form (pathname-as-directory pathname)))
+	  (when (ext:probe-directory directory-form)
+	    directory-form))))
+  #-(or sbcl cmu lispworks openmcl allegro clisp)
+  (error "file-exists-p not implemented"))
+
 (defmacro with-data-dirs (basedir &body body)
-  `(let ((*basedir* (pathname-as-directory ,basedir)))
-     (declare (special *basedir*))
+  `(let ((*search-paths* (list "" (pathname-as-directory ,basedir))))
+     (declare (special *search-paths*))
      ,@body))
 
 (defmacro define-data-fun (name lambda-list &body body)
@@ -51,14 +68,18 @@
          (rem-body (if doc-string (cdr body) body)))
     `(defun ,name ,lambda-list
        ,doc-string
-       (declare (special *basedir*))
-       (unless (boundp '*basedir*)
+       (declare (special *search-paths*))
+       (unless (boundp '*search-paths*)
          (error "This function needs to be called inside with-data-dirs."))
        ,@rem-body)))
 
 (define-data-fun data-path (filename)
-  "Construct a path to FILENAME relative to *BASE-DIR*."
-  (merge-pathnames filename *basedir*))
+  "Construct a path to FILENAME by looking for it in to *SEARCH-PATHS*."
+  (dolist (search *search-paths*)
+    (when-let ((full-path (file-exists-p (merge-pathnames filename search))))
+      (unless (directory-pathname-p full-path)
+        (format t "Found data file ~S~%" full-path)
+        (return full-path)))))
 
 (defmacro with-data-file ((stream filespec) &body body)
   `(with-open-file (,stream (data-path ,filespec))
