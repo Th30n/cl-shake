@@ -298,7 +298,36 @@
     (q+:update scene (q+:scene-rect scene))))
 
 (define-widget map-view (QGraphicsView)
-  ((zoom-lvl :initform 4)))
+  ((zoom-lvl :initform 4)
+   (translate-mouse-last-pos :initform nil)))
+
+(define-override (map-view mouse-move-event) (mouse-event)
+  (cond
+    ((enum-equal (q+:buttons mouse-event) (q+:qt.mid-button))
+     (when translate-mouse-last-pos
+       (let* ((x (q+:global-x mouse-event))
+              (y (q+:global-y mouse-event))
+              (dx (- x (car translate-mouse-last-pos)))
+              (dy (- y (cdr translate-mouse-last-pos))))
+         (setf translate-mouse-last-pos (cons x y))
+         (with-finalizing ((transform (q+:transform map-view)))
+           (let ((scale (q+:m11 transform)))
+             (q+:set-transformation-anchor map-view (q+:qgraphicsview.no-anchor))
+             (q+:translate map-view (/ dx scale) (/ dy scale)))))))
+    (t (stop-overriding))))
+
+(define-override (map-view mouse-press-event) (mouse-event)
+  (cond
+    ((enum-equal (q+:button mouse-event) (q+:qt.mid-button))
+     (setf translate-mouse-last-pos (cons (q+:global-x mouse-event)
+                                          (q+:global-y mouse-event))))
+    (t (stop-overriding))))
+
+(define-override (map-view mouse-release-event) (mouse-event)
+  (cond
+    ((enum-equal (q+:button mouse-event) (q+:qt.mid-button))
+     (setf translate-mouse-last-pos nil))
+    (t (stop-overriding))))
 
 (define-signal (map-view zoom-lvl-changed) (double))
 
