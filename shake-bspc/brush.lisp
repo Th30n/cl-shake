@@ -66,8 +66,11 @@
           (setf (aref maxs i) (max x max-x))
           (setf (aref mins i) (min x min-x)))))))
 
+(defun brush-bounds (brush)
+  (bounds-of-linedefs (brush-lines brush)))
+
 (defun brush-center (brush)
-  (destructuring-bind (mins . maxs) (bounds-of-linedefs (brush-lines brush))
+  (destructuring-bind (mins . maxs) (brush-bounds brush)
     (vscale 0.5d0 (v+ mins maxs))))
 
 (defun brush-rotate (brush rad-angle)
@@ -113,3 +116,42 @@
                 (setf inside new-inside)))))
         (nconcf segs outside)))
     segs))
+
+(defun construct-convex-hull (points)
+  "Create a convex hull of given POINTS. Gift wrapping algorithm is used,
+  which is O(nh) where n is the number of points and h the resulting convex
+  hull points."
+  (let ((min-point (reduce (lambda (a b)
+                             (if (double= (vx a) (vx b))
+                                 (if (< (vy a) (vy b)) a b)
+                                 (if (< (vx a) (vx b)) a b))) points)))
+    (flet ((in-front-p (line point)
+             (let ((side (determine-side (linedef->lineseg line) point)))
+               (if (eq :on-line side)
+                   (with-struct (linedef- start end) line
+                     (double> (vdistsq start point) (vdistsq start end)))
+                   (eq :front side)))))
+      (loop with hull-point = min-point and endpoint = min-point collect
+           (progn
+             (dolist (p points)
+               (when (or (v= endpoint hull-point)
+                         (in-front-p (make-linedef :start hull-point :end endpoint)
+                                     p))
+                 (setf endpoint p)))
+             (setf hull-point endpoint))
+         until (v= endpoint min-point)))))
+
+(defun expand-brush (brush &key square)
+  "Expand the given BRUSH by the given size of the SQUARE. This will perform a
+  Minkowski sum of the brush polygon and the square polygon."
+  (let* ((half-size (* 0.5d0 (coerce square 'double-float)))
+         (hull-size (list half-size (- half-size))))
+    (flet ((add-square (point)
+             (cons point (map-product (lambda (x y) (v+ point (v x y)))
+                                      hull-size hull-size)))
+           (brush-from-points (points)
+             (make-brush :lines (apply #'make-linedef-loop points)
+                         :contents (brush-contents brush))))
+      (let ((hull-points (mapcan (compose #'add-square #'linedef-start)
+                                 (brush-lines brush))))
+        (brush-from-points (construct-convex-hull hull-points))))))

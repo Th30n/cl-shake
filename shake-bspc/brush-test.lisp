@@ -40,6 +40,16 @@
    ;; top left, bottom left, bottom right, top right
    (v -1d0 0d0) (v -1d0 -1d0) (v 0d0 -1d0) (v 0d0 0d0)))
 
+(defparameter *expanded-square-linedefs*
+  (make-linedef-loop (v -2 1) (v -2 -2) (v 1 -2) (v 1 1)))
+
+(defparameter *triangle-linedefs*
+  (make-linedef-loop (v 1 0) (v 0 1) (v -1 0)))
+
+(defparameter *expanded-triangle-linedefs*
+  (make-linedef-loop (v 1.5 -0.5) (v 1.5 0.5) (v 0.5 1.5)
+                     (v -0.5 1.5) (v -1.5 0.5) (v -1.5 -0.5)))
+
 (defmacro select-brush-lines (brush (&rest selectors))
   (when selectors
     `(list
@@ -84,5 +94,13 @@
     (with-input-from-string (in (with-output-to-string (out)
                                   (sbrush::write-brush brush out)))
       (is (sbrush::read-brush in) brush :test #'equalp))))
+
+(subtest "Test brush expansion"
+  (let ((brush (make-brush :lines *square-linedefs*)))
+    (is (brush-lines (expand-brush brush :square 2))
+        *expanded-square-linedefs* :test #'lineseg-set-equal))
+  (let ((brush (make-brush :lines *triangle-linedefs*)))
+    (is (brush-lines (expand-brush brush :square 1))
+        *expanded-triangle-linedefs* :test #'lineseg-set-equal)))
 
 (finalize)

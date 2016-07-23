@@ -58,12 +58,15 @@
   (:nicknames #:sbrush)
   (:use #:cl #:shiva #:sbsp #:shake-utils)
   (:import-from #:alexandria
-                #:unionf
-                #:nconcf)
+                #:compose
+                #:map-product
+                #:nconcf
+                #:unionf)
   (:export #:brush
            #:brush-p
            #:make-brush
            #:brush-lines
            #:brush-contents
            #:copy-brush
-           #:non-convex-brush-error))
+           #:non-convex-brush-error
+           #:expand-brush))
