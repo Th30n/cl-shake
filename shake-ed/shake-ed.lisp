@@ -307,8 +307,9 @@
     (let ((scale (if (>= 4 zoom-lvl)
                      (* +initial-scale+ (/ zoom-lvl 4))
                      (* 2d0 +initial-scale+ (- zoom-lvl 4)))))
-      (q+:reset-transform map-view)
-      (q+:scale map-view scale scale)
+      (with-finalizing ((transform (q+:transform map-view)))
+        (let ((scale-factor (/ scale (q+:m11 transform))))
+          (q+:scale map-view scale-factor scale-factor)))
       (signal! map-view (zoom-lvl-changed double) scale))))
 
 (define-override (map-view wheel-event) (event)
@@ -325,13 +326,9 @@
                                     (1- zoom-lvl))
                                 min-zoom max-zoom))
           (unless (= prev-zoom-lvl zoom-lvl)
-            (if (plusp zoom-lvl)
-                ;; Zoom in towards mouse position.
-                (with-finalizing ((scene-pos
-                                   (q+:map-to-scene map-view (q+:pos event))))
-                  (map-view-scale-zoom map-view)
-                  (q+:center-on map-view scene-pos))
-                (map-view-scale-zoom map-view))))
+            ;; Zoom in towards or out of mouse position.
+            (q+:set-transformation-anchor map-view (q+:qgraphicsview.anchor-under-mouse))
+            (map-view-scale-zoom map-view)))
         (stop-overriding))))
 
 (defstruct status-info
