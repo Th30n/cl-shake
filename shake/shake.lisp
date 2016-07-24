@@ -287,14 +287,9 @@ DRAW and DELETE for drawing and deleting respectively."
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (camera-position player) end-pos)
-          (progn
-            (let ((hull (sbsp:bspfile-clip-nodes *bsp*)))
-              (setf (camera-position player)
-                    (player-ground-move origin velocity hull))
-              (format t "Start: ~S~%End: ~S~%Pos: ~S~%Contents: ~S~%"
-                      origin end-pos (camera-position player)
-                      (hull-point-contents
-                       hull (v3->v2 (camera-position player))))))))))
+          (let ((hull (sbsp:bspfile-clip-nodes *bsp*)))
+            (setf (camera-position player)
+                  (player-ground-move origin velocity hull)))))))
 
 (defun run-tic (camera cmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
