@@ -32,9 +32,17 @@
   ((lines :initarg :lines :reader lines)))
 
 (defun make-brush (&key lines (contents :contents-solid))
-  (if (sbsp::convex-hull-p (mapcar #'linedef->lineseg lines))
-      (make-brush-raw :lines lines :contents contents)
-      (error 'non-convex-brush-error :lines lines)))
+  (if-let (side (sbsp::convex-hull-p (mapcar #'linedef->lineseg lines)))
+    (flet ((flip-line (line)
+             (with-struct (linedef- start end) line
+               (make-linedef :start end :end start
+                             :color (sbsp::linedef-color line)))))
+      (make-brush-raw :lines (if (eq side :back)
+                                 lines
+                                 ;; Flip the order so that normals point outwards.
+                                 (mapcar #'flip-line (reverse lines)))
+                      :contents contents))
+    (error 'non-convex-brush-error :lines lines)))
 
 (defun write-brush (brush stream)
   (with-struct (brush- lines contents) brush
