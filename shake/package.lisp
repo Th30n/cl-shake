@@ -21,7 +21,13 @@
   (:use #:cl #:shake-utils #:alexandria)
   (:export #:data-path
            #:with-data-dirs
-           #:with-data-file))
+           #:with-data-file
+           ;; resource management
+           #:with-resources
+           #:add-res
+           #:res
+           #:free-res
+           #:free-resources))
 
 (defpackage #:shake
   (:use #:cl #:shiva #:shake-gl #:alexandria #:shake-utils #:shake.data)

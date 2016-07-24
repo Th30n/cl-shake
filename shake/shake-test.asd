@@ -19,6 +19,7 @@
 (defsystem "shake-test"
   :depends-on ("shake" "prove")
   :defsystem-depends-on ("prove-asdf")
-  :components ((:test-file "world-test"))
+  :components ((:test-file "data-test")
+               (:test-file "world-test"))
   :perform (test-op :after (op c)
                     (funcall (intern #.(string :run) :prove) c)))
