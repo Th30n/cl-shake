@@ -99,6 +99,9 @@
   name
   (res-map (make-hash-table :test 'equal)))
 
+(defvar *resource-categories* nil
+  "Currently active resource categories, orderer by scope.")
+
 (symbol-macrolet
     ((res-types
       ((lambda ()
@@ -126,11 +129,12 @@
          (when (boundp '*resource-categories*)
            *resource-categories*))))
      (current-res-category
-      ((lambda ()
-         (declare (special *current-res-category*))
-         *current-res-category*))))
+      (car resource-categories)))
 
   (defun add-res (res-name load-fun free-fun)
+    "Add a resource named RES-NAME to the current resource category. The
+    resource is immediately loaded and returned. Raises an error if a resource
+    with the same name already exists."
     (with-struct (res-category- res-map) current-res-category
       (when (gethash res-name res-map)
         (error "Resource ~S already added" res-name))
@@ -166,25 +170,29 @@
             (return res)))))
 
   (defun res (res-name &key category)
+    "Find a resource named RES-NAME in given CATEGORY and load it if needed.
+    If no category given, start the search from the nearest scope. An error is
+    raised if unable to find the resource."
     (if-let ((res (get-resource res-name :category category)))
       (funcall (resource-load-fun res))
       (error "Unable to find resource ~S" res-name)))
 
   (defun free-res (res-name &key category)
+    "Free the resource named RES-NAME in given category. Double free and
+    freeing a non existent resource are silently ignored."
     (when-let ((res (get-resource res-name :category category)))
       (funcall (resource-free-fun res))))
 
   (defun free-resources ()
+    "Free all the resources in the current category scope."
     (with-struct (res-category- res-map) current-res-category
       (maphash-values (lambda (res) (funcall (resource-free-fun res)))
                       res-map))))
 
-(defvar *resource-categories* (list))
-
 (defmacro with-resources (category-name &body body)
-  `(let ((*current-res-category* (make-res-category :name ,category-name)))
-     (declare (special *current-res-category*))
-     (push *current-res-category* *resource-categories*)
+  "Run BODY within a resource category named CATEGORY-NAME."
+  `(let ((cat (make-res-category :name ,category-name)))
+     (push cat *resource-categories*)
      (unwind-protect
           (progn ,@body)
        (free-resources)
