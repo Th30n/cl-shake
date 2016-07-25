@@ -197,3 +197,18 @@
           (progn ,@body)
        (free-resources)
        (pop *resource-categories*))))
+
+(defmacro res-let (names &body body)
+  "Combines LET and RES calls. For example:
+    (res-let (a)
+      ...)
+  should be the same as
+    (let ((a (res \"a\")))
+      ...)"
+  (labels ((to-res-name (name)
+             (string-downcase (string name)))
+           (expand-res-call (name)
+             `(,name (res ,(to-res-name name)))))
+    (let ((bindings (mapcar #'expand-res-call names)))
+      `(let ,bindings
+         ,@body))))

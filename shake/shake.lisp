@@ -174,9 +174,9 @@ DRAW and DELETE for drawing and deleting respectively."
                (renderer-draw renderer)))))))
 
 (defun draw-stats (cpu-max cpu-avg)
-  (let ((point-renderer (res "point-renderer"))
-        (text-shader (res "text-shader"))
-        (font (res "font")))
+  (res-let (point-renderer
+            text-shader
+            font)
     (render-text point-renderer
                  (format nil "CPU time: ~,2Fms (max)" cpu-max)
                  600 580 800d0 600d0 text-shader font)
@@ -375,7 +375,7 @@ DRAW and DELETE for drawing and deleting respectively."
                                  frame-timer (make-frame-timer)))
                          (unless minimized-p
                            (clear-buffer-fv :color 0 0 0 0)
-                           (let ((shader-prog (res "shader-prog")))
+                           (res-let (shader-prog)
                              (gl:use-program shader-prog)
                              (uniform-mvp shader-prog
                                           (m* (camera-projection camera)

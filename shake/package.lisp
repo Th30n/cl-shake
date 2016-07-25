@@ -26,6 +26,7 @@
            #:with-resources
            #:add-res
            #:res
+           #:res-let
            #:free-res
            #:free-resources))
 
