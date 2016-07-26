@@ -95,12 +95,12 @@
   name
   load-fun)
 
-(defstruct res-category
+(defstruct res-scope
   name
   (res-map (make-hash-table :test 'equal)))
 
-(defvar *resource-categories* nil
-  "Currently active resource categories, orderer by scope.")
+(defvar *resource-scopes* nil
+  "Currently active resource scopes, orderer from nearest.")
 
 (symbol-macrolet
     ((res-types
@@ -115,27 +115,27 @@
                (ends-with-subseq ext res-name))))
       (find-if #'matches-ext res-types))))
 
-(defun get-resource-from-category (res-category res-name)
-  (with-struct (res-category- res-map) res-category
+(defun get-resource-from-scope (res-scope res-name)
+  (with-struct (res-scope- res-map) res-scope
     (if-let ((res (gethash res-name res-map)))
       res
       (when-let (res-type (get-res-type res-name))
         (funcall (res-type-load-fun res-type) res-name)))))
 
 (symbol-macrolet
-    ((resource-categories
+    ((resource-scopes
       ((lambda ()
-         (declare (special *resource-categories*))
-         (when (boundp '*resource-categories*)
-           *resource-categories*))))
-     (current-res-category
-      (car resource-categories)))
+         (declare (special *resource-scopes*))
+         (when (boundp '*resource-scopes*)
+           *resource-scopes*))))
+     (current-res-scope
+      (car resource-scopes)))
 
   (defun add-res (res-name load-fun free-fun)
-    "Add a resource named RES-NAME to the current resource category. The
+    "Add a resource named RES-NAME to the current resource scope. The
     resource is immediately loaded and returned. Raises an error if a resource
     with the same name already exists."
-    (with-struct (res-category- res-map) current-res-category
+    (with-struct (res-scope- res-map) current-res-scope
       (when (gethash res-name res-map)
         (error "Resource ~S already added" res-name))
       (let ((loadedp t)
@@ -157,46 +157,46 @@
                                :free-fun #'free))
           data))))
 
-  (defun get-resource-category (name)
-    (find-if (lambda (cat) (string= name (res-category-name cat)))
-             resource-categories))
+  (defun get-resource-scope (name)
+    (find-if (lambda (scope) (string= name (res-scope-name scope)))
+             resource-scopes))
 
-  (defun get-resource (res-name &key category)
-    (if category
-        (when-let ((cat (get-resource-category category)))
-          (get-resource-from-category cat res-name))
-        (dolist (category resource-categories)
-          (when-let ((res (get-resource-from-category category res-name)))
+  (defun get-resource (res-name &key scope)
+    (if scope
+        (when-let ((scope (get-resource-scope scope)))
+          (get-resource-from-scope scope res-name))
+        (dolist (scope resource-scopes)
+          (when-let ((res (get-resource-from-scope scope res-name)))
             (return res)))))
 
-  (defun res (res-name &key category)
-    "Find a resource named RES-NAME in given CATEGORY and load it if needed.
-    If no category given, start the search from the nearest scope. An error is
+  (defun res (res-name &key scope)
+    "Find a resource named RES-NAME in given SCOPE and load it if needed.
+    If no scope given, start the search from the nearest scope. An error is
     raised if unable to find the resource."
-    (if-let ((res (get-resource res-name :category category)))
+    (if-let ((res (get-resource res-name :scope scope)))
       (funcall (resource-load-fun res))
       (error "Unable to find resource ~S" res-name)))
 
-  (defun free-res (res-name &key category)
-    "Free the resource named RES-NAME in given category. Double free and
+  (defun free-res (res-name &key scope)
+    "Free the resource named RES-NAME in given scope. Double free and
     freeing a non existent resource are silently ignored."
-    (when-let ((res (get-resource res-name :category category)))
+    (when-let ((res (get-resource res-name :scope scope)))
       (funcall (resource-free-fun res))))
 
   (defun free-resources ()
-    "Free all the resources in the current category scope."
-    (with-struct (res-category- res-map) current-res-category
+    "Free all the resources in the current scope."
+    (with-struct (res-scope- res-map) current-res-scope
       (maphash-values (lambda (res) (funcall (resource-free-fun res)))
                       res-map))))
 
-(defmacro with-resources (category-name &body body)
-  "Run BODY within a resource category named CATEGORY-NAME."
-  `(let ((cat (make-res-category :name ,category-name)))
-     (push cat *resource-categories*)
+(defmacro with-resources (scope-name &body body)
+  "Run BODY within a resource scope named SCOPE-NAME."
+  `(let ((scope (make-res-scope :name ,scope-name)))
+     (push scope *resource-scopes*)
      (unwind-protect
           (progn ,@body)
        (free-resources)
-       (pop *resource-categories*))))
+       (pop *resource-scopes*))))
 
 (defmacro res-let (names &body body)
   "Combines LET and RES calls. For example:

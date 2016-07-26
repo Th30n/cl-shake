@@ -59,7 +59,7 @@
         (is free-count 1))
       (is free-count 1))))
 
-(subtest "Test categories"
+(subtest "Test scopes"
   (let ((first-free 0)
         (second-free 0))
   (with-resources "first"
@@ -71,16 +71,16 @@
                                             (declare (ignore res))
                                             (incf second-free)))
       (is (res "res") 'second)
-      (is (res "res" :category "second") 'second)
-      (is (res "res" :category "first") 'first)
+      (is (res "res" :scope "second") 'second)
+      (is (res "res" :scope "first") 'first)
       (free-res "res")
       (free-res "res")
       (is second-free 1)
       (is first-free 0)
       (is (res "res") 'second)
-      (free-res "res" :category "first")
+      (free-res "res" :scope "first")
       (is first-free 1)
-      (is (res "res" :category "first") 'first))
+      (is (res "res" :scope "first") 'first))
     (is second-free 2)
     (is first-free 1)
     (is (res "res") 'first))
