@@ -106,11 +106,7 @@
     (when relative-t
       (let ((t-diff (- t-end t-start)))
         (setf t-split (+ t-start (* t-split t-diff)))))
-    (when (and
-           ;; Comparing if t-split is within t-start and t-end with < is
-           ;; not good enough for floats.
-           (not (or (double= t-split t-start) (double= t-split t-end)))
-           (< t-start t-split t-end))
+    (when (double> t-end t-split t-start)
       (let ((l1 (copy-lineseg lineseg))
             (l2 (copy-lineseg lineseg)))
         (setf (lineseg-t-end l1) t-split)

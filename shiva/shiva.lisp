@@ -299,10 +299,9 @@ epsilon. Doesn't handle infinities."
     (or (<= diff epsilon) ;; Needed when near zero.
         (<= diff (* max rel-epsilon)))))
 
-(defun double> (a b)
-  (declare (type double-float a b))
-  (unless (double= a b)
-    (> a b)))
+(defun double> (number &rest more-numbers)
+  (loop for (a b) on (cons number more-numbers)
+     never (and b (or (double= a b) (< a b)))))
 
 (defun v= (v1 v2 &key (test #'double=))
   "Perform a comparison of two vectors."
