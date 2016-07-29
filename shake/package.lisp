@@ -32,4 +32,11 @@
 
 (defpackage #:shake
   (:use #:cl #:shiva #:shake-gl #:alexandria #:shake-utils #:shake.data)
-  (:export #:main))
+  (:export #:main
+           #:recursive-hull-check
+           #:hull-point-contents
+           ;; mtrace
+           #:mtrace
+           #:mtrace-endpos
+           #:mtrace-fraction
+           #:mtrace-normal))

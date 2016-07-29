@@ -36,14 +36,14 @@
 (subtest "Testing split-lineseg"
   (let* ((line (car *test-linedefs*))
          (seg (linedef->lineseg line)))
-    (is (sbsp::split-lineseg seg -1d0)
+    (is (sbsp:split-lineseg seg -1d0)
         nil)
-    (is (sbsp::split-lineseg seg 0d0)
+    (is (sbsp:split-lineseg seg 0d0)
         nil)
-    (is (sbsp::split-lineseg seg 1d0)
+    (is (sbsp:split-lineseg seg 1d0)
         nil)
     (let* ((t-split 0.8d0)
-           (split-segs (sbsp::split-lineseg seg t-split)))
+           (split-segs (sbsp:split-lineseg seg t-split)))
       (is split-segs
           (cons (make-lineseg :orig-line line
                               :t-end t-split)
@@ -62,7 +62,7 @@
   (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
          (bsp (build-bsp segs)))
     (with-input-from-string (in (with-output-to-string (out)
-                                  (sbsp::write-bsp bsp out)))
+                                  (sbsp:write-bsp bsp out)))
       (is (read-bsp in) bsp :test #'equalp))))
 
 (defparameter *coincident-linedefs*

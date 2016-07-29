@@ -37,11 +37,11 @@
 (defun write-map (brushes stream)
   (format stream "~S~%" (length brushes))
   (dolist (brush brushes)
-    (sbrush::write-brush brush stream)))
+    (sbrush:write-brush brush stream)))
 
 (defun read-map (stream)
   (let ((n (read stream)))
-    (repeat n (sbrush::read-brush stream))))
+    (repeat n (sbrush:read-brush stream))))
 
 (defun read-and-compile-map (stream)
   (let ((brushes (read-map stream)))

@@ -61,30 +61,30 @@
 
 (subtest "Clipping two neighbour square brushes"
   (let* ((b1 (make-brush :lines *square-linedefs*))
-         (b2 (sbrush::brush-translate b1 (v 1d0 0d0))))
+         (b2 (sbrush:brush-translate b1 (v 1d0 0d0))))
     (let ((expected
            (mapcar #'linedef->lineseg
                    (append (select-brush-lines b1 (first second fourth))
                            (select-brush-lines b2 (second third fourth))))))
-      (is (sbrush::prepare-brushes-for-bsp (list b1 b2))
+      (is (sbrush:prepare-brushes-for-bsp (list b1 b2))
           expected :test #'lineseg-set-equal))))
 
 (subtest "Brush is clipped twice."
   (let* ((b1 (make-brush :lines *square-linedefs*))
-         (b2 (sbrush::brush-translate b1 (v 1d0 0d0)))
-         (b3 (sbrush::brush-translate b1 (v 0d0 1d0)))
+         (b2 (sbrush:brush-translate b1 (v 1d0 0d0)))
+         (b3 (sbrush:brush-translate b1 (v 0d0 1d0)))
          (expected
           (mapcar #'linedef->lineseg
                   (append (select-brush-lines b1 (first second))
                           (select-brush-lines b2 (second third fourth))
                           (select-brush-lines b3 (first third fourth))))))
-    (is (sbrush::prepare-brushes-for-bsp (list b1 b2 b3))
+    (is (sbrush:prepare-brushes-for-bsp (list b1 b2 b3))
         expected :test #'lineseg-set-equal)))
 
 (subtest "Brush is correctly rotated."
   (let* ((b (make-brush :lines *square-linedefs*))
          (expected (rotate (copy-seq (brush-lines b)) -1)))
-    (is (brush-lines (sbrush::brush-rotate b (* deg->rad 90)))
+    (is (brush-lines (sbrush:brush-rotate b (* deg->rad 90)))
         expected :test (lambda (got exp)
                          (and (length= got exp)
                               (every #'linedef= got exp))))))
@@ -92,8 +92,8 @@
 (subtest "Test serialization"
   (let ((brush (make-brush :lines *square-linedefs*)))
     (with-input-from-string (in (with-output-to-string (out)
-                                  (sbrush::write-brush brush out)))
-      (is (sbrush::read-brush in) brush :test #'equalp))))
+                                  (sbrush:write-brush brush out)))
+      (is (sbrush:read-brush in) brush :test #'equalp))))
 
 (subtest "Test brush expansion"
   (let ((brush (make-brush :lines *square-linedefs*)))

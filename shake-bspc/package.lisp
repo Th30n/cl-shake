@@ -27,6 +27,8 @@
            #:linedef-normal
            #:linedef-vec
            #:linedef=
+           #:write-linedef
+           #:read-linedef
            ;; line segment
            #:lineseg
            #:make-lineseg
@@ -35,12 +37,15 @@
            #:lineseg-end
            #:lineseg-normal
            #:linedef->lineseg
+           #:split-lineseg
            ;; bsp nodes
            #:node
            #:node-p
            #:node-line
            #:node-front
            #:node-back
+           #:write-bsp
+           #:read-bsp
            #:leaf
            #:leaf-p
            #:leaf-contents
@@ -57,6 +62,8 @@
            #:write-bspfile
            #:read-bspfile
            ;; bsp queries
+           #:partition-linesegs
+           #:convex-hull-p
            #:determine-side
            #:back-to-front))
 
@@ -75,6 +82,10 @@
            #:brush-lines
            #:brush-contents
            #:copy-brush
+           #:write-brush
+           #:read-brush
+           #:brush-translate
+           #:brush-rotate
            #:non-convex-brush-error
            #:expand-brush
            #:prepare-brushes-for-bsp))

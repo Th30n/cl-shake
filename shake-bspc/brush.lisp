@@ -32,7 +32,7 @@
   ((lines :initarg :lines :reader lines)))
 
 (defun make-brush (&key lines (contents :contents-solid))
-  (if-let (side (sbsp::convex-hull-p (mapcar #'linedef->lineseg lines)))
+  (if-let (side (sbsp:convex-hull-p (mapcar #'linedef->lineseg lines)))
     (flet ((flip-line (line)
              (with-struct (linedef- start end) line
                (make-linedef :start end :end start
@@ -51,7 +51,7 @@
             contents
             (length lines))
     (dolist (line lines)
-      (sbsp::write-linedef line stream))))
+      (sbsp:write-linedef line stream))))
 
 (defun read-brush (stream)
   (let ((name (read stream))
@@ -59,7 +59,7 @@
         (lines-count (read stream)))
     (declare (ignore name))
     (make-brush :contents contents
-                :lines (repeat lines-count (sbsp::read-linedef stream)))))
+                :lines (repeat lines-count (sbsp:read-linedef stream)))))
 
 (defun bounds-of-linedefs (lines)
   (let ((mins (copy-seq (linedef-start (car lines))))
@@ -119,7 +119,7 @@
             ;; clip brush b1 against b2
             (dolist (split-line (brush-lines b2))
               (multiple-value-bind (new-outside new-inside)
-                  (sbsp::partition-linesegs split-line inside)
+                  (sbsp:partition-linesegs split-line inside)
                 (unionf outside new-outside)
                 (setf inside new-inside)))))
         (nconcf segs outside)))

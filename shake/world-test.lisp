@@ -23,7 +23,8 @@
   (:import-from #:shiva
                 #:double=
                 #:v
-                #:v=)
+                #:v=
+                #:v3->v2)
   (:import-from #:sbsp
                 #:make-linedef-loop
                 #:linedef->lineseg
@@ -42,16 +43,16 @@
 (defmacro let-mtrace (p1 p2 &body body)
   `(let* ((p1 ,p1)
           (p2 ,p2)
-          (mtrace (shake::recursive-hull-check hull p1 p2)))
+          (mtrace (shake:recursive-hull-check hull p1 p2)))
      ,@body))
 
 (defmacro test-recursive-hull-check (p1 p2 &key fraction endpos normal)
   `(let-mtrace ,p1 ,p2
      ,@(when fraction
              (list
-              `(is (shake::mtrace-fraction mtrace) ,fraction :test #'double=)))
-     (is (shake::mtrace-endpos mtrace) ,endpos :test #'v=)
-     (is (shake::mtrace-normal mtrace) ,normal
+              `(is (shake:mtrace-fraction mtrace) ,fraction :test #'double=)))
+     (is (shake:mtrace-endpos mtrace) ,endpos :test #'v=)
+     (is (shake:mtrace-normal mtrace) ,normal
          :test (lambda (a b)
                  (if (null a)
                      (null b)
@@ -60,10 +61,10 @@
 (subtest "hull-point-contents"
   (let* ((segs (mapcar #'linedef->lineseg *square-linedefs*))
          (hull (build-bsp segs)))
-    (is (shake::hull-point-contents hull (v -0.5d0 -0.5d0)) :contents-solid)
-    (is (shake::hull-point-contents hull (v 0.5d0 -0.5d0)) :contents-empty)
-    (is (shake::hull-point-contents hull (v 0d0 0d0)) :contents-empty)
-    (is (shake::hull-point-contents hull (v -0.01d0 -0.01d0)) :contents-solid)))
+    (is (shake:hull-point-contents hull (v -0.5d0 -0.5d0)) :contents-solid)
+    (is (shake:hull-point-contents hull (v 0.5d0 -0.5d0)) :contents-empty)
+    (is (shake:hull-point-contents hull (v 0d0 0d0)) :contents-empty)
+    (is (shake:hull-point-contents hull (v -0.01d0 -0.01d0)) :contents-solid)))
 
 (subtest "recursive-hull-check"
   (let* ((segs (mapcar #'linedef->lineseg *square-linedefs*))
@@ -84,18 +85,18 @@
     (let-mtrace
         (v 0.059055107469946466d0 0.5d0 -0.45058874753714245d0)
         (v -0.023507212569340574d0 0.5d0 -0.46189837857333405d0)
-      (ok (not (= (shake::mtrace-fraction mtrace) 1d0)))
-      (is (shake::mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
-      (is (shake::hull-point-contents
-           hull (shake::v3->v2 (shake::mtrace-endpos mtrace)))
+      (ok (not (= (shake:mtrace-fraction mtrace) 1d0)))
+      (is (shake:mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
+      (is (shake:hull-point-contents
+           hull (v3->v2 (shake::mtrace-endpos mtrace)))
           :contents-empty))
     (let-mtrace
         (v 0.00654330262651126d0 0.5d0 -0.5254935858404913d0)
         (v -0.07672578372688232d0 0.5d0 -0.5222219345272358d0)
-      (ok (not (= (shake::mtrace-fraction mtrace) 1d0)))
-      (is (shake::mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
-      (is (shake::hull-point-contents
-           hull (shake::v3->v2 (shake::mtrace-endpos mtrace)))
+      (ok (not (= (shake:mtrace-fraction mtrace) 1d0)))
+      (is (shake:mtrace-normal mtrace) (v 1d0 0d0 0d0) :test #'v=)
+      (is (shake:hull-point-contents
+           hull (v3->v2 (shake:mtrace-endpos mtrace)))
           :contents-empty))))
 
 (finalize)

@@ -55,8 +55,8 @@
 (defun mbrush-lines (mbrush)
   "Returns LINEDEFS after applying transformations from MBRUSH."
   (sbrush:brush-lines
-   (sbrush::brush-rotate (mbrush-brush mbrush)
-                         (* deg->rad (mbrush-rotation mbrush)))))
+   (sbrush:brush-rotate (mbrush-brush mbrush)
+                        (* deg->rad (mbrush-rotation mbrush)))))
 
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
@@ -435,8 +435,8 @@
     (let ((mbrushes (hash-table-values graphics-item-brush-map)))
       (sbsp:write-map
        (mapcar (lambda (mbrush)
-                 (sbrush::brush-rotate (mbrush-brush mbrush)
-                                       (* deg->rad (mbrush-rotation mbrush))))
+                 (sbrush:brush-rotate (mbrush-brush mbrush)
+                                      (* deg->rad (mbrush-rotation mbrush))))
                mbrushes) stream))))
 
 (defun read-map (stream scene)
