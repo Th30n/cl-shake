@@ -207,7 +207,6 @@
     (values front back on-splitter)))
 
 (defun build-bsp (linesegs &optional (splitters nil))
-  (declare (optimize (speed 0) (debug 3)))
   (if (null linesegs)
       (make-leaf :contents :contents-solid)
       (multiple-value-bind

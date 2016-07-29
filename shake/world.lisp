@@ -64,7 +64,6 @@
               mid (v+ p1 (vscale frac (v- p2 p1)))))))
 
 (defun split-hull-check (hull node t1 t2 p1 p2 p1f p2f)
-  (declare (optimize (debug 3)))
   (let* ((frac (cross-fraction t1 t2))
          (midf (+ p1f (* frac (- p2f p1f))))
          (mid (v+ p1 (vscale frac (v- p2 p1)))))

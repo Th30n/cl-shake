@@ -16,8 +16,6 @@
 
 (in-package #:shake)
 
-(declaim (optimize (debug 3)))
-
 (defvar *base-dir*
   #.(directory-namestring (or *compile-file-truename* *load-truename*)))
 
