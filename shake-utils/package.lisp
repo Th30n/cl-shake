@@ -23,4 +23,5 @@
            #:length>=
            #:notf
            #:repeat
-           #:with-struct))
+           #:with-struct
+           #:zap))

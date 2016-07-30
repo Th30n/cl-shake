@@ -32,6 +32,18 @@ the structure."
      (dolist (,var-b ,list-b)
        ,@body)))
 
+(defmacro zap (fn place &rest args)
+  "Set the PLACE to the result of applying the function FN to the current
+  value of place and ARGS. For example:
+
+    (zap #'1+ place) === (incf place)
+    (zap #'cons (car list) 'a) === (setf (car list) (cons (car list) 'a))"
+  (multiple-value-bind (temps exprs stores writer reader)
+      (get-setf-expansion place)
+    `(let* (,@(mapcar #'list temps exprs)
+            (,(car stores) (funcall ,fn ,reader ,@args)))
+       ,writer)))
+
 (defmacro notf (&rest args)
   "Invert the values of places pointed to by ARGS."
   `(setf ,@(mapcan (lambda (a) `(,a (not ,a))) args)))
