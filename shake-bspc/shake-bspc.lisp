@@ -18,8 +18,7 @@
 
 (defstruct linedef
   (start (v 0 0) :type (vec 2) :read-only t)
-  (end  (v 0 0) :type (vec 2) :read-only t)
-  (color (v 1 0 1) :type (vec 3) :read-only t))
+  (end (v 0 0) :type (vec 2) :read-only t))
 
 (defun linedef-vec (linedef)
   (v- (linedef-end linedef) (linedef-start linedef)))
@@ -35,8 +34,7 @@
   (or (eq a b)
       (and (linedef-p b)
            (v= (linedef-start a) (linedef-start b))
-           (v= (linedef-end a) (linedef-end b))
-           (v= (linedef-color a) (linedef-color b)))))
+           (v= (linedef-end a) (linedef-end b)))))
 
 (defstruct lineseg
   "Segment of a line. Each line starts as a full segment, but may be split
@@ -79,6 +77,9 @@
   (with-struct (sidedef- lineseg color) sidedef
     (write-lineseg lineseg stream)
     (format stream "~S ~S ~S~%" (vx color) (vy color) (vz color))))
+
+(defun linedef->sidedef (line)
+  (make-sidedef :lineseg (linedef->lineseg line)))
 
 (defstruct leaf
   "A leaf node in the BSP tree. The SEGS slot stores the geometry as a LIST of

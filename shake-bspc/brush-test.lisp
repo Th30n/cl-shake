@@ -59,8 +59,11 @@
 (defun lineseg-set-equal (list1 list2)
   (set-equal list1 list2 :test #'equalp))
 
+(defun lines->brush (lines)
+  (make-brush :surfaces (mapcar #'linedef->sidedef lines)))
+
 (subtest "Clipping two neighbour square brushes"
-  (let* ((b1 (make-brush :lines *square-linedefs*))
+  (let* ((b1 (lines->brush *square-linedefs*))
          (b2 (sbrush:brush-translate b1 (v 1d0 0d0))))
     (let ((expected
            (mapcar #'linedef->lineseg
@@ -70,7 +73,7 @@
           expected :test #'lineseg-set-equal))))
 
 (subtest "Brush is clipped twice."
-  (let* ((b1 (make-brush :lines *square-linedefs*))
+  (let* ((b1 (lines->brush *square-linedefs*))
          (b2 (sbrush:brush-translate b1 (v 1d0 0d0)))
          (b3 (sbrush:brush-translate b1 (v 0d0 1d0)))
          (expected
@@ -82,7 +85,7 @@
         expected :test #'lineseg-set-equal)))
 
 (subtest "Brush is correctly rotated."
-  (let* ((b (make-brush :lines *square-linedefs*))
+  (let* ((b (lines->brush *square-linedefs*))
          (expected (rotate (copy-seq (brush-lines b)) -1)))
     (is (brush-lines (sbrush:brush-rotate b (* deg->rad 90)))
         expected :test (lambda (got exp)
@@ -90,16 +93,16 @@
                               (every #'linedef= got exp))))))
 
 (subtest "Test serialization"
-  (let ((brush (make-brush :lines *square-linedefs*)))
+  (let ((brush (lines->brush *square-linedefs*)))
     (with-input-from-string (in (with-output-to-string (out)
                                   (sbrush:write-brush brush out)))
       (is (sbrush:read-brush in) brush :test #'equalp))))
 
 (subtest "Test brush expansion"
-  (let ((brush (make-brush :lines *square-linedefs*)))
+  (let ((brush (lines->brush *square-linedefs*)))
     (is (brush-lines (expand-brush brush :square 2))
         *expanded-square-linedefs* :test #'lineseg-set-equal))
-  (let ((brush (make-brush :lines *triangle-linedefs*)))
+  (let ((brush (lines->brush *triangle-linedefs*)))
     (is (brush-lines (expand-brush brush :square 1))
         *expanded-triangle-linedefs* :test #'lineseg-set-equal)))
 

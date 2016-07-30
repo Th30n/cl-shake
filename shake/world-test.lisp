@@ -58,11 +58,8 @@
                      (null b)
                      (v= a b))))))
 
-(defun linedef->sidedef (line)
-  (sbsp:make-sidedef :lineseg (linedef->lineseg line)))
-
 (subtest "hull-point-contents"
-  (let* ((surfs (mapcar #'linedef->sidedef *square-linedefs*))
+  (let* ((surfs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
          (hull (build-bsp surfs)))
     (is (shake:hull-point-contents hull (v -0.5d0 -0.5d0)) :contents-solid)
     (is (shake:hull-point-contents hull (v 0.5d0 -0.5d0)) :contents-empty)
@@ -70,7 +67,7 @@
     (is (shake:hull-point-contents hull (v -0.01d0 -0.01d0)) :contents-solid)))
 
 (subtest "recursive-hull-check"
-  (let* ((segs (mapcar #'linedef->sidedef *square-linedefs*))
+  (let* ((segs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
          (hull (build-bsp segs)))
     (test-recursive-hull-check
      (v 0.5d0 1d0 -1d0) (v 0d0 1d0 -0.5d0)
@@ -83,7 +80,7 @@
      :fraction 0.25d0 :endpos (v -0.5d0 0d0 -1d0) :normal (v 0d0 0d0 -1d0))))
 
 (subtest "pathological recursive-hull-check"
-  (let* ((segs (mapcar #'linedef->sidedef *square-linedefs*))
+  (let* ((segs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
          (hull (build-bsp segs)))
     (let-mtrace
         (v 0.059055107469946466d0 0.5d0 -0.45058874753714245d0)

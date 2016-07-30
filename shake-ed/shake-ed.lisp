@@ -219,10 +219,11 @@
                    (dolist (line linedefs)
                      (q+:add-to-group group (linedef->lineitem line)))
                    (handler-case
-                       (setf (gethash group graphics-item-brush-map)
-                             (make-mbrush :brush
-                                          (sbrush:make-brush :lines linedefs))
-                             draw-info nil)
+                       (let ((surfs (mapcar #'sbsp:linedef->sidedef linedefs)))
+                         (setf (gethash group graphics-item-brush-map)
+                               (make-mbrush :brush
+                                            (sbrush:make-brush :surfaces surfs))
+                               draw-info nil))
                      (sbrush:non-convex-brush-error ()
                        (cancel-editing map-scene)))
                    (q+:update map-scene (q+:scene-rect map-scene))))
@@ -500,12 +501,8 @@
          (q+:close main)))
 
 (defun set-brush-color (brush color)
-  (flet ((change-line-color (line)
-           (sbsp:make-linedef :start (sbsp:linedef-start line)
-                              :end (sbsp:linedef-end line)
-                              :color color)))
-    (setf (sbrush:brush-lines brush)
-          (mapcar #'change-line-color (sbrush:brush-lines brush)))))
+  (dolist (surf (sbrush:brush-surfaces brush))
+    (setf (sbsp:sidedef-color surf) color)))
 
 (defun selected-brushes (scene)
   (with-slots (graphics-item-brush-map) scene

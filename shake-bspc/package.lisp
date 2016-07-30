@@ -36,6 +36,7 @@
            #:sidedef-lineseg
            #:write-sidedef
            #:read-sidedef
+           #:linedef->sidedef
            ;; line segment
            #:lineseg
            #:make-lineseg

@@ -35,23 +35,23 @@
 (define-condition non-convex-brush-error (error)
   ((lines :initarg :lines :reader lines)))
 
-(defun make-brush (&key lines (contents :contents-solid))
-  (if-let (side (sbsp:convex-hull-p (mapcar #'linedef->lineseg lines)))
-    (flet ((flip-line (line)
-             (with-struct (linedef- start end) line
-               (make-linedef :start end :end start
-                             :color (sbsp::linedef-color line))))
-           (linedef->sidedef (line)
-             (make-sidedef :lineseg (linedef->lineseg line)
-                           :color (sbsp::linedef-color line))))
+(defun make-brush (&key surfaces (contents :contents-solid))
+  (if-let (side (sbsp:convex-hull-p (mapcar #'sidedef-lineseg surfaces)))
+    (flet ((flip-line (surf)
+             (let ((line (lineseg-orig-line (sidedef-lineseg surf))))
+               (with-struct (linedef- start end) line
+                 (setf (sidedef-lineseg surf)
+                       (linedef->lineseg (make-linedef :start end
+                                                       :end start)))))))
       (make-brush-raw :surfaces
-                      (mapcar #'linedef->sidedef
-                              (if (eq side :back)
-                                  lines
-                                  ;; Flip the order so that normals point outwards.
-                                  (mapcar #'flip-line (reverse lines))))
+                      (if (eq side :back)
+                          surfaces
+                          ;; Flip the order so that normals point outwards.
+                          (mapcar #'flip-line (reverse surfaces)))
                       :contents contents))
-    (error 'non-convex-brush-error :lines lines)))
+    (error 'non-convex-brush-error
+           :lines (mapcar (compose #'lineseg-orig-line #'sidedef-lineseg)
+                          surfaces))))
 
 (defun write-brush (brush stream)
   (with-struct (brush- surfaces contents) brush
@@ -67,8 +67,8 @@
         (contents (read stream))
         (surf-count (read stream)))
     (declare (ignore name))
-    (make-brush-raw :contents contents
-                    :surfaces (repeat surf-count (sbsp:read-sidedef stream)))))
+    (make-brush :contents contents
+                :surfaces (repeat surf-count (sbsp:read-sidedef stream)))))
 
 (defun bounds-of-linedefs (lines)
   (let ((mins (copy-seq (linedef-start (car lines))))
@@ -101,22 +101,24 @@
                  (v+ (v (vx rotated) (vy rotated)) center)))
              (rotate-line (line)
                (make-linedef :start (rotate-point (linedef-start line))
-                             :end (rotate-point (linedef-end line))
-                             :color (sbsp::linedef-color line)))
+                             :end (rotate-point (linedef-end line))))
              (rotate-surf (surf)
                (let ((line (lineseg-orig-line (sidedef-lineseg surf))))
                  (make-sidedef :lineseg (linedef->lineseg (rotate-line line))
                                :color (sidedef-color surf)))))
-      (make-brush-raw :surfaces (mapcar #'rotate-surf (brush-surfaces brush))
-                      :contents (brush-contents brush)))))
+      (make-brush :surfaces (mapcar #'rotate-surf (brush-surfaces brush))
+                  :contents (brush-contents brush)))))
 
 (defun brush-translate (brush vector)
   "Translate the given BRUSH along the given VECTOR."
-  (flet ((linedef-translate (line)
-           (make-linedef :start (v+ (linedef-start line) vector)
-                         :end (v+ (linedef-end line) vector)
-                         :color (sbsp::linedef-color line))))
-    (make-brush :lines (mapcar #'linedef-translate (brush-lines brush))
+  (labels ((translate-line (line)
+             (make-linedef :start (v+ (linedef-start line) vector)
+                           :end (v+ (linedef-end line) vector)))
+           (translate-surf (surf)
+             (let ((line (lineseg-orig-line (sidedef-lineseg surf))))
+               (make-sidedef :lineseg (linedef->lineseg (translate-line line))
+                             :color (sidedef-color surf)))))
+    (make-brush :surfaces (mapcar #'translate-surf (brush-surfaces brush))
                 :contents (brush-contents brush))))
 
 (defun prepare-brushes-for-bsp (brushes)
@@ -172,7 +174,8 @@
              (cons point (map-product (lambda (x y) (v+ point (v x y)))
                                       hull-size hull-size)))
            (brush-from-points (points)
-             (make-brush :lines (apply #'make-linedef-loop points)
+             (make-brush :surfaces (mapcar #'linedef->sidedef
+                                           (apply #'make-linedef-loop points))
                          :contents (brush-contents brush))))
       (let ((hull-points (mapcan (compose #'add-square #'linedef-start)
                                  (brush-lines brush))))

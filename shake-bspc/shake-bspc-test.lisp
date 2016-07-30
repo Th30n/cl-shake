@@ -33,10 +33,6 @@
         (make-linedef :start (v -2 1) :end (v 5 1))
         (make-linedef :start (v 3 2) :end (v 3 -2))))
 
-(defun linedef->sidedef (line)
-  (make-sidedef :lineseg (linedef->lineseg line)
-                :color (sbsp::linedef-color line)))
-
 (subtest "Testing split-lineseg"
   (let* ((line (car *test-linedefs*))
          (seg (linedef->lineseg line)))
