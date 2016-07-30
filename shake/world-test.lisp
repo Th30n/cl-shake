@@ -59,8 +59,7 @@
                      (v= a b))))))
 
 (defun linedef->sidedef (line)
-  (sbsp:make-sidedef :lineseg (linedef->lineseg line)
-                     :color (sbsp::linedef-color line)))
+  (sbsp:make-sidedef :lineseg (linedef->lineseg line)))
 
 (subtest "hull-point-contents"
   (let* ((surfs (mapcar #'linedef->sidedef *square-linedefs*))

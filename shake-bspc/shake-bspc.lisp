@@ -254,16 +254,14 @@
   (make-lineseg :orig-line linedef))
 
 (defun write-linedef (linedef stream)
-  (with-struct (linedef- start end color) linedef
-    (format stream "~S ~S ~S ~S~%~S ~S ~S~%"
-            (vx start) (vy start) (vx end) (vy end)
-            (vx color) (vy color) (vz color))))
+  (with-struct (linedef- start end) linedef
+    (format stream "~S ~S ~S ~S~%"
+            (vx start) (vy start) (vx end) (vy end))))
 
 (defun read-linedef (stream)
   (let ((start (v (read stream) (read stream)))
-        (end (v (read stream) (read stream)))
-        (color (v (read stream) (read stream) (read stream))))
-    (make-linedef :start start :end end :color color)))
+        (end (v (read stream) (read stream))))
+    (make-linedef :start start :end end)))
 
 (defun write-lineseg (lineseg stream)
   (with-struct (lineseg- orig-line t-start t-end) lineseg

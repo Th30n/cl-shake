@@ -515,8 +515,8 @@
 (defun edit-color (w)
   (with-slots-bound (w main)
     (when-let* ((brushes (mapcar #'mbrush-brush (selected-brushes scene)))
-                (old-color (sbsp::linedef-color
-                            (car (sbrush:brush-lines (car brushes))))))
+                (old-color (sbsp:sidedef-color
+                            (first (sbrush:brush-surfaces (first brushes))))))
       (with-finalizing* ((qcolor (vector->qcolor old-color))
                          (new-qcolor (q+:qcolordialog-get-color qcolor w)))
         (when (q+:is-valid new-qcolor)

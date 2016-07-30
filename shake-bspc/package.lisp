@@ -34,6 +34,8 @@
            #:make-sidedef
            #:sidedef-color
            #:sidedef-lineseg
+           #:write-sidedef
+           #:read-sidedef
            ;; line segment
            #:lineseg
            #:make-lineseg
@@ -85,6 +87,7 @@
            #:brush-p
            #:make-brush
            #:brush-lines
+           #:brush-surfaces
            #:brush-contents
            #:copy-brush
            #:write-brush

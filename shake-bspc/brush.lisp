@@ -21,12 +21,16 @@
 
 (defstruct (brush (:constructor make-brush-raw))
   "A convex polygon defining a geometry with contents.
-  LINES is a list of LINEDEFs defining the polygon.
+  SURFACES is a list of SIDEDEFs defining the polygon.
   CONTENTS can be one of:
   * :CONTENTS-EMPTY
   * :CONTENTS-SOLID"
-  lines
+  surfaces
   (contents :contents-solid))
+
+(defun brush-lines (brush)
+  (mapcar (compose #'lineseg-orig-line #'sidedef-lineseg)
+          (brush-surfaces brush)))
 
 (define-condition non-convex-brush-error (error)
   ((lines :initarg :lines :reader lines)))
@@ -36,30 +40,35 @@
     (flet ((flip-line (line)
              (with-struct (linedef- start end) line
                (make-linedef :start end :end start
-                             :color (sbsp::linedef-color line)))))
-      (make-brush-raw :lines (if (eq side :back)
-                                 lines
-                                 ;; Flip the order so that normals point outwards.
-                                 (mapcar #'flip-line (reverse lines)))
+                             :color (sbsp::linedef-color line))))
+           (linedef->sidedef (line)
+             (make-sidedef :lineseg (linedef->lineseg line)
+                           :color (sbsp::linedef-color line))))
+      (make-brush-raw :surfaces
+                      (mapcar #'linedef->sidedef
+                              (if (eq side :back)
+                                  lines
+                                  ;; Flip the order so that normals point outwards.
+                                  (mapcar #'flip-line (reverse lines))))
                       :contents contents))
     (error 'non-convex-brush-error :lines lines)))
 
 (defun write-brush (brush stream)
-  (with-struct (brush- lines contents) brush
+  (with-struct (brush- surfaces contents) brush
     (format stream "~@{~S~%~}"
             :brush
             contents
-            (length lines))
-    (dolist (line lines)
-      (sbsp:write-linedef line stream))))
+            (length surfaces))
+    (dolist (surf surfaces)
+      (sbsp:write-sidedef surf stream))))
 
 (defun read-brush (stream)
   (let ((name (read stream))
         (contents (read stream))
-        (lines-count (read stream)))
+        (surf-count (read stream)))
     (declare (ignore name))
-    (make-brush :contents contents
-                :lines (repeat lines-count (sbsp:read-linedef stream)))))
+    (make-brush-raw :contents contents
+                    :surfaces (repeat surf-count (sbsp:read-sidedef stream)))))
 
 (defun bounds-of-linedefs (lines)
   (let ((mins (copy-seq (linedef-start (car lines))))
@@ -93,9 +102,13 @@
              (rotate-line (line)
                (make-linedef :start (rotate-point (linedef-start line))
                              :end (rotate-point (linedef-end line))
-                             :color (sbsp::linedef-color line))))
-      (make-brush :lines (mapcar #'rotate-line (brush-lines brush))
-                  :contents (brush-contents brush)))))
+                             :color (sbsp::linedef-color line)))
+             (rotate-surf (surf)
+               (let ((line (lineseg-orig-line (sidedef-lineseg surf))))
+                 (make-sidedef :lineseg (linedef->lineseg (rotate-line line))
+                               :color (sidedef-color surf)))))
+      (make-brush-raw :surfaces (mapcar #'rotate-surf (brush-surfaces brush))
+                      :contents (brush-contents brush)))))
 
 (defun brush-translate (brush vector)
   "Translate the given BRUSH along the given VECTOR."
@@ -111,25 +124,20 @@
   ready for binary space partitioning."
   (let (segs)
     (dolist (b1 brushes)
-      (let ((outside (mapcar #'linedef->lineseg (brush-lines b1)))
+      (let ((outside (brush-surfaces b1))
             inside)
         (dolist (b2 brushes)
           (unless (eq b1 b2)
             (shiftf inside outside nil)
             ;; clip brush b1 against b2
-            (dolist (split-line (brush-lines b2))
-              (multiple-value-bind (new-outside new-inside)
-                  (sbsp:partition-surfaces split-line
-                                           (mapcar (lambda (seg)
-                                                     (make-sidedef :lineseg seg))
-                                                   inside))
-                (unionf outside (mapcar #'sidedef-lineseg new-outside))
-                (setf inside (mapcar #'sidedef-lineseg new-inside))))))
+            (dolist (split-surf (brush-surfaces b2))
+              (let ((split-line (lineseg-orig-line (sidedef-lineseg split-surf))))
+                (multiple-value-bind (new-outside new-inside)
+                    (sbsp:partition-surfaces split-line inside)
+                  (unionf outside new-outside :test #'equalp)
+                  (setf inside new-inside))))))
         (nconcf segs outside)))
-    (mapcar (lambda (seg)
-              (make-sidedef :lineseg seg
-                            :color (sbsp::linedef-color (lineseg-orig-line seg))))
-            segs)))
+    segs))
 
 (defun construct-convex-hull (points)
   "Create a convex hull of given POINTS. Gift wrapping algorithm is used,
