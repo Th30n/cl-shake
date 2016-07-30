@@ -66,7 +66,7 @@
            (mapcar #'linedef->lineseg
                    (append (select-brush-lines b1 (first second fourth))
                            (select-brush-lines b2 (second third fourth))))))
-      (is (sbrush:prepare-brushes-for-bsp (list b1 b2))
+      (is (mapcar #'sidedef-lineseg (sbrush:prepare-brushes-for-bsp (list b1 b2)))
           expected :test #'lineseg-set-equal))))
 
 (subtest "Brush is clipped twice."
@@ -78,7 +78,7 @@
                   (append (select-brush-lines b1 (first second))
                           (select-brush-lines b2 (second third fourth))
                           (select-brush-lines b3 (first third fourth))))))
-    (is (sbrush:prepare-brushes-for-bsp (list b1 b2 b3))
+    (is (mapcar #'sidedef-lineseg (sbrush:prepare-brushes-for-bsp (list b1 b2 b3)))
         expected :test #'lineseg-set-equal)))
 
 (subtest "Brush is correctly rotated."

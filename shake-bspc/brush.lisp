@@ -107,7 +107,7 @@
                 :contents (brush-contents brush))))
 
 (defun prepare-brushes-for-bsp (brushes)
-  "Takes a list of BRUSHES, performs clipping, merging and returns LINESEGs
+  "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
   ready for binary space partitioning."
   (let (segs)
     (dolist (b1 brushes)
@@ -119,11 +119,17 @@
             ;; clip brush b1 against b2
             (dolist (split-line (brush-lines b2))
               (multiple-value-bind (new-outside new-inside)
-                  (sbsp:partition-linesegs split-line inside)
-                (unionf outside new-outside)
-                (setf inside new-inside)))))
+                  (sbsp:partition-surfaces split-line
+                                           (mapcar (lambda (seg)
+                                                     (make-sidedef :lineseg seg))
+                                                   inside))
+                (unionf outside (mapcar #'sidedef-lineseg new-outside))
+                (setf inside (mapcar #'sidedef-lineseg new-inside))))))
         (nconcf segs outside)))
-    segs))
+    (mapcar (lambda (seg)
+              (make-sidedef :lineseg seg
+                            :color (sbsp::linedef-color (lineseg-orig-line seg))))
+            segs)))
 
 (defun construct-convex-hull (points)
   "Create a convex hull of given POINTS. Gift wrapping algorithm is used,

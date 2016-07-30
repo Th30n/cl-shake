@@ -33,6 +33,10 @@
         (make-linedef :start (v -2 1) :end (v 5 1))
         (make-linedef :start (v 3 2) :end (v 3 -2))))
 
+(defun linedef->sidedef (line)
+  (make-sidedef :lineseg (linedef->lineseg line)
+                :color (sbsp::linedef-color line)))
+
 (subtest "Testing split-lineseg"
   (let* ((line (car *test-linedefs*))
          (seg (linedef->lineseg line)))
@@ -59,8 +63,8 @@
           (lineseg-end (car split-segs)) :test #'v=))))
 
 (subtest "Test serialization"
-  (let* ((segs (mapcar #'linedef->lineseg *test-linedefs*))
-         (bsp (build-bsp segs)))
+  (let* ((surfs (mapcar #'linedef->sidedef *test-linedefs*))
+         (bsp (build-bsp surfs)))
     (with-input-from-string (in (with-output-to-string (out)
                                   (sbsp:write-bsp bsp out)))
       (is (read-bsp in) bsp :test #'equalp))))
@@ -77,28 +81,28 @@
 
 (subtest "Test build-bsp produces correct back-to-front"
   (subtest "Coincident segments"
-    (let* ((segs (mapcar #'linedef->lineseg *coincident-linedefs*))
-           (bsp (build-bsp segs)))
-      (is (back-to-front (v -0.5d0 1.5d0) bsp)
+    (let* ((surfs (mapcar #'linedef->sidedef *coincident-linedefs*))
+           (bsp (build-bsp surfs)))
+      (is (mapcar #'sidedef-lineseg (back-to-front (v -0.5d0 1.5d0) bsp))
           (list (make-lineseg :orig-line (second *coincident-linedefs*)
                               :t-start 0.5d0 :t-end 1d0)
-                (third segs)
-                (first segs)
+                (sidedef-lineseg (third surfs))
+                (sidedef-lineseg (first surfs))
                 (make-lineseg :orig-line (second *coincident-linedefs*)
                               :t-start 0d0 :t-end 0.5d0))
           :test #'equalp)))
   (subtest "Double split segment"
-    (let* ((segs (mapcar #'linedef->lineseg *double-split-linedefs*))
-           (bsp (build-bsp segs)))
-      (is (back-to-front (v 3.5d0 1.5d0) bsp)
+    (let* ((surfs (mapcar #'linedef->sidedef *double-split-linedefs*))
+           (bsp (build-bsp surfs)))
+      (is (mapcar #'sidedef-lineseg (back-to-front (v 3.5d0 1.5d0) bsp))
           (list (make-lineseg :orig-line (second *double-split-linedefs*)
                               :t-start 0.75d0 :t-end 1d0)
-                (first segs)
+                (sidedef-lineseg (first surfs))
                 (make-lineseg :orig-line (second *double-split-linedefs*)
                               :t-start 0.25d0 :t-end 0.75d0)
                 (make-lineseg :orig-line (second *double-split-linedefs*)
                               :t-start 0d0 :t-end 0.25d0)
-                (third segs))
+                (sidedef-lineseg (third surfs)))
           :test #'equalp))))
 
 (finalize)

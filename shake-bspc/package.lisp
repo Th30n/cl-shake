@@ -29,6 +29,11 @@
            #:linedef=
            #:write-linedef
            #:read-linedef
+           ;; side definition
+           #:sidedef
+           #:make-sidedef
+           #:sidedef-color
+           #:sidedef-lineseg
            ;; line segment
            #:lineseg
            #:make-lineseg
@@ -62,7 +67,7 @@
            #:write-bspfile
            #:read-bspfile
            ;; bsp queries
-           #:partition-linesegs
+           #:partition-surfaces
            #:convex-hull-p
            #:determine-side
            #:back-to-front))

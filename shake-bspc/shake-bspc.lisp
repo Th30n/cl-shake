@@ -65,13 +65,28 @@
     (mapcar (lambda (start end) (make-linedef :start start :end end))
             start-points end-points)))
 
+(defstruct sidedef
+  "A side definition for a line segment."
+  (lineseg nil :type lineseg)
+  (color (v 1 0 1) :type (vec 3)))
+
+(defun read-sidedef (stream)
+  (let ((lineseg (read-lineseg stream))
+        (color (v (read stream) (read stream) (read stream))))
+    (make-sidedef :lineseg lineseg :color color)))
+
+(defun write-sidedef (sidedef stream)
+  (with-struct (sidedef- lineseg color) sidedef
+    (write-lineseg lineseg stream)
+    (format stream "~S ~S ~S~%" (vx color) (vy color) (vz color))))
+
 (defstruct leaf
   "A leaf node in the BSP tree. The SEGS slot stores the geometry as a LIST of
-  LINESEGs. The CONTENTS stores the type of the leaf, used for collision
+  SIDEDEFs. The CONTENTS stores the type of the leaf, used for collision
   detection. It can be one of:
     * :CONTENTS-EMPTY -- free space
     * :CONTENTS-SOLID -- solid, impassable space"
-  (segs nil :type list)
+  (surfaces nil :type list)
   (contents :contents-empty))
 
 (defstruct node
@@ -141,89 +156,96 @@
                 (return-from test nil))))))
       picked-side)))
 
-(defun choose-splitter (linesegs splitters)
-  (declare (type list linesegs splitters))
-  (let (rest splitter-seg)
-    (dolist (seg linesegs)
-      (if (or splitter-seg (member (lineseg-orig-line seg) splitters
-                                   :test #'equalp))
-          (push seg rest)
-          (setf splitter-seg seg)))
-    (values splitter-seg rest)))
+(defun choose-splitter (surfaces splitters)
+  (declare (type list surfaces splitters))
+  (let (rest splitter-surf)
+    (dolist (surf surfaces)
+      (if (or splitter-surf (member (lineseg-orig-line (sidedef-lineseg surf))
+                                    splitters :test #'equalp))
+          (push surf rest)
+          (setf splitter-surf surf)))
+    (values splitter-surf rest)))
 
-(defun split-partition (splitter seg num den)
-  (declare (type linedef splitter) (type lineseg seg)
+(defun split-partition (splitter surface num den)
+  (declare (type linedef splitter) (type sidedef surface)
            (type double-float num den))
-  (let ((splitted (split-lineseg seg (/ num den))))
-    (if (null splitted)
-        ;; no split
-        (progn
-          (when (double= num 0d0)
-            ;; Points are collinear, use other end for numerator.
-            (let ((n (linedef-normal splitter))
-                  (sl-vec (v- (lineseg-end seg) (linedef-start splitter))))
-              (setf num (vdot n sl-vec))))
-          (if (plusp num)
-              (cons seg nil)
-              (cons nil seg)))
-        ;; split
-        (cond
-          ((plusp num)
-           splitted)
-          (t
-           ;; reverse the split order
-           (cons (cdr splitted) (car splitted)))))))
+  (with-struct (sidedef- lineseg) surface
+    (let ((splitted (split-lineseg lineseg (/ num den))))
+      (if (null splitted)
+          ;; no split
+          (progn
+            (when (double= num 0d0)
+              ;; Points are collinear, use other end for numerator.
+              (let ((n (linedef-normal splitter))
+                    (sl-vec (v- (lineseg-end lineseg) (linedef-start splitter))))
+                (setf num (vdot n sl-vec))))
+            (if (plusp num)
+                (cons surface nil)
+                (cons nil surface)))
+          ;; split
+          (flet ((make-split-surface (seg)
+                   (let ((copy (copy-sidedef surface)))
+                     (setf (sidedef-lineseg copy) seg)
+                     copy)))
+            (setf splitted (cons (make-split-surface (car splitted))
+                                 (make-split-surface (cdr splitted))))
+            (cond
+              ((plusp num)
+               splitted)
+              (t
+               ;; reverse the split order
+               (cons (cdr splitted) (car splitted)))))))))
 
-(defun partition-linesegs (splitter linesegs)
-  (declare (type linedef splitter) (type list linesegs))
+(defun partition-surfaces (splitter surfaces)
+  (declare (type linedef splitter) (type list surfaces))
   (let (front
         back
         (on-splitter (list splitter)))
-    (dolist (seg linesegs)
-      (multiple-value-bind (num den) (line-intersect-ratio splitter seg)
-        (if (double= den 0d0)
-            ;; parallel lines
-            (cond
-              ((double= num 0d0)
-               ;; on the same line
-               (push (lineseg-orig-line seg) on-splitter)
-               (if (v= (linedef-normal splitter)
-                       (linedef-normal (lineseg-orig-line seg)))
-                   ;; same facing go to the front
-                   (push seg front)
-                   ;; opposite facing go in the back
-                   (push seg back)))
-              ((plusp num)
-               (push seg front))
-              (t
-               (push seg back)))
-            ;; lines intersect
-            (destructuring-bind (split-front . split-back)
-                (split-partition splitter seg num den)
-              (when split-front
-                (push split-front front))
-              (when split-back
-                (push split-back back))))))
+    (dolist (surf surfaces)
+      (with-struct (sidedef- lineseg) surf
+        (multiple-value-bind (num den) (line-intersect-ratio splitter lineseg)
+          (if (double= den 0d0)
+              ;; parallel lines
+              (cond
+                ((double= num 0d0)
+                 ;; on the same line
+                 (push (lineseg-orig-line lineseg) on-splitter)
+                 (if (v= (linedef-normal splitter) (lineseg-normal lineseg))
+                     ;; same facing go to the front
+                     (push surf front)
+                     ;; opposite facing go in the back
+                     (push surf back)))
+                ((plusp num)
+                 (push surf front))
+                (t
+                 (push surf back)))
+              ;; lines intersect
+              (destructuring-bind (split-front . split-back)
+                  (split-partition splitter surf num den)
+                (when split-front
+                  (push split-front front))
+                (when split-back
+                  (push split-back back)))))))
     (values front back on-splitter)))
 
-(defun build-bsp (linesegs &optional (splitters nil))
-  (if (null linesegs)
+(defun build-bsp (surfaces &optional (splitters nil))
+  (if (null surfaces)
       (make-leaf :contents :contents-solid)
       (multiple-value-bind
-            (splitter-seg rest) (choose-splitter linesegs splitters)
-        (if (null splitter-seg)
+            (splitter-surf rest) (choose-splitter surfaces splitters)
+        (if (not splitter-surf)
             ;; We've selected all the segments and they form a convex hull.
             (progn
-              (assert (convex-hull-p rest))
-              (make-leaf :segs rest))
+              (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
+              (make-leaf :surfaces rest))
             ;; Split the remaining into front and back.
-            (let ((splitter (lineseg-orig-line splitter-seg)))
+            (let ((splitter (lineseg-orig-line (sidedef-lineseg splitter-surf))))
               (multiple-value-bind
-                    (front back on-splitter) (partition-linesegs splitter rest)
+                    (front back on-splitter) (partition-surfaces splitter rest)
                 (let ((used-splitters (append on-splitter splitters)))
-                  (make-node :line splitter-seg
+                  (make-node :line (sidedef-lineseg splitter-surf)
                              ;; Add the splitter itself to front.
-                             :front (build-bsp (cons splitter-seg front)
+                             :front (build-bsp (cons splitter-surf front)
                                                used-splitters)
                              :back (build-bsp back used-splitters)))))))))
 
@@ -265,11 +287,11 @@
        (write-bsp back stream)))
     (t
      (format stream "~S~%" :leaf)
-     (with-struct (leaf- contents segs) bsp
+     (with-struct (leaf- contents surfaces) bsp
        (format stream "~S~%" contents)
-       (format stream "~S~%" (list-length segs))
-       (dolist (seg segs)
-         (write-lineseg seg stream))))))
+       (format stream "~S~%" (list-length surfaces))
+       (dolist (surf surfaces)
+         (write-sidedef surf stream))))))
 
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
@@ -279,14 +301,14 @@
                    (back (read-bsp stream)))
                (make-node :line seg :front front :back back)))
       (:leaf (let* ((contents (read stream))
-                    (num-segs (read stream))
-                    (segs (repeat num-segs (read-lineseg stream))))
-               (make-leaf :segs segs :contents contents))))))
+                    (num-surfs (read stream))
+                    (surfs (repeat num-surfs (read-sidedef stream))))
+               (make-leaf :surfaces surfs :contents contents))))))
 
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."
   (if (leaf-p bsp)
-      (leaf-segs bsp)
+      (leaf-surfaces bsp)
       (with-struct (node- line front back) bsp
         (ecase (determine-side line point)
           ((or :front :on-line) (append (back-to-front point back)

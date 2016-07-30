@@ -39,8 +39,9 @@ and rotation as a quaternion."
 (defun get-endpoints (lineseg)
   (list (sbsp:lineseg-start lineseg) (sbsp:lineseg-end lineseg)))
 
-(defun get-triangles (lineseg)
-  (let* ((endpoints (get-endpoints lineseg))
+(defun get-triangles (surface)
+  (let* ((lineseg (sbsp:sidedef-lineseg surface))
+         (endpoints (get-endpoints lineseg))
          (start-2d (car endpoints))
          (start-3d (v (vx start-2d) 1 (vy start-2d)))
          (end-2d (cadr endpoints))
@@ -48,8 +49,7 @@ and rotation as a quaternion."
     (list start-3d end-3d (v- start-3d (v 0 1 0))
           (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
 
-(defun get-color (lineseg)
-  (sbsp::linedef-color (sbsp::lineseg-orig-line lineseg)))
+(defun get-color (surface) (sbsp:sidedef-color surface))
 
 (defun nrotate-camera (xrel yrel camera)
   "Rotate the CAMERA for XREL degrees around the world Y axis and YREL degrees
@@ -408,10 +408,10 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun get-map-walls (camera bsp)
   (let* ((pos (camera-position camera))
          (pos-2d (v (vx pos) (vz pos)))
-         (segs (sbsp:back-to-front pos-2d (sbsp:bspfile-nodes bsp))))
-    (values (mapcan #'get-triangles segs)
+         (surfs (sbsp:back-to-front pos-2d (sbsp:bspfile-nodes bsp))))
+    (values (mapcan #'get-triangles surfs)
             (mapcan (lambda (s) (make-list 6 :initial-element (get-color s)))
-                    segs))))
+                    surfs))))
 
 (defun render (win camera)
   (with-resources "render"
