@@ -57,6 +57,7 @@
            #:leaf
            #:leaf-p
            #:leaf-contents
+           #:leaf-surfaces
            ;; map editor interface
            #:write-map
            #:read-map

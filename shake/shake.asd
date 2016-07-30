@@ -25,6 +25,7 @@
   :serial t
   :components ((:file "package")
                (:file "data")
+               (:file "model")
                (:file "world")
                (:file "shake"))
   :in-order-to ((test-op (test-op shake-test))))

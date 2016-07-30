@@ -18,7 +18,7 @@
 
 (defpackage #:shake.data
   (:nicknames #:sdata)
-  (:use #:cl #:shake-utils #:alexandria)
+  (:use #:cl #:alexandria #:shake-utils)
   (:export #:data-path
            #:with-data-dirs
            #:with-data-file
@@ -30,8 +30,22 @@
            #:free-res
            #:free-resources))
 
+(defpackage #:shake.model
+  (:nicknames #:smdl)
+  (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.data)
+  (:export #:load-model
+           #:model
+           #:model-nodes
+           #:model-hull
+           #:surface
+           #:surface-color
+           #:surface-faces)
+  (:import-from #:sbsp
+                #:lineseg-start
+                #:lineseg-end))
+
 (defpackage #:shake
-  (:use #:cl #:shiva #:shake-gl #:alexandria #:shake-utils #:shake.data)
+  (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data)
   (:export #:main
            #:recursive-hull-check
            #:hull-point-contents

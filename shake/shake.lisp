@@ -36,19 +36,6 @@ and rotation as a quaternion."
 
 (defparameter *bsp* nil)
 
-(defun get-endpoints (lineseg)
-  (list (sbsp:lineseg-start lineseg) (sbsp:lineseg-end lineseg)))
-
-(defun get-triangles (surface)
-  (let* ((lineseg (sbsp:sidedef-lineseg surface))
-         (endpoints (get-endpoints lineseg))
-         (start-2d (car endpoints))
-         (start-3d (v (vx start-2d) 1 (vy start-2d)))
-         (end-2d (cadr endpoints))
-         (end-3d (v (vx end-2d) 1 (vy end-2d))))
-    (list start-3d end-3d (v- start-3d (v 0 1 0))
-          (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0)))))
-
 (defun get-color (surface) (sbsp:sidedef-color surface))
 
 (defun nrotate-camera (xrel yrel camera)
@@ -284,7 +271,7 @@ DRAW and DELETE for drawing and deleting respectively."
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (camera-position player) end-pos)
-          (let ((hull (sbsp:bspfile-clip-nodes *bsp*)))
+          (let ((hull (smdl:model-hull *bsp*)))
             (setf (camera-position player)
                   (player-ground-move origin velocity hull)))))))
 
@@ -327,8 +314,7 @@ DRAW and DELETE for drawing and deleting respectively."
         (sdl2:set-relative-mouse-mode 1)
         ;; (gl:enable :depth-test :cull-face)
         (with-data-dirs *base-dir*
-          (setf *bsp* (with-data-file (file  "test.bsp")
-                        (sbsp:read-bspfile file)))
+          (setf *bsp* (smdl:load-model "test.bsp"))
           (with-resources "main"
             (load-main-resources)
             (let* ((proj (perspective (* deg->rad 60d0)
@@ -407,10 +393,11 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun get-map-walls (camera bsp)
   (let* ((pos (camera-position camera))
          (pos-2d (v (vx pos) (vz pos)))
-         (surfs (sbsp:back-to-front pos-2d (sbsp:bspfile-nodes bsp))))
-    (values (mapcan #'get-triangles surfs)
-            (mapcan (lambda (s) (make-list 6 :initial-element (get-color s)))
-                    surfs))))
+         (surfs (sbsp:back-to-front pos-2d (smdl:model-nodes bsp))))
+    (values (mappend #'smdl:surface-faces surfs)
+            (mappend (lambda (s) (make-list 6 :initial-element
+                                            (smdl:surface-color s)))
+                     surfs))))
 
 (defun render (win camera)
   (with-resources "render"
