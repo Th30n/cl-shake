@@ -137,7 +137,7 @@
                     (sbsp:partition-surfaces split-line inside)
                   (unionf outside new-outside :test #'equalp)
                   (setf inside new-inside))))))
-        (nconcf segs outside)))
+        (appendf segs outside)))
     segs))
 
 (defun construct-convex-hull (points)

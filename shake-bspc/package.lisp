@@ -80,6 +80,7 @@
   (:nicknames #:sbrush)
   (:use #:cl #:shiva #:sbsp #:shake-utils)
   (:import-from #:alexandria
+                #:appendf
                 #:compose
                 #:if-let
                 #:map-product
