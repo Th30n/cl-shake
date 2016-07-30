@@ -26,7 +26,7 @@
 (defun linedef-normal (linedef)
   (let ((vec (linedef-vec linedef)))
     (rotatef (vx vec) (vy vec))
-    (setf (vy vec) (- (vy vec)))
+    (zap #'- (vy vec))
     (vnormalize vec)))
 
 (defun linedef= (a b)
@@ -188,8 +188,8 @@
                    (let ((copy (copy-sidedef surface)))
                      (setf (sidedef-lineseg copy) seg)
                      copy)))
-            (setf splitted (cons (make-split-surface (car splitted))
-                                 (make-split-surface (cdr splitted))))
+            (zap #'make-split-surface (car splitted))
+            (zap #'make-split-surface (cdr splitted))
             (cond
               ((plusp num)
                splitted)

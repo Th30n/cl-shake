@@ -38,11 +38,10 @@
 (defun make-brush (&key surfaces (contents :contents-solid))
   (if-let (side (sbsp:convex-hull-p (mapcar #'sidedef-lineseg surfaces)))
     (flet ((flip-line (surf)
-             (let ((line (lineseg-orig-line (sidedef-lineseg surf))))
-               (with-struct (linedef- start end) line
-                 (setf (sidedef-lineseg surf)
-                       (linedef->lineseg (make-linedef :start end
-                                                       :end start)))))))
+             (zap (lambda (line)
+                    (with-struct (linedef- start end) line
+                      (make-linedef :start end :end start)))
+                  (lineseg-orig-line (sidedef-lineseg surf)))))
       (make-brush-raw :surfaces
                       (if (eq side :back)
                           surfaces

@@ -86,8 +86,7 @@ around the local X axis. The vertical angle is clamped."
 (defun nupdate-frame-timer (frame-timer dt)
   (incf (frame-timer-frame frame-timer))
   (incf (frame-timer-total-time frame-timer) dt)
-  (setf (frame-timer-max-time frame-timer)
-        (max (frame-timer-max-time frame-timer) dt))
+  (zap #'max (frame-timer-max-time frame-timer) dt)
   frame-timer)
 
 (defun load-texture (texture-file)
@@ -121,7 +120,7 @@ DRAW and DELETE for drawing and deleting respectively."
             (draw (gl:bind-vertex-array vao)
                   (gl:draw-arrays :points 0 1))
             (delete (gl:delete-vertex-arrays (list vao))
-                     (setf deleted t)))
+                    (setf deleted t)))
           (error "Trying to render with deleted point-renderer.")))))
 
 (defun renderer-draw (renderer) (funcall renderer 'draw))
