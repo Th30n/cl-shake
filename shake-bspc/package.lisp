@@ -59,6 +59,16 @@
            #:leaf-contents
            #:leaf-surfaces
            ;; map editor interface
+           #:map-thing
+           #:make-map-thing
+           #:map-thing-type
+           #:map-thing-pos
+           #:map-thing-angle
+           #:map-thing-brushes
+           #:map-file
+           #:make-map-file
+           #:map-file-brushes
+           #:map-file-things
            #:write-map
            #:read-map
            #:compile-map-file

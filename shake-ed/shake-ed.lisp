@@ -434,17 +434,18 @@
 (defun write-map (stream scene)
   (with-slots (graphics-item-brush-map) scene
     (let ((mbrushes (hash-table-values graphics-item-brush-map)))
-      (sbsp:write-map
-       (mapcar (lambda (mbrush)
-                 (sbrush:brush-rotate (mbrush-brush mbrush)
-                                      (* deg->rad (mbrush-rotation mbrush))))
-               mbrushes) stream))))
+      (flet ((convert-brush (mbrush)
+               (sbrush:brush-rotate (mbrush-brush mbrush)
+                                    (* deg->rad (mbrush-rotation mbrush)))))
+        (sbsp:write-map
+         (sbsp:make-map-file :brushes (mapcar #'convert-brush mbrushes))
+         stream)))))
 
 (defun read-map (stream scene)
   (clear-map scene)
   (with-slots (graphics-item-brush-map) scene
-    (let ((brushes (sbsp:read-map stream)))
-      (dolist (brush brushes)
+    (let ((map-file (sbsp:read-map stream)))
+      (dolist (brush (sbsp:map-file-brushes map-file))
         (let ((item (make-itemgroup-from-lines (sbrush:brush-lines brush))))
           (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) t)
           (q+:add-item scene item)

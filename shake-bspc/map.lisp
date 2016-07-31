@@ -22,37 +22,85 @@
 
 (defstruct bspfile
   nodes
-  clip-nodes)
+  clip-nodes
+  things)
+
+(defstruct map-thing
+  "A thing on a map. Contains slots POS and ANGLE for spawn position. If a
+  thing is brush based (e.g. a door or a platorm), they are stored in BRUSHES
+  slot. The TYPE slot determines the thing type. Can be one of:
+  * :PLAYER-SPAWN"
+  type
+  (pos (v 0 0) :type (vec 2))
+  (angle 0d0 :type (double-float 0d0 360d0))
+  brushes)
+
+(defun write-map-thing (thing stream)
+  (with-struct (map-thing- type pos angle brushes) thing
+    (format stream ":THING~%")
+    (format stream "~S~%~S ~S~%~S~%" type (vx pos) (vy pos) angle)
+    (format stream "~S~%" (length brushes))
+    (dolist (brush brushes)
+      (sbrush:write-brush brush stream))))
+
+(defun read-map-thing (stream)
+  (let ((name (read stream))
+        (type (read stream))
+        (pos (v (read stream) (read stream)))
+        (angle (read stream))
+        (brush-count (read stream)))
+    (declare (ignore name))
+    (make-map-thing :type type :pos pos :angle angle
+                    :brushes (repeat brush-count (sbrush:read-brush stream)))))
+
+(defstruct map-file
+  brushes
+  things)
 
 (defun write-bspfile (bspfile stream)
-  (with-struct (bspfile- nodes clip-nodes) bspfile
+  (with-struct (bspfile- nodes clip-nodes things) bspfile
     (write-bsp nodes stream)
-    (write-bsp clip-nodes stream)))
+    (write-bsp clip-nodes stream)
+    (format stream "~S~%" (length things))
+    (dolist (thing things)
+      (write-map-thing thing stream))))
 
 (defun read-bspfile (stream)
   (let ((nodes (read-bsp stream))
-        (clip-nodes (read-bsp stream)))
-    (make-bspfile :nodes nodes :clip-nodes clip-nodes)))
+        (clip-nodes (read-bsp stream))
+        (thing-count (read stream)))
+    (make-bspfile :nodes nodes :clip-nodes clip-nodes
+                  :things (repeat thing-count (read-map-thing stream)))))
 
-(defun write-map (brushes stream)
-  (format stream "~S~%" (length brushes))
-  (dolist (brush brushes)
-    (sbrush:write-brush brush stream)))
+(defun write-map (mapfile stream)
+  (with-struct (map-file- brushes things) mapfile
+    (format stream "~S~%" (length brushes))
+    (dolist (brush brushes)
+      (sbrush:write-brush brush stream))
+    (format stream "~S~%" (length things))
+    (dolist (thing things)
+      (write-map-thing thing stream))))
 
 (defun read-map (stream)
-  (let ((n (read stream)))
-    (repeat n (sbrush:read-brush stream))))
+  (let* ((brush-count (read stream))
+         (brushes (repeat brush-count (sbrush:read-brush stream)))
+         (thing-count (read stream))
+         (things (repeat thing-count (read-map-thing stream))))
+    (make-map-file :brushes brushes
+                   :things things)))
 
 (defun read-and-compile-map (stream)
-  (let ((brushes (read-map stream)))
-    (flet ((compile-brushes (bs)
-             (build-bsp (sbrush:prepare-brushes-for-bsp bs))))
-      (make-bspfile :nodes (compile-brushes brushes)
-                    :clip-nodes (compile-brushes
-                                 (mapcar (lambda (b)
-                                           (sbrush:expand-brush
-                                            b :square +clip-square+))
-                                         brushes))))))
+  (let ((map-file (read-map stream)))
+    (with-struct (map-file- brushes things) map-file
+      (flet ((compile-brushes (bs)
+               (build-bsp (sbrush:prepare-brushes-for-bsp bs))))
+        (make-bspfile :nodes (compile-brushes brushes)
+                      :clip-nodes (compile-brushes
+                                   (mapcar (lambda (b)
+                                             (sbrush:expand-brush
+                                              b :square +clip-square+))
+                                           brushes))
+                      :things things)))))
 
 (defun compile-map-file (map-file bsp-filename)
   "Compile a map from MAP-FILE and store it into BSP-FILENAME"
