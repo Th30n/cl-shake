@@ -180,16 +180,19 @@ DRAW and DELETE for drawing and deleting respectively."
                                                      :y (+ pos-y half-cell))))
                (renderer-draw renderer)))))))
 
-(defun draw-stats (cpu-max cpu-avg)
-  (res-let (point-renderer
-            text-shader
-            font)
-    (render-text point-renderer
-                 (format nil "CPU time: ~,2Fms (max)" cpu-max)
-                 600 580 800d0 600d0 text-shader font)
-    (render-text point-renderer
-                 (format nil "CPU time: ~,2Fms (avg)" cpu-avg)
-                 600 564 800d0 600d0 text-shader font)))
+(defun draw-text (text x y)
+  "Draw a single line of text on given window coordinates."
+  (declare (special *win-width* *win-height*))
+  (let ((pos-x (if (minusp x) (+ *win-width* x) x))
+        (pos-y (if (minusp y) (+ *win-height* y) y)))
+    (res-let (point-renderer text-shader font)
+      (render-text point-renderer text pos-x pos-y *win-width* *win-height*
+                   text-shader font))))
+
+(defun draw-timer-stats (timer)
+  (with-struct (timer- max avg) timer
+    (draw-text (format nil "CPU time: ~,2Fms (max)" (* 1d3 max)) -200 -20)
+    (draw-text (format nil "CPU time: ~,2Fms (avg)" (* 1d3 avg)) -200 -36)))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
                *last-time* *base-time* *gametic*))
@@ -330,54 +333,60 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
-    (sdl2:with-window (win :title "shake" :flags '(:shown :opengl))
-      (sdl2:with-gl-context (context win)
-        (sdl2:gl-set-swap-interval 0)
-        (print-gl-info)
-        (sdl2:set-relative-mouse-mode 1)
-        ;; (gl:enable :depth-test :cull-face)
-        (with-data-dirs *base-dir*
-          (setf *bsp* (smdl:load-model "test.bsp"))
-          (with-resources "main"
-            (load-main-resources)
-            (let* ((proj (perspective (* deg->rad 60d0)
-                                      (/ 800d0 600d0) 0.1d0 100d0))
-                   (camera (make-camera :projection proj :position (v 1 0.5 8)))
-                   (frame-timer (make-timer)))
-              (symbol-macrolet ((input-focus-p
-                                 (member :input-focus (sdl2:get-window-flags win)))
-                                (minimized-p
-                                 (member :minimized (sdl2:get-window-flags win))))
-                (start-game-loop)
-                (sdl2:with-event-loop (:method :poll)
-                  (:quit () t)
-                  (:keydown
-                   (:keysym keysym)
-                   (when input-focus-p
-                     (press-game-key (sdl2:scancode keysym))))
-                  (:keyup
-                   (:keysym keysym)
-                   (when input-focus-p
-                     (release-game-key (sdl2:scancode keysym))))
-                  (:mousemotion
-                   (:xrel xrel :yrel yrel)
-                   (when input-focus-p
-                     (update-mouse-relative xrel yrel)))
-                  (:idle ()
-                         (with-timer (frame-timer)
-                           (try-run-tics #'build-ticcmd
-                                         (lambda (tic) (run-tic camera tic)))
-                           (unless minimized-p
-                             (clear-buffer-fv :color 0 0 0 0)
-                             (res-let (shader-prog)
-                               (gl:use-program shader-prog)
-                               (uniform-mvp shader-prog
-                                            (m* (camera-projection camera)
-                                                (camera-view-transform camera))))
-                             (render win camera)
-                             (with-struct (timer- max avg) frame-timer
-                               (draw-stats (* 1d3 max) (* 1d3 avg)))
-                             (sdl2:gl-swap-window win)))))))))))))
+    (let ((*win-width* 800)
+          (*win-height* 600))
+      (declare (special *win-width* *win-height*))
+      (sdl2:with-window (win :title "shake" :w *win-width* :h *win-height*
+                             :flags '(:shown :opengl))
+        (sdl2:with-gl-context (context win)
+          (sdl2:gl-set-swap-interval 0)
+          (print-gl-info)
+          (sdl2:set-relative-mouse-mode 1)
+          ;; (gl:enable :depth-test :cull-face)
+          (with-data-dirs *base-dir*
+            (setf *bsp* (smdl:load-model "test.bsp"))
+            (with-resources "main"
+              (load-main-resources)
+              (let* ((proj (perspective (* deg->rad 60d0)
+                                        (/ *win-width* *win-height*)
+                                        0.1d0 100d0))
+                     (camera (make-camera :projection proj :position (v 1 0.5 8)))
+                     (frame-timer (make-timer)))
+                (symbol-macrolet ((input-focus-p
+                                   (member :input-focus
+                                           (sdl2:get-window-flags win)))
+                                  (minimized-p
+                                   (member :minimized
+                                           (sdl2:get-window-flags win))))
+                  (start-game-loop)
+                  (sdl2:with-event-loop (:method :poll)
+                    (:quit () t)
+                    (:keydown
+                     (:keysym keysym)
+                     (when input-focus-p
+                       (press-game-key (sdl2:scancode keysym))))
+                    (:keyup
+                     (:keysym keysym)
+                     (when input-focus-p
+                       (release-game-key (sdl2:scancode keysym))))
+                    (:mousemotion
+                     (:xrel xrel :yrel yrel)
+                     (when input-focus-p
+                       (update-mouse-relative xrel yrel)))
+                    (:idle ()
+                           (with-timer (frame-timer)
+                             (try-run-tics #'build-ticcmd
+                                           (lambda (tic) (run-tic camera tic)))
+                             (unless minimized-p
+                               (clear-buffer-fv :color 0 0 0 0)
+                               (res-let (shader-prog)
+                                 (gl:use-program shader-prog)
+                                 (uniform-mvp shader-prog
+                                              (m* (camera-projection camera)
+                                                  (camera-view-transform camera))))
+                               (render camera)
+                               (draw-timer-stats frame-timer)
+                               (sdl2:gl-swap-window win))))))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
@@ -411,13 +420,14 @@ DRAW and DELETE for drawing and deleting respectively."
                                             (smdl:surface-color s)))
                      surfs))))
 
-(defun render (win camera)
+(defun render (camera)
+  (declare (special *win-width* *win-height*))
   (with-resources "render"
     (destructuring-bind (vbo color-buffer)
         (add-res "buffers" (lambda () (gl:gen-buffers 2)) #'gl:delete-buffers)
       (multiple-value-bind (triangles triangle-colors)
           (get-map-walls camera *bsp*)
-        (gl:viewport 0 0 800 600)
+        (gl:viewport 0 0 *win-width* *win-height*)
         (gl:bind-vertex-array (res "vertex-array"))
 
         (gl:bind-buffer :array-buffer vbo)
