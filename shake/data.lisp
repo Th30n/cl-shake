@@ -78,7 +78,6 @@
   (dolist (search *search-paths*)
     (when-let ((full-path (file-exists-p (merge-pathnames filename search))))
       (unless (directory-pathname-p full-path)
-        (format t "Found data file ~S~%" full-path)
         (return full-path)))))
 
 (defmacro with-data-file ((stream filespec) &body body)
