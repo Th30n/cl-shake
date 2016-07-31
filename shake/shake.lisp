@@ -90,14 +90,15 @@ around the local X axis. The vertical angle is clamped."
   timer)
 
 (defmacro with-timer ((timer &key (reset-every 1d0)) &body body)
-  (with-gensyms (delta-time end-time)
-    `(let* ((,end-time (sdl2:get-performance-counter))
-            (,delta-time (performance-delta (timer-start ,timer) ,end-time)))
-       (setf (timer-start ,timer) ,end-time)
-       (nupdate-timer ,timer ,delta-time)
-       (when (>= (timer-total ,timer) ,reset-every)
-         (nreset-timer ,timer))
-       ,@body)))
+  (with-gensyms (start delta end vals)
+    `(let ((,start (sdl2:get-performance-counter))
+           (,vals (multiple-value-list (progn ,@body))))
+       (let* ((,end (sdl2:get-performance-counter))
+              (,delta (performance-delta ,start ,end)))
+         (nupdate-timer ,timer ,delta)
+         (when (>= (timer-total ,timer) ,reset-every)
+           (nreset-timer ,timer)))
+       (values-list ,vals))))
 
 (defun load-texture (texture-file)
   "Load a texture from given string file path. Returns the OpenGL texture
@@ -189,10 +190,10 @@ DRAW and DELETE for drawing and deleting respectively."
       (render-text point-renderer text pos-x pos-y *win-width* *win-height*
                    text-shader font))))
 
-(defun draw-timer-stats (timer)
+(defun draw-timer-stats (timer &key (x -200) (y -20))
   (with-struct (timer- max avg) timer
-    (draw-text (format nil "CPU time: ~,2Fms (max)" (* 1d3 max)) -200 -20)
-    (draw-text (format nil "CPU time: ~,2Fms (avg)" (* 1d3 avg)) -200 -36)))
+    (draw-text (format nil "CPU time: ~,2Fms (max)" (* 1d3 max)) x y)
+    (draw-text (format nil "CPU time: ~,2Fms (avg)" (* 1d3 avg)) x (- y 16))))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
                *last-time* *base-time* *gametic*))
