@@ -65,16 +65,39 @@ around the local X axis. The vertical angle is clamped."
   "Return the delta in seconds between two performance counters."
   (coerce (/ (- stop start) (sdl2:get-performance-frequency)) 'double-float))
 
-(defstruct frame-timer
-  (frame 0 :type fixnum)
-  (total-time 0d0 :type double-float)
-  (max-time 0d0 :type double-float))
+(defstruct timer
+  (start 0)
+  (count 0 :type fixnum)
+  (total 0d0 :type double-float)
+  (new-max 0d0 :type double-float)
+  (max 0d0 :type double-float)
+  (avg 0d0 :type double-float))
 
-(defun nupdate-frame-timer (frame-timer dt)
-  (incf (frame-timer-frame frame-timer))
-  (incf (frame-timer-total-time frame-timer) dt)
-  (zap #'max (frame-timer-max-time frame-timer) dt)
-  frame-timer)
+(defun nupdate-timer (timer dt)
+  (incf (timer-count timer))
+  (incf (timer-total timer) dt)
+  (zap #'max (timer-new-max timer) dt)
+  timer)
+
+(defun nreset-timer (timer)
+  "Reset the maximum and average calculations of a TIMER."
+  (with-struct (timer- total count new-max) timer
+    (setf (timer-avg timer) (/ total count)
+          (timer-max timer) new-max
+          (timer-count timer) 0
+          (timer-total timer) 0d0
+          (timer-new-max timer) 0d0))
+  timer)
+
+(defmacro with-timer ((timer &key (reset-every 1d0)) &body body)
+  (with-gensyms (delta-time end-time)
+    `(let* ((,end-time (sdl2:get-performance-counter))
+            (,delta-time (performance-delta (timer-start ,timer) ,end-time)))
+       (setf (timer-start ,timer) ,end-time)
+       (nupdate-timer ,timer ,delta-time)
+       (when (>= (timer-total ,timer) ,reset-every)
+         (nreset-timer ,timer))
+       ,@body)))
 
 (defun load-texture (texture-file)
   "Load a texture from given string file path. Returns the OpenGL texture
@@ -320,10 +343,7 @@ DRAW and DELETE for drawing and deleting respectively."
             (let* ((proj (perspective (* deg->rad 60d0)
                                       (/ 800d0 600d0) 0.1d0 100d0))
                    (camera (make-camera :projection proj :position (v 1 0.5 8)))
-                   (start-time 0)
-                   (current-time 0)
-                   (delta-time 0d0) (max-time 0d0) (avg-time 0d0)
-                   (frame-timer (make-frame-timer)))
+                   (frame-timer (make-timer)))
               (symbol-macrolet ((input-focus-p
                                  (member :input-focus (sdl2:get-window-flags win)))
                                 (minimized-p
@@ -344,28 +364,20 @@ DRAW and DELETE for drawing and deleting respectively."
                    (when input-focus-p
                      (update-mouse-relative xrel yrel)))
                   (:idle ()
-                         (try-run-tics #'build-ticcmd
-                                       (lambda (tic) (run-tic camera tic)))
-                         (setf delta-time (performance-delta start-time
-                                                             current-time)
-                               start-time current-time
-                               current-time (sdl2:get-performance-counter))
-                         (nupdate-frame-timer frame-timer delta-time)
-                         (when (>= (frame-timer-total-time frame-timer) 1d0)
-                           (setf avg-time (/ (frame-timer-total-time frame-timer)
-                                             (frame-timer-frame frame-timer))
-                                 max-time (frame-timer-max-time frame-timer)
-                                 frame-timer (make-frame-timer)))
-                         (unless minimized-p
-                           (clear-buffer-fv :color 0 0 0 0)
-                           (res-let (shader-prog)
-                             (gl:use-program shader-prog)
-                             (uniform-mvp shader-prog
-                                          (m* (camera-projection camera)
-                                              (camera-view-transform camera))))
-                           (render win camera)
-                           (draw-stats (* 1d3 max-time) (* 1d3 avg-time))
-                           (sdl2:gl-swap-window win))))))))))))
+                         (with-timer (frame-timer)
+                           (try-run-tics #'build-ticcmd
+                                         (lambda (tic) (run-tic camera tic)))
+                           (unless minimized-p
+                             (clear-buffer-fv :color 0 0 0 0)
+                             (res-let (shader-prog)
+                               (gl:use-program shader-prog)
+                               (uniform-mvp shader-prog
+                                            (m* (camera-projection camera)
+                                                (camera-view-transform camera))))
+                             (render win camera)
+                             (with-struct (timer- max avg) frame-timer
+                               (draw-stats (* 1d3 max) (* 1d3 avg)))
+                             (sdl2:gl-swap-window win)))))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
