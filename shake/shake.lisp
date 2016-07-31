@@ -331,6 +331,14 @@ DRAW and DELETE for drawing and deleting respectively."
              (load-font (data-path "share/font-16.bmp") 16 #\Space))
            #'delete-font))
 
+(defun spawn-player (things camera)
+  (dolist (thing things)
+    (when (eq (sbsp:map-thing-type thing) :player-spawn)
+      (let ((pos (sbsp:map-thing-pos thing))
+            (angle (sbsp:map-thing-angle thing)))
+        (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
+        (return (nrotate-camera angle 0d0 camera))))))
+
 (defun main ()
   (sdl2:with-init (:video)
     (set-gl-attrs)
@@ -353,6 +361,7 @@ DRAW and DELETE for drawing and deleting respectively."
                                         0.1d0 100d0))
                      (camera (make-camera :projection proj :position (v 1 0.5 8)))
                      (frame-timer (make-timer)))
+                (spawn-player (smdl:model-things *bsp*) camera)
                 (symbol-macrolet ((input-focus-p
                                    (member :input-focus
                                            (sdl2:get-window-flags win)))

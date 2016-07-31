@@ -22,9 +22,11 @@
 
 (defstruct model
   "A 3D model. The NODES slot contains bsp nodes for rendering. The HULL slot
-  contains bsp nodes for collision detection."
+  contains bsp nodes for collision detection. Remaining entities are stored in
+  THINGS slot."
   nodes
-  hull)
+  hull
+  things)
 
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
@@ -48,7 +50,8 @@
 
 (defun bspfile->model (bspfile)
   (make-model :hull (sbsp:bspfile-clip-nodes bspfile)
-              :nodes (nadapt-nodes (sbsp:bspfile-nodes bspfile))))
+              :nodes (nadapt-nodes (sbsp:bspfile-nodes bspfile))
+              :things (sbsp:bspfile-things bspfile)))
 
 (defun load-model (model-fname)
   (with-data-file (file model-fname)

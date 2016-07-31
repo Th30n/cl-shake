@@ -78,6 +78,7 @@
            #:bspfile
            #:bspfile-nodes
            #:bspfile-clip-nodes
+           #:bspfile-things
            #:write-bspfile
            #:read-bspfile
            ;; bsp queries

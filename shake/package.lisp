@@ -37,6 +37,7 @@
            #:model
            #:model-nodes
            #:model-hull
+           #:model-things
            #:surface
            #:surface-color
            #:surface-faces)
