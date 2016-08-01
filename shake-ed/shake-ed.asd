@@ -22,6 +22,6 @@
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
   :depends-on ("alexandria" "shiva" "shake-bspc"
-               "qtools" "qtcore" "qtgui" "qtopengl")
+               "qtools" "qtcore" "qtgui" "qtsvg" "qtopengl")
   :components ((:file "package")
                (:file "shake-ed" :depends-on ("package"))))

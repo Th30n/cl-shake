@@ -62,6 +62,7 @@
   ((draw-info :initform nil)
    (edit-mode :initform :mode-brush-create)
    (graphics-item-brush-map :initform (make-hash-table))
+   (graphics-item-thing-map :initform (make-hash-table))
    (view-normals-p :initform t)
    (grid-step :initform +initial-grid-step+)))
 
@@ -422,9 +423,10 @@
     (setf (q+:central-widget main) widget)))
 
 (defun clear-map (scene)
-  (with-slots (graphics-item-brush-map) scene
+  (with-slots (graphics-item-brush-map graphics-item-thing-map) scene
     (q+:clear scene)
-    (setf graphics-item-brush-map (make-hash-table))))
+    (clrhash graphics-item-brush-map)
+    (clrhash graphics-item-thing-map)))
 
 (defun new-map (w)
   (with-slots (scene map-file) w
@@ -432,14 +434,40 @@
     (setf map-file nil)))
 
 (defun write-map (stream scene)
-  (with-slots (graphics-item-brush-map) scene
-    (let ((mbrushes (hash-table-values graphics-item-brush-map)))
+  (with-slots (graphics-item-brush-map graphics-item-thing-map) scene
+    (let ((mbrushes (hash-table-values graphics-item-brush-map))
+          (things (hash-table-values graphics-item-thing-map)))
       (flet ((convert-brush (mbrush)
                (sbrush:brush-rotate (mbrush-brush mbrush)
                                     (* deg->rad (mbrush-rotation mbrush)))))
         (sbsp:write-map
-         (sbsp:make-map-file :brushes (mapcar #'convert-brush mbrushes))
+         (sbsp:make-map-file :brushes (mapcar #'convert-brush mbrushes)
+                             :things things)
          stream)))))
+
+(defun make-thing-graphics-item (thing)
+  (flet ((set-item-pos (item)
+           (with-finalizing ((pos (v2->qpoint
+                                   ;; Offset the image to center of half-cell.
+                                   (v- (sbsp:map-thing-pos thing)
+                                       (v 0.25 0.25))))
+                             (size (q+:default-size (q+:renderer item))))
+             (q+:set-pos item pos)
+             ;; Scale the image to fit in half a cell.
+             (q+:set-scale item (/ 0.5d0 (max (q+:width size)
+                                              (q+:height size))))
+             (q+:set-rotation item (sbsp:map-thing-angle thing)))
+           item))
+    (let ((image-file (case (sbsp:map-thing-type thing)
+                        (:player-spawn "things/player-spawn.svg")
+                        (otherwise "things/invalid-thing.svg"))))
+      (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
+
+(defun add-thing-to-scene (scene thing)
+  (with-slots (graphics-item-thing-map) scene
+    (let ((item (make-thing-graphics-item thing)))
+      (q+:add-item scene item)
+      (setf (gethash item graphics-item-thing-map) thing))))
 
 (defun read-map (stream scene)
   (clear-map scene)
@@ -450,7 +478,9 @@
           (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) t)
           (q+:add-item scene item)
           (setf (gethash item graphics-item-brush-map)
-                (make-mbrush :brush brush)))))))
+                (make-mbrush :brush brush))))
+      (dolist (thing (sbsp:map-file-things map-file))
+        (add-thing-to-scene scene thing)))))
 
 (defun save-map (w &optional filename)
   (let ((filepath filename))
