@@ -16,20 +16,39 @@
 
 (in-package #:cl-user)
 
-(defpackage #:shake-ed
+(defpackage #:shake-ed.map-scene
   (:use #:cl+qt #:shake-utils)
-  (:export #:main)
   (:import-from #:shiva
                 #:deg->rad
-                #:v #:vx #:vy #:vz #:v=
-                #:vnormalize
+                #:v #:vx #:vy #:v=
                 #:v+ #:v- #:vscale)
+  (:import-from #:alexandria
+                #:clamp
+                #:hash-table-values
+                #:lastcar
+                #:rcurry
+                #:when-let)
+  (:export #:+initial-grid-step+
+           #:map-scene
+           #:scene->map-unit
+           #:clear-map
+           #:write-map
+           #:read-map
+           #:mbrush
+           #:mbrush-brush
+           #:remove-selected
+           #:rotate-selected
+           #:selected-brushes
+           #:scale-grid-step
+           #:toggle-view-normals))
+
+(defpackage #:shake-ed
+  (:use #:cl+qt #:shake-utils #:shake-ed.map-scene)
+  (:export #:main)
+  (:import-from #:shiva
+                #:v #:vx #:vy #:vz)
   (:import-from #:alexandria
                 #:clamp
                 #:emptyp
                 #:ends-with-subseq
-                #:hash-table-values
-                #:lastcar
-                #:rcurry
-                #:when-let
                 #:when-let*))

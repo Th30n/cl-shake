@@ -23,5 +23,7 @@
   :licence "GPL2"
   :depends-on ("alexandria" "shiva" "shake-bspc"
                "qtools" "qtcore" "qtgui" "qtsvg" "qtopengl")
+  :serial t
   :components ((:file "package")
-               (:file "shake-ed" :depends-on ("package"))))
+               (:file "map-scene")
+               (:file "shake-ed")))
