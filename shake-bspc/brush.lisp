@@ -41,7 +41,8 @@
              (zap (lambda (line)
                     (with-struct (linedef- start end) line
                       (make-linedef :start end :end start)))
-                  (lineseg-orig-line (sidedef-lineseg surf)))))
+                  (lineseg-orig-line (sidedef-lineseg surf)))
+             surf))
       (make-brush-raw :surfaces
                       (if (eq side :back)
                           surfaces
