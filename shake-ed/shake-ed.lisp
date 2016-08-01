@@ -17,6 +17,9 @@
 (in-package #:shake-ed)
 (in-readtable :qtools)
 
+(defvar *base-dir*
+  #.(directory-namestring (or *compile-file-truename* *load-truename*)))
+
 (defconstant +initial-scale+ 50d0)
 (defconstant +initial-grid-step+ 64)
 
@@ -458,9 +461,11 @@
                                               (q+:height size))))
              (q+:set-rotation item (sbsp:map-thing-angle thing)))
            item))
-    (let ((image-file (case (sbsp:map-thing-type thing)
-                        (:player-spawn "things/player-spawn.svg")
-                        (otherwise "things/invalid-thing.svg"))))
+    (let ((image-file
+           (concatenate 'string ":/things/"
+                        (case (sbsp:map-thing-type thing)
+                          (:player-spawn "player.svg")
+                          (otherwise "invalid.svg")))))
       (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
 
 (defun add-thing-to-scene (scene thing)
@@ -586,4 +591,7 @@
     ;; Core Profile.
     (q+:set-profile gl-format 1)
     (q+:qglformat-set-default-format gl-format)
+    ;; Register image resources
+    (q+:qresource-register-resource
+     (concatenate 'string *base-dir* "resource.rcc"))
     (with-main-window (window (make-instance 'main)))))
