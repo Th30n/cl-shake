@@ -39,6 +39,7 @@
            #:remove-selected
            #:rotate-selected
            #:selected-brushes
+           #:change-mode
            #:scale-grid-step
            #:toggle-view-normals))
 

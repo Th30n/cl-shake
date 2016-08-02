@@ -51,7 +51,7 @@
 
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
-   (edit-mode :initform :mode-brush-create)
+   (edit-mode :initform :lines)
    (graphics-item-brush-map :initform (make-hash-table))
    (graphics-item-thing-map :initform (make-hash-table))
    (view-normals-p :initform nil)
@@ -242,19 +242,43 @@
         (v (snap-scene-to-grid x grid-step) (snap-scene-to-grid y grid-step))
         (v (snap-scene-to-map-unit x) (snap-scene-to-map-unit y)))))
 
+(defun add-thing-to-scene (scene thing)
+  (with-slots (graphics-item-thing-map) scene
+    (let ((item (make-thing-graphics-item thing)))
+      (q+:add-item scene item)
+      (setf (gethash item graphics-item-thing-map) thing))))
+
+(defun show-things-menu (scene scene-pos)
+  (with-finalizing* ((pos (q+:qcursor-pos))
+                     (menu (q+:make-qmenu "Things"))
+                     (player-spawn-action (q+:add-action menu
+                                                         "Insert player spawn")))
+    (let ((res (q+:exec menu pos)))
+      (unless (null-qobject-p res)
+        (cond
+          ((string= (q+:text player-spawn-action) (q+:text res))
+           (add-thing-to-scene scene (sbsp:make-map-thing :type :player-spawn
+                                                          :pos scene-pos))))))))
+
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
-       (add-or-update-brush map-scene
-                            (scene-pos-from-mouse mouse-event grid-step)))
+       (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
+         (ecase edit-mode
+           (:lines
+            (add-or-update-brush map-scene scene-pos))
+           (:things (show-things-menu map-scene scene-pos)))))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
-       (let* ((view (car (q+:views map-scene)))
-              (item (q+:item-at map-scene (q+:scene-pos mouse-event)
-                                (q+:transform view))))
-         (if (null-qobject-p item)
-             (q+:clear-selection map-scene)
-             (setf (q+:selected item) t))))
+       (ecase edit-mode
+         (:lines
+          (let* ((view (car (q+:views map-scene)))
+                 (item (q+:item-at map-scene (q+:scene-pos mouse-event)
+                                   (q+:transform view))))
+            (if (null-qobject-p item)
+                (q+:clear-selection map-scene)
+                (setf (q+:selected item) t))))
+         (:things nil)))
       (t (stop-overriding)))))
 
 (define-override (map-scene mouse-move-event) (mouse-event)
@@ -327,12 +351,6 @@
                           (otherwise "invalid.svg")))))
       (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
 
-(defun add-thing-to-scene (scene thing)
-  (with-slots (graphics-item-thing-map) scene
-    (let ((item (make-thing-graphics-item thing)))
-      (q+:add-item scene item)
-      (setf (gethash item graphics-item-thing-map) thing))))
-
 (defun read-map (stream scene)
   (clear-map scene)
   (with-slots (graphics-item-brush-map) scene
@@ -363,3 +381,10 @@
           (q+:set-rotation item clamped-deg)
           (setf (mbrush-rotation (gethash item graphics-item-brush-map))
                 new-deg))))))
+
+(defun change-mode (scene mode)
+  (with-slots (edit-mode) scene
+    (unless (eq edit-mode mode)
+      (cancel-editing scene)
+      (q+:clear-selection scene)
+      (setf edit-mode mode))))

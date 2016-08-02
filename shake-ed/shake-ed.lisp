@@ -245,8 +245,11 @@
     action))
 
 (define-slot (main mode-changed) ((checked bool))
-  (let ((action (q+:checked-action mode-action-group)))
-    (format t "~S~%" (q+:text action))))
+  (let ((text (q+:text (q+:checked-action mode-action-group))))
+    (change-mode scene (cond
+                         ((string= text "Lines") :lines)
+                         ((string= text "Things") :things)
+                         (t :invalid)))))
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd"
