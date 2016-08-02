@@ -106,7 +106,8 @@
 
 (define-widget main (QMainWindow)
   ((map-file :initform nil)
-   (status-info :initform (make-status-info))))
+   (status-info :initform (make-status-info))
+   (mode-action-group :initform nil)))
 
 (defun show-status-info (main)
   (with-slots (status-info) main
@@ -234,10 +235,38 @@
   (:item "Normals" (toggle-view-normals scene))
   (:item "Center on Map" (center-view-to-map map-view)))
 
+(defun add-toggle-action (toolbar text &key icon (checked nil))
+  (let ((action (q+:add-action toolbar text)))
+    (q+:set-checkable action t)
+    (q+:set-checked action checked)
+    (when icon
+      (with-finalizing ((qicon (q+:make-qicon icon)))
+        (q+:set-icon action qicon)))
+    action))
+
+(define-slot (main mode-changed) ((checked bool))
+  (let ((action (q+:checked-action mode-action-group)))
+    (format t "~S~%" (q+:text action))))
+
 (define-initializer (main setup)
-  (setf (q+:window-title main) "ShakeEd")
+  (setf (q+:window-title main) "ShakeEd"
+        mode-action-group (q+:make-qactiongroup main))
   (q+:resize main 800 600)
-  (show-status-info main))
+  (show-status-info main)
+  (let ((toolbar (q+:add-tool-bar main "Modes")))
+    (flet ((add-action (text &key icon (checked nil))
+             (let ((action (add-toggle-action toolbar text :icon icon
+                                              :checked checked)))
+               (q+:add-action mode-action-group action)
+               (connect! action (triggered bool) main (mode-changed bool)))))
+      (add-action "Lines" :checked t)
+      (add-action "Things" :icon ":/things/player.svg"))))
+
+(define-finalizer (main destroy)
+  (dolist (action (q+:actions mode-action-group))
+    (finalize action))
+  (finalize mode-action-group)
+  (setf mode-action-group nil))
 
 (defun main ()
   (let ((gl-format (q+:make-qglformat)))
