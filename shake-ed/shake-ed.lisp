@@ -209,20 +209,15 @@
   (:item ("Quit" (ctrl q))
          (q+:close main)))
 
-(defun set-brush-color (brush color)
-  (dolist (surf (sbrush:brush-surfaces brush))
-    (setf (sbsp:sidedef-color surf) color)))
-
 (defun edit-color (w)
   (with-slots-bound (w main)
-    (when-let* ((brushes (mapcar #'mbrush-brush (selected-brushes scene)))
-                (old-color (sbsp:sidedef-color
-                            (first (sbrush:brush-surfaces (first brushes))))))
+    (when-let* ((sides (selected-sidedefs scene))
+                (old-color (sbsp:sidedef-color (first sides))))
       (with-finalizing* ((qcolor (vector->qcolor old-color))
                          (new-qcolor (q+:qcolordialog-get-color qcolor w)))
         (when (q+:is-valid new-qcolor)
-          (dolist (brush brushes)
-            (set-brush-color brush (qcolor->vector new-qcolor))))))))
+          (dolist (side sides)
+            (setf (sbsp:sidedef-color side) (qcolor->vector new-qcolor))))))))
 
 (define-menu (main Edit)
   (:item ("Color" (c)) (edit-color main))

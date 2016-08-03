@@ -24,6 +24,7 @@
                 #:v+ #:v- #:vscale)
   (:import-from #:alexandria
                 #:clamp
+                #:curry
                 #:hash-table-values
                 #:lastcar
                 #:rcurry
@@ -38,6 +39,7 @@
            #:mbrush-brush
            #:remove-selected
            #:rotate-selected
+           #:selected-sidedefs
            #:selected-brushes
            #:change-mode
            #:scale-grid-step

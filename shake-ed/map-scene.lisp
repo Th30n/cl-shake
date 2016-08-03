@@ -410,6 +410,26 @@
       (dolist (thing (sbsp:map-file-things map-file))
         (add-thing-to-scene scene thing)))))
 
+(defun sidedef-for-lineitem (scene lineitem)
+  (with-slots (graphics-item-brush-map) scene
+    (when-let ((mbrush (gethash (q+:parent-item lineitem)
+                                graphics-item-brush-map)))
+      (with-finalizing ((qline (q+:line lineitem)))
+        (let ((p1 (v (q+:x1 qline) (q+:y1 qline)))
+              (p2 (v (q+:x2 qline) (q+:y2 qline))))
+          (flet ((line-match-p (seg)
+                   (let ((start (sbsp:lineseg-start seg))
+                         (end (sbsp:lineseg-end seg)))
+                     (or (and (v= p1 start) (v= p2 end))
+                         (and (v= p1 end) (v= p2 start))))))
+            (find-if #'line-match-p (sbrush:brush-surfaces (mbrush-brush mbrush))
+                     :key #'sbsp:sidedef-lineseg)))))))
+
+(defun selected-sidedefs (scene)
+  (with-slots (selected-items edit-mode) scene
+    (when (eq edit-mode :lines)
+      (mapcar (curry #'sidedef-for-lineitem scene) selected-items))))
+
 (defun selected-brushes (scene)
   (with-slots (graphics-item-brush-map) scene
     (mapcar (rcurry #'gethash graphics-item-brush-map)
