@@ -71,6 +71,8 @@
            #:map-file-things
            #:write-map
            #:read-map
+           #:invalid-map-file-error
+           #:message
            #:compile-map-file
            #:build-bsp
            #:read-bsp

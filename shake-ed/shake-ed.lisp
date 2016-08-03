@@ -189,9 +189,13 @@
       (let ((bsp-file (concatenate 'string
                                    (subseq map-file 0 (- (length map-file) 4))
                                    ".bsp")))
-        (sbsp:compile-map-file map-file bsp-file)
-        (q+:show-message (q+:status-bar w)
-                         (format nil "Compiled to '~S'" bsp-file))))))
+        (handler-case
+            (progn
+              (sbsp:compile-map-file map-file bsp-file)
+              (q+:show-message (q+:status-bar w)
+                               (format nil "Compiled to '~S'" bsp-file)))
+          (sbsp:invalid-map-file-error (err)
+            (q+:qmessagebox-critical w "Compile Error" (sbsp:message err))))))))
 
 (defun new-map (w)
   (with-slots (scene map-file) w

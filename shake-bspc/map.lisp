@@ -89,8 +89,23 @@
     (make-map-file :brushes brushes
                    :things things)))
 
+(define-condition invalid-map-file-error (error)
+  ((message :initform "" :initarg :message :reader message)))
+
+(defun check-map-file (map-file)
+  (let ((player-spawn-count 0))
+    (dolist (thing (map-file-things map-file))
+      (when (eq :player-spawn (map-thing-type thing))
+        (incf player-spawn-count)))
+    (unless (= 1 player-spawn-count)
+      (error 'invalid-map-file-error
+             :message (if (zerop player-spawn-count)
+                          "Missing player spawn point."
+                          "More than one player spawn point found."))))
+  map-file)
+
 (defun read-and-compile-map (stream)
-  (let ((map-file (read-map stream)))
+  (let ((map-file (check-map-file (read-map stream))))
     (with-struct (map-file- brushes things) map-file
       (flet ((compile-brushes (bs)
                (build-bsp (sbrush:prepare-brushes-for-bsp bs))))
