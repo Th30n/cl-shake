@@ -257,6 +257,19 @@
       (q+:add-item scene item)
       (setf (gethash item graphics-item-thing-map) thing))))
 
+(defun insert-player-spawn (scene scene-pos)
+  (with-slots (graphics-item-thing-map) scene
+    (flet ((remove-player-spawn (item thing)
+             (when (eq :player-spawn (sbsp:map-thing-type thing))
+                 ;; The function is allowed to remove/modify *currently*
+                 ;; processed hash entry according to CLHS.
+                 (remhash item graphics-item-thing-map)
+                 (q+:remove-item scene item)
+                 (finalize item))))
+      (maphash #'remove-player-spawn graphics-item-thing-map)))
+  (add-thing-to-scene scene (sbsp:make-map-thing :type :player-spawn
+                                                 :pos scene-pos)))
+
 (defun show-things-menu (scene scene-pos)
   (with-finalizing* ((pos (q+:qcursor-pos))
                      (menu (q+:make-qmenu "Things"))
@@ -266,8 +279,7 @@
       (unless (null-qobject-p res)
         (cond
           ((string= (q+:text player-spawn-action) (q+:text res))
-           (add-thing-to-scene scene (sbsp:make-map-thing :type :player-spawn
-                                                          :pos scene-pos))))))))
+           (insert-player-spawn scene scene-pos)))))))
 
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
