@@ -247,6 +247,7 @@
   (let ((text (q+:text (q+:checked-action mode-action-group))))
     (change-mode scene (cond
                          ((string= text "Lines") :lines)
+                         ((string= text "Brushes") :brushes)
                          ((string= text "Things") :things)
                          (t :invalid)))))
 
@@ -262,6 +263,7 @@
                (q+:add-action mode-action-group action)
                (connect! action (triggered bool) main (mode-changed bool)))))
       (add-action "Lines" :checked t)
+      (add-action "Brushes")
       (add-action "Things" :icon ":/things/player.svg"))))
 
 (define-finalizer (main destroy)

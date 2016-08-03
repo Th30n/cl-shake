@@ -291,72 +291,112 @@
             (add-or-update-brush map-scene scene-pos))
            (:things (show-things-menu map-scene scene-pos)))))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
-       (ecase edit-mode
-         (:lines
-          (flet ((select-item ()
-                   (with-finalizing ((pen (make-qpen (map->scene-unit 4)
-                                                     (q+:qt.blue))))
-                     (setf (q+:pen highlighted-item) pen))
-                   (push highlighted-item selected-items))
-                 (clear-selection ()
-                   (dolist (item selected-items)
-                     (set-default-pen item))
-                   (setf selected-items nil)))
+       (flet ((select-line (item)
+                (with-finalizing ((pen (make-qpen (map->scene-unit 4)
+                                                  (q+:qt.blue))))
+                  (setf (q+:pen item) pen))))
+         (ecase edit-mode
+           (:lines
             (if highlighted-item
-                (select-item)
-                (clear-selection))))
-         (:things nil)))
+                (progn
+                  (select-line highlighted-item)
+                  (push highlighted-item selected-items))
+                (progn
+                  (dolist (item selected-items)
+                    (set-default-pen item))
+                  (setf selected-items nil))))
+           (:brushes
+            (if highlighted-item
+                (progn
+                  (dolist (line (q+:child-items highlighted-item))
+                    (select-line line))
+                  (push highlighted-item selected-items))
+                (progn
+                  (dolist (group selected-items)
+                    (dolist (line (q+:child-items group))
+                      (set-default-pen line)))
+                  (setf selected-items nil))))
+           (:things nil))))
       (t (stop-overriding)))))
+
+(defun items-at (map-scene scene-pos)
+  (let* ((size (map->scene-unit 4))
+         (offset (* 0.5d0 size))
+         (center-x (- (q+:x scene-pos) offset))
+         (center-y (- (q+:y scene-pos) offset)))
+    (q+:items map-scene center-x center-y size size
+              (q+:qt.intersects-item-shape) (q+:qt.descending-order))))
+
+(defun highlight-line (item selected-items)
+  (unless (member item selected-items)
+    (with-finalizing ((pen (make-qpen (map->scene-unit 4)
+                                      (q+:qt.dark-blue))))
+      (setf (q+:pen item) pen))))
+
+(defun unhighlight-line (item selected-items)
+  (unless (member item selected-items)
+    (set-default-pen item)))
 
 (defun lines-mode-handle-mouse-move (map-scene mouse-event)
   (with-slots (highlighted-item selected-items draw-info grid-step) map-scene
-    (flet ((highlight-line (item)
-             (unless (member item selected-items)
-               (with-finalizing ((pen (make-qpen (map->scene-unit 4)
-                                                 (q+:qt.dark-blue))))
-                 (setf (q+:pen item) pen))))
-           (unhighlight-line (item)
-             (unless (member item selected-items)
-               (set-default-pen item)))
-           (hovered-lineitem ()
+    (flet ((hovered-lineitem ()
              (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
-               (let* ((size (map->scene-unit 4))
-                      (offset (* 0.5d0 size))
-                      (center-x (- (q+:x scene-pos) offset))
-                      (center-y (- (q+:y scene-pos) offset)))
-                 (dolist (item (q+:items map-scene center-x center-y size size
-                                         (q+:qt.intersects-item-shape)
-                                         (q+:qt.descending-order)))
-                   (when (qinstancep item 'qgraphicslineitem)
-                     (return item)))))))
+               (dolist (item (items-at map-scene scene-pos))
+                 (when (qinstancep item 'qgraphicslineitem)
+                   (return item))))))
       (when highlighted-item
-        (unhighlight-line highlighted-item)
+        (unhighlight-line highlighted-item selected-items)
         (setf highlighted-item nil))
       (unless draw-info
         (when-let ((hover-item (hovered-lineitem)))
-          (highlight-line hover-item)
+          (highlight-line hover-item selected-items)
           (setf highlighted-item hover-item))))
     (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
       (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
         (update-brush-drawing draw-info scene-pos)))))
 
+(defun brushes-mode-handle-mouse-move (map-scene mouse-event)
+  (with-slots (highlighted-item selected-items) map-scene
+    (flet ((highlight-brush (group)
+             (unless (member group selected-items)
+               (dolist (line (q+:child-items group))
+                 (highlight-line line selected-items))))
+           (unhighlight-brush (group)
+             (unless (member group selected-items)
+               (dolist (line (q+:child-items group))
+                 (unhighlight-line line selected-items))))
+           (hovered-brush ()
+             (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+               (dolist (item (items-at map-scene scene-pos))
+                 (when (qinstancep item 'qgraphicsitemgroup)
+                   (return item))))))
+      (when highlighted-item
+        (unhighlight-brush highlighted-item)
+        (setf highlighted-item nil))
+      (when-let ((hover-item (hovered-brush)))
+        (highlight-brush hover-item)
+        (setf highlighted-item hover-item)))))
+
 (define-override (map-scene mouse-move-event) (mouse-event)
   (case edit-mode
-    (:lines (lines-mode-handle-mouse-move map-scene mouse-event)))
+    (:lines (lines-mode-handle-mouse-move map-scene mouse-event))
+    (:brushes (brushes-mode-handle-mouse-move map-scene mouse-event)))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
 
 (defun remove-selected (scene)
-  (let ((items (q+:selected-items scene)))
-    (with-slots (draw-info graphics-item-brush-map) scene
-      (dolist (item items)
-        (when (eq item (car draw-info))
-          (setf draw-info nil))
-        (remhash item graphics-item-brush-map)
-        (q+:remove-item scene item)
-        (finalize item))))
-  (q+:update scene (q+:scene-rect scene)))
+  (with-slots (selected-items edit-mode graphics-item-brush-map) scene
+    (case edit-mode
+      (:brushes
+       (dolist (group selected-items)
+         (dolist (line (q+:child-items group))
+           (q+:remove-from-group group line)
+           (finalize line))
+         (q+:remove-item scene group)
+         (finalize group)
+         (remhash group graphics-item-brush-map))
+       (setf selected-items nil)))))
 
 (define-override (map-scene key-press-event) (key-event)
   (cond
@@ -442,23 +482,19 @@
     (when (eq edit-mode :lines)
       (mapcar (curry #'sidedef-for-lineitem scene) selected-items))))
 
-(defun selected-brushes (scene)
-  (with-slots (graphics-item-brush-map) scene
-    (mapcar (rcurry #'gethash graphics-item-brush-map)
-            (q+:selected-items scene))))
-
 (defun rotate-selected (scene)
-  (with-slots (graphics-item-brush-map) scene
-    (when-let ((items (q+:selected-items scene)))
-      (dolist (item items)
-        (let* ((old-deg (q+:rotation item))
-               (new-deg (+ old-deg 10))
-               (rounds (floor new-deg 360))
-               (clamped-deg (- new-deg (* rounds 360))))
-          (q+:set-transform-origin-point item (q+:center (q+:bounding-rect item)))
-          (q+:set-rotation item clamped-deg)
-          (setf (mbrush-rotation (gethash item graphics-item-brush-map))
-                new-deg))))))
+  (with-slots (graphics-item-brush-map selected-items edit-mode) scene
+    (case edit-mode
+      (:brushes
+       (dolist (item selected-items)
+         (let* ((old-deg (q+:rotation item))
+                (new-deg (+ old-deg 10))
+                (rounds (floor new-deg 360))
+                (clamped-deg (- new-deg (* rounds 360))))
+           (q+:set-transform-origin-point item (q+:center (q+:bounding-rect item)))
+           (q+:set-rotation item clamped-deg)
+           (setf (mbrush-rotation (gethash item graphics-item-brush-map))
+                 new-deg)))))))
 
 (defun change-mode (scene mode)
   (with-slots (edit-mode) scene

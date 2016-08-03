@@ -40,7 +40,6 @@
            #:remove-selected
            #:rotate-selected
            #:selected-sidedefs
-           #:selected-brushes
            #:change-mode
            #:scale-grid-step
            #:toggle-view-normals))
