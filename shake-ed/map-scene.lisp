@@ -51,6 +51,7 @@
 
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
+   (highlighted-item :initform nil)
    (edit-mode :initform :lines)
    (graphics-item-brush-map :initform (make-hash-table))
    (graphics-item-thing-map :initform (make-hash-table))
@@ -127,12 +128,19 @@
         (finalize group)
         (setf draw-info nil)))))
 
+(defun make-qpen (width color)
+  (with-finalizing ((qcolor (q+:make-qcolor color)))
+    (let ((pen (q+:make-qpen qcolor)))
+      (setf (q+:width-f pen) width)
+      pen)))
+
+(defun set-default-pen (item)
+  (with-finalizing ((pen (make-qpen (map->scene-unit 2) (q+:qt.dark-green))))
+    (setf (q+:pen item) pen)))
+
 (defun setup-graphicsitem (item)
-  (with-finalizing* ((color (q+:make-qcolor (q+:qt.dark-green)))
-                     (pen (q+:make-qpen color)))
-    (setf (q+:width-f pen) (map->scene-unit 2)
-          (q+:pen item) pen
-          (q+:flag item) (values (q+:qgraphicsitem.item-is-selectable) t)))
+  (set-default-pen item)
+  (setf (q+:flag item) (values (q+:qgraphicsitem.item-is-selectable) t))
   item)
 
 (defun new-pointitem (center &key radius)
@@ -281,10 +289,38 @@
          (:things nil)))
       (t (stop-overriding)))))
 
+(defun lines-mode-handle-mouse-move (map-scene mouse-event)
+  (with-slots (highlighted-item draw-info grid-step) map-scene
+    (flet ((highlight-line (item)
+             (with-finalizing ((pen (make-qpen (map->scene-unit 4)
+                                               (q+:qt.dark-blue))))
+               (setf (q+:pen item) pen)))
+           (unhighlight-line (item)
+             (set-default-pen item))
+           (hovered-lineitem ()
+             (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+               (let* ((size (map->scene-unit 4))
+                      (offset (* 0.5d0 size))
+                      (center-x (- (q+:x scene-pos) offset))
+                      (center-y (- (q+:y scene-pos) offset)))
+                 (dolist (item (q+:items map-scene center-x center-y size size
+                                         (q+:qt.intersects-item-shape)
+                                         (q+:qt.descending-order)))
+                   (when (qinstancep item 'qgraphicslineitem)
+                     (return item)))))))
+      (when highlighted-item
+        (unhighlight-line highlighted-item)
+        (setf highlighted-item nil))
+      (when-let ((hover-item (hovered-lineitem)))
+        (highlight-line hover-item)
+        (setf highlighted-item hover-item)))
+    (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
+      (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
+        (update-brush-drawing draw-info scene-pos)))))
+
 (define-override (map-scene mouse-move-event) (mouse-event)
-  (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
-    (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
-      (update-brush-drawing draw-info scene-pos)))
+  (case edit-mode
+    (:lines (lines-mode-handle-mouse-move map-scene mouse-event)))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
