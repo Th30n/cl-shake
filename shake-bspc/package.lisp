@@ -86,6 +86,7 @@
            ;; bsp queries
            #:partition-surfaces
            #:convex-hull-p
+           #:point-in-hull-p
            #:determine-side
            #:back-to-front))
 

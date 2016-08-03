@@ -36,7 +36,7 @@
            #:write-map
            #:read-map
            #:mbrush
-           #:mbrush-brush
+           #:convert-brush
            #:remove-selected
            #:rotate-selected
            #:selected-sidedefs

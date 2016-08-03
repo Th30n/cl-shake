@@ -43,11 +43,9 @@
   (brush nil :type sbrush:brush)
   (rotation 0d0 :type double-float))
 
-(defun mbrush-lines (mbrush)
-  "Returns LINEDEFS after applying transformations from MBRUSH."
-  (sbrush:brush-lines
-   (sbrush:brush-rotate (mbrush-brush mbrush)
-                        (* deg->rad (mbrush-rotation mbrush)))))
+(defun convert-brush (mbrush)
+  (sbrush:brush-rotate (mbrush-brush mbrush)
+                       (* deg->rad (mbrush-rotation mbrush))))
 
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
@@ -117,7 +115,7 @@
       (let ((items (q+:items map-scene)))
         (dolist (item items)
           (when-let ((mbrush (gethash item graphics-item-brush-map)))
-            (dolist (line (mbrush-lines mbrush))
+            (dolist (line (sbrush:brush-lines (convert-brush mbrush)))
               (draw-linedef-normal line painter)))))))
   (stop-overriding))
 
@@ -356,20 +354,28 @@
         (update-brush-drawing draw-info scene-pos)))))
 
 (defun brushes-mode-handle-mouse-move (map-scene mouse-event)
-  (with-slots (highlighted-item selected-items) map-scene
-    (flet ((highlight-brush (group)
-             (unless (member group selected-items)
-               (dolist (line (q+:child-items group))
-                 (highlight-line line selected-items))))
-           (unhighlight-brush (group)
-             (unless (member group selected-items)
-               (dolist (line (q+:child-items group))
-                 (unhighlight-line line selected-items))))
-           (hovered-brush ()
-             (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
-               (dolist (item (items-at map-scene scene-pos))
-                 (when (qinstancep item 'qgraphicsitemgroup)
-                   (return item))))))
+  (with-slots (highlighted-item selected-items graphics-item-brush-map) map-scene
+    (labels ((highlight-brush (group)
+               (unless (member group selected-items)
+                 (dolist (line (q+:child-items group))
+                   (highlight-line line selected-items))))
+             (unhighlight-brush (group)
+               (unless (member group selected-items)
+                 (dolist (line (q+:child-items group))
+                   (unhighlight-line line selected-items))))
+             (point-in-mbrush-p (point mbrush)
+               (sbsp:point-in-hull-p point
+                                     (mapcar #'sbsp:sidedef-lineseg
+                                             (sbrush:brush-surfaces
+                                              (convert-brush mbrush)))))
+             (hovered-brush ()
+               (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+                 (dolist (item (items-at map-scene scene-pos))
+                   (when (and (qinstancep item 'qgraphicsitemgroup)
+                              (point-in-mbrush-p
+                               (v (q+:x scene-pos) (q+:y scene-pos))
+                               (gethash item graphics-item-brush-map)))
+                     (return item))))))
       (when highlighted-item
         (unhighlight-brush highlighted-item)
         (setf highlighted-item nil))
@@ -421,9 +427,7 @@
   (with-slots (graphics-item-brush-map graphics-item-thing-map) scene
     (let ((mbrushes (hash-table-values graphics-item-brush-map))
           (things (hash-table-values graphics-item-thing-map)))
-      (flet ((convert-brush (mbrush)
-               (sbrush:brush-rotate (mbrush-brush mbrush)
-                                    (* deg->rad (mbrush-rotation mbrush)))))
+      (flet ()
         (sbsp:write-map
          (sbsp:make-map-file :brushes (mapcar #'convert-brush mbrushes)
                              :things things)
@@ -474,7 +478,7 @@
                          (end (sbsp:lineseg-end seg)))
                      (or (and (v= p1 start) (v= p2 end))
                          (and (v= p1 end) (v= p2 start))))))
-            (find-if #'line-match-p (sbrush:brush-surfaces (mbrush-brush mbrush))
+            (find-if #'line-match-p (sbrush:brush-surfaces (convert-brush mbrush))
                      :key #'sbsp:sidedef-lineseg)))))))
 
 (defun selected-sidedefs (scene)

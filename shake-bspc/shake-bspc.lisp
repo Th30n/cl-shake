@@ -140,6 +140,14 @@
               ((minusp d) :back))
             d)))
 
+(defun point-in-hull-p (point linesegs)
+  "Returns true if the point is no the inner side of given linesegs which form
+  a convex hull."
+  (flet ((point-inside-p (seg)
+           (let ((side (determine-side seg point)))
+             (or (eq side :back) (eq side :on-line)))))
+    (every #'point-inside-p linesegs)))
+
 (defun convex-hull-p (linesegs)
   "Checks if the given list of LINESEG instances forms a convex hull."
   (block test
