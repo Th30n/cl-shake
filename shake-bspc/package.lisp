@@ -32,6 +32,7 @@
            ;; side definition
            #:sidedef
            #:make-sidedef
+           #:copy-sidedef
            #:sidedef-color
            #:sidedef-lineseg
            #:write-sidedef

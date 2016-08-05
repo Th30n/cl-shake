@@ -63,20 +63,55 @@
     (mapcar (lambda (start end) (make-linedef :start start :end end))
             start-points end-points)))
 
+(defstruct texinfo
+  "Details about the texture used on a line surface.
+  OFFSET is a 2D vector of offsets applied to ST coordinates.
+  NAME is a file name of the texture.
+  DRAW-MODE is one of :TILE or :SCALE-TO-FIT."
+  (offset nil :type (vec 2))
+  (name nil :type string)
+  (draw-mode :tile))
+
+(defun write-texinfo (texinfo stream)
+  (with-struct (texinfo- offset name draw-mode) texinfo
+    (format stream "(texinfo (v ~S ~S) ~S ~S)"
+            (vx offset) (vy offset) name draw-mode)))
+
+(defun read-texinfo-from-list (list)
+  (destructuring-bind (type-name . args) list
+    (declare (ignore type-name))
+    (destructuring-bind ((vec-type x y) name draw-mode) args
+      (declare (ignore vec-type))
+      (make-texinfo :offset (v x y)
+                    :name name :draw-mode draw-mode))))
+
+(defun read-texinfo (stream)
+  (read-texinfo-from-list (read stream)))
+
 (defstruct sidedef
   "A side definition for a line segment."
   (lineseg nil :type lineseg)
-  (color (v 1 0 1) :type (vec 3)))
+  (color (v 1 0 1) :type (vec 3))
+  (texinfo nil))
 
 (defun read-sidedef (stream)
   (let ((lineseg (read-lineseg stream))
-        (color (v (read stream) (read stream) (read stream))))
-    (make-sidedef :lineseg lineseg :color color)))
+        (color (v (read stream) (read stream) (read stream)))
+        (texinfo (read stream)))
+    (make-sidedef :lineseg lineseg
+                  :color color
+                  :texinfo (if (or (eq :caulk texinfo) (null texinfo))
+                               texinfo
+                               (read-texinfo-from-list texinfo)))))
 
 (defun write-sidedef (sidedef stream)
-  (with-struct (sidedef- lineseg color) sidedef
+  (with-struct (sidedef- lineseg color texinfo) sidedef
     (write-lineseg lineseg stream)
-    (format stream "~S ~S ~S~%" (vx color) (vy color) (vz color))))
+    (format stream "~S ~S ~S~%" (vx color) (vy color) (vz color))
+    (cond
+      ((or (eq :caulk texinfo) (null texinfo)) (format stream "~S~%" texinfo))
+      (t (write-texinfo texinfo stream)
+         (format stream "~%")))))
 
 (defun linedef->sidedef (line)
   (make-sidedef :lineseg (linedef->lineseg line)))
