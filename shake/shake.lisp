@@ -331,6 +331,28 @@ DRAW and DELETE for drawing and deleting respectively."
              (load-font (data-path "share/font-16.bmp") 16 #\Space))
            #'delete-font))
 
+(defun load-map-textures (bsp)
+  (let (textures)
+    (labels ((collect-textures (node)
+               (if (sbsp:leaf-p node)
+                   (dolist (surf (sbsp:leaf-surfaces node))
+                     (when (sbsp:sidedef-texinfo surf)
+                       (push (string-downcase
+                              (sbsp:texinfo-name (sbsp:sidedef-texinfo surf)))
+                             textures)))
+                   (progn
+                     (collect-textures (sbsp:node-front node))
+                     (collect-textures (sbsp:node-back node)))))
+             (load-map-texture (name)
+               (if-let ((fname (data-path (concatenate 'string "share/textures/"
+                                                       name))))
+                 (load-texture fname)
+                 (load-texture (data-path "share/textures/missing.bmp")))))
+      (collect-textures bsp)
+      (dolist (tex-name (remove-duplicates textures :test #'string=))
+        (add-res tex-name (lambda () (load-map-texture tex-name))
+                 (lambda (res) (gl:delete-textures (list res))))))))
+
 (defun spawn-player (things camera)
   (dolist (thing things)
     (when (eq (sbsp:map-thing-type thing) :player-spawn)
@@ -361,6 +383,7 @@ DRAW and DELETE for drawing and deleting respectively."
                                         0.1d0 100d0))
                      (camera (make-camera :projection proj :position (v 1 0.5 8)))
                      (frame-timer (make-timer)))
+                (load-map-textures (smdl:model-nodes *bsp*))
                 (spawn-player (smdl:model-things *bsp*) camera)
                 (symbol-macrolet ((input-focus-p
                                    (member :input-focus
@@ -389,11 +412,6 @@ DRAW and DELETE for drawing and deleting respectively."
                                            (lambda (tic) (run-tic camera tic)))
                              (unless minimized-p
                                (clear-buffer-fv :color 0 0 0 0)
-                               (res-let (shader-prog)
-                                 (gl:use-program shader-prog)
-                                 (uniform-mvp shader-prog
-                                              (m* (camera-projection camera)
-                                                  (camera-view-transform camera))))
                                (render camera)
                                (draw-timer-stats frame-timer)
                                (sdl2:gl-swap-window win))))))))))))))
@@ -425,36 +443,59 @@ DRAW and DELETE for drawing and deleting respectively."
   (let* ((pos (camera-position camera))
          (pos-2d (v (vx pos) (vz pos)))
          (surfs (sbsp:back-to-front pos-2d (smdl:model-nodes bsp))))
-    (values (mappend #'smdl:surface-faces surfs)
-            (mappend (lambda (s) (make-list 6 :initial-element
-                                            (smdl:surface-color s)))
-                     surfs))))
+    (flet ((make-vertex-data (surf)
+             (let ((positions (smdl:surface-faces surf))
+                   (colors (make-list 6 :initial-element
+                                      (smdl:surface-color surf)))
+                   (uvs (smdl:surface-texcoords surf))
+                   (tex-name (when-let ((texinfo (sbsp:sidedef-texinfo surf)))
+                               (string-downcase (sbsp:texinfo-name texinfo)))))
+               (list positions colors (when uvs (cons tex-name uvs))))))
+      (mapcar #'make-vertex-data surfs))))
 
 (defun render (camera)
   (declare (special *win-width* *win-height*))
-  (with-resources "render"
-    (destructuring-bind (vbo color-buffer)
-        (add-res "buffers" (lambda () (gl:gen-buffers 2)) #'gl:delete-buffers)
-      (multiple-value-bind (triangles triangle-colors)
-          (get-map-walls camera *bsp*)
-        (gl:viewport 0 0 *win-width* *win-height*)
-        (gl:bind-vertex-array (res "vertex-array"))
+  (gl:viewport 0 0 *win-width* *win-height*)
+  (gl:bind-vertex-array (res "vertex-array"))
+  (res-let (shader-prog)
+    (gl:use-program shader-prog)
+    (uniform-mvp shader-prog
+                 (m* (camera-projection camera)
+                     (camera-view-transform camera))))
+  (dolist (vertex-data (get-map-walls camera *bsp*))
+    (destructuring-bind (triangles triangle-colors uvs) vertex-data
+      (with-resources "render"
+        (destructuring-bind (vbo color-buffer uv-buffer)
+            (add-res "buffers" (lambda () (gl:gen-buffers 3)) #'gl:delete-buffers)
+          (gl:bind-buffer :array-buffer vbo)
+          (buffer-data :array-buffer :static-draw :float triangles)
+          (gl:enable-vertex-attrib-array 0)
+          (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
 
-        (gl:bind-buffer :array-buffer vbo)
-        (buffer-data :array-buffer :static-draw :float triangles)
-        (gl:enable-vertex-attrib-array 0)
-        (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
+          (gl:bind-buffer :array-buffer color-buffer)
+          (buffer-data :array-buffer :static-draw :float triangle-colors)
+          (gl:enable-vertex-attrib-array 1)
+          (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
 
-        (gl:bind-buffer :array-buffer color-buffer)
-        (buffer-data :array-buffer :static-draw :float triangle-colors)
-        (gl:enable-vertex-attrib-array 1)
-        (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
-
-        ;;    (clear-buffer-fv :depth 0 1)
-        (gl:draw-arrays :triangles 0 (list-length triangles))
-        ;;    (gl:draw-arrays :lines 0 10)
-        (gl:bind-vertex-array 0)
-        (gl:check-error)))))
+          (with-uniform-locations (res "shader-prog") (has-albedo tex-albedo)
+            (if uvs
+                (progn
+                  (gl:active-texture :texture0)
+                  (gl:bind-texture :texture-2d (res (first uvs)))
+                  (gl:uniformi tex-albedo-loc 0)
+                  (gl:uniformi has-albedo-loc 1)
+                  (gl:bind-buffer :array-buffer uv-buffer)
+                  (buffer-data :array-buffer :static-draw :float (rest uvs))
+                  (gl:enable-vertex-attrib-array 2)
+                  (gl:vertex-attrib-pointer 2 2 :float nil 0 (cffi:null-pointer)))
+                (progn
+                  (gl:uniformi has-albedo-loc 0)
+                  (gl:disable-vertex-attrib-array 2))))
+          ;;    (clear-buffer-fv :depth 0 1)
+          (gl:draw-arrays :triangles 0 (list-length triangles))))))
+  ;;    (gl:draw-arrays :lines 0 10)
+  (gl:bind-vertex-array 0)
+  (gl:check-error))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp

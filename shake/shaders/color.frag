@@ -16,6 +16,9 @@
 
 #version 330 core
 
+uniform sampler2D tex_albedo;
+uniform int has_albedo = 0;
+
 in VS_OUT
 {
     vec2 uv;
@@ -29,4 +32,6 @@ void main(void)
 {
     // frag_color = vec4(1, 0, 0, 1);
     frag_color = vec4(fs_in.color, 1);
+    if (has_albedo == 1)
+        frag_color = frag_color * texture(tex_albedo, fs_in.uv);
 }

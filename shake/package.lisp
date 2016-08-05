@@ -40,10 +40,15 @@
            #:model-things
            #:surface
            #:surface-color
-           #:surface-faces)
+           #:surface-faces
+           #:surface-texcoords)
   (:import-from #:sbsp
                 #:lineseg-start
-                #:lineseg-end))
+                #:lineseg-end
+                #:lineseg-orig-line
+                #:lineseg-t-start
+                #:lineseg-t-end
+                #:linedef-end))
 
 (defpackage #:shake
   (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data)

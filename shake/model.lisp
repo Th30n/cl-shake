@@ -18,7 +18,8 @@
 
 (defstruct (surface (:include sbsp:sidedef))
   "Extended SIDEDEF which contains 3D faces for rendering."
-  faces)
+  faces
+  texcoords)
 
 (defstruct model
   "A 3D model. The NODES slot contains bsp nodes for rendering. The HULL slot
@@ -35,10 +36,35 @@
       (list start-3d end-3d (v- start-3d (v 0 1 0))
             (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0))))))
 
+(defun make-texcoords (sidedef)
+  (let ((texinfo (sbsp:sidedef-texinfo sidedef)))
+    (unless (or (null texinfo) (eq :caulk texinfo))
+      (let ((texcoord-bounds
+             (ecase (sbsp:texinfo-draw-mode texinfo)
+               (:tile
+                (with-struct (lineseg- start end orig-line)
+                    (sbsp:sidedef-lineseg sidedef)
+                  ;; Winding is clockwise (right to left), so reverse the
+                  ;; texture.
+                  (cons (vdist start (linedef-end orig-line))
+                        (vdist end (linedef-end orig-line)))))
+               (:scale-to-fit
+                (with-struct (lineseg- t-start t-end)
+                    (sbsp:sidedef-lineseg sidedef)
+                  ;; Reverse the coordinates, due to vertex winding.
+                  (cons (- 1d0 t-start) (- 1d0 t-end)))))))
+        (destructuring-bind (u-start . u-end) texcoord-bounds
+          (mapcar (lambda (uv) (v+ (sbsp:texinfo-offset texinfo) uv))
+                  (list (v u-start 0) (v u-end 0) (v u-start 1)
+                        (v u-start 1) (v u-end 0) (v u-end 1))))))))
+
+
 (defun sidedef->surface (sidedef)
   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
                 :color (sbsp:sidedef-color sidedef)
-                :faces (make-triangles sidedef)))
+                :texinfo (sbsp:sidedef-texinfo sidedef)
+                :faces (make-triangles sidedef)
+                :texcoords (make-texcoords sidedef)))
 
 (defun nadapt-nodes (node)
   (if (sbsp:leaf-p node)

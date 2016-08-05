@@ -35,9 +35,14 @@
            #:copy-sidedef
            #:sidedef-color
            #:sidedef-lineseg
+           #:sidedef-texinfo
            #:write-sidedef
            #:read-sidedef
            #:linedef->sidedef
+           ;; texinfo
+           #:texinfo-offset
+           #:texinfo-name
+           #:texinfo-draw-mode
            ;; line segment
            #:lineseg
            #:make-lineseg
