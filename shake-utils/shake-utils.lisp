@@ -53,3 +53,19 @@ the structure."
 (defmacro repeat (n &body body)
   "Evaluate N times the given BODY and collect the results into a list."
   `(loop repeat ,n collecting (progn ,@body)))
+
+(defun group-by (test list)
+  "Groups the LIST elements into sublists containing only elements that are
+  equal according to TEST function. For example:
+
+  (group-by #'= '(1 2 3 3 2 3 3 2 4 4 2)) ===
+  '((1) (2) (3 3) (2) (3 3) (2) (4 4) (2))"
+  (let (groups last-group)
+    (dolist (elem list)
+      (if (or (not last-group) (funcall test (first last-group) elem))
+          (push elem last-group)
+          (progn
+            (push (reverse last-group) groups)
+            (setf last-group (list elem)))))
+    (push (reverse last-group) groups)
+    (reverse groups)))

@@ -20,6 +20,7 @@
   (:nicknames #:shut #:sutils)
   (:use #:cl #:alexandria)
   (:export #:doproduct
+           #:group-by
            #:length>=
            #:notf
            #:repeat
