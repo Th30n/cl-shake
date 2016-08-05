@@ -40,6 +40,8 @@
            #:read-sidedef
            #:linedef->sidedef
            ;; texinfo
+           #:texinfo
+           #:texinfo-p
            #:texinfo-offset
            #:texinfo-name
            #:texinfo-draw-mode
