@@ -418,8 +418,11 @@
     (q+:update scene (q+:scene-rect scene))))
 
 (defun clear-map (scene)
-  (with-slots (graphics-item-brush-map graphics-item-thing-map) scene
+  (with-slots-bound (scene map-scene)
     (q+:clear scene)
+    (setf highlighted-item nil
+          selected-items nil
+          draw-info nil)
     (clrhash graphics-item-brush-map)
     (clrhash graphics-item-thing-map)))
 
