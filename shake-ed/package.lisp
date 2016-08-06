@@ -16,6 +16,13 @@
 
 (in-package #:cl-user)
 
+(defpackage #:shake-ed.utils
+  (:use #:cl+qt #:shake-utils)
+  (:import-from #:shiva
+                #:v #:vx #:vy #:vz)
+  (:export #:vector->qcolor
+           #:qcolor->vector))
+
 (defpackage #:shake-ed.map-scene
   (:use #:cl+qt #:shake-utils)
   (:import-from #:shiva
@@ -45,14 +52,14 @@
            #:toggle-view-normals))
 
 (defpackage #:shake-ed.props-ed
-  (:use #:cl+qt #:shake-utils)
-  (:export #:properties-editor))
+  (:use #:cl+qt #:shake-utils #:shake-ed.utils)
+  (:export #:properties-editor
+           #:set-target))
 
 (defpackage #:shake-ed
-  (:use #:cl+qt #:shake-utils #:shake-ed.map-scene #:shake-ed.props-ed)
+  (:use #:cl+qt #:shake-utils #:shake-ed.utils #:shake-ed.map-scene
+        #:shake-ed.props-ed)
   (:export #:main)
-  (:import-from #:shiva
-                #:v #:vx #:vy #:vz)
   (:import-from #:alexandria
                 #:clamp
                 #:emptyp

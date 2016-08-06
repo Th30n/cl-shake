@@ -22,15 +22,6 @@
 
 (defconstant +initial-scale+ 50d0)
 
-(defun qcolor->vector (qcolor)
-  (v (q+:red-f qcolor) (q+:green-f qcolor) (q+:blue-f qcolor)))
-
-(defun vector->qcolor (color)
-  (let ((qcolor (q+:make-qcolor)))
-    (setf (q+:rgb-f qcolor)
-          (values (vx color) (vy color) (vz color)))
-    qcolor))
-
 (define-widget map-view (QGraphicsView)
   ((zoom-lvl :initform 4)
    (translate-mouse-last-pos :initform nil)))

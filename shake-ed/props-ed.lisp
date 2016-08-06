@@ -18,4 +18,28 @@
 (in-readtable :qtools)
 
 (define-widget properties-editor (QWidget)
-  ())
+  ((sidedef :initform nil)))
+
+(define-subwidget (properties-editor color-button)
+    (q+:make-qpushbutton "Color"))
+
+(define-slot (properties-editor color-button-clicked) ((checked bool))
+  (declare (connected color-button (clicked bool)))
+  (when sidedef
+    (with-finalizing* ((qcolor (vector->qcolor (sbsp:sidedef-color sidedef)))
+                       (new-qcolor (q+:qcolordialog-get-color
+                                    qcolor properties-editor)))
+      (when (q+:is-valid new-qcolor)
+        (setf (sbsp:sidedef-color sidedef) (qcolor->vector new-qcolor))))))
+
+(define-initializer (properties-editor setup)
+  (let ((layout (q+:make-qvboxlayout)))
+    (q+:set-layout properties-editor layout)
+    (q+:add-widget layout color-button))
+  (unless sidedef
+    (q+:set-enabled properties-editor nil)))
+
+(defun set-target (properties-editor target)
+  (with-slots (sidedef) properties-editor
+    (setf sidedef target)
+    (q+:set-enabled properties-editor (when sidedef t))))
