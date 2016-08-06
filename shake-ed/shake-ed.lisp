@@ -262,9 +262,10 @@
                                               :checked checked)))
                (q+:add-action mode-action-group action)
                (connect! action (triggered bool) main (mode-changed bool)))))
-      (add-action "Lines" :checked t)
-      (add-action "Brushes")
-      (add-action "Things" :icon ":/things/player.svg"))))
+      (add-action "Lines" :checked t :icon ":/modes/lines.svg")
+      (add-action "Brushes" :icon ":/modes/brushes.svg")
+      (add-action "Sectors" :icon ":/modes/sectors.svg")
+      (add-action "Things" :icon ":/modes/things.svg"))))
 
 (define-finalizer (main destroy)
   (dolist (action (q+:actions mode-action-group))

@@ -2,4 +2,10 @@
 <qresource prefix="/things">
     <file alias="player.svg">images/things/player-spawn.svg</file>
 </qresource>
+<qresource prefix="/modes">
+  <file alias="things.svg">images/things/player-spawn.svg</file>
+  <file alias="lines.svg">images/modes/lines.svg</file>
+  <file alias="brushes.svg">images/modes/brushes.svg</file>
+  <file alias="sectors.svg">images/modes/sectors.svg</file>
+</qresource>
 </RCC>
