@@ -14,17 +14,8 @@
 ;;;; with this program; if not, write to the Free Software Foundation, Inc.,
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-(in-package #:asdf-user)
+(in-package #:shake-ed.props-ed)
+(in-readtable :qtools)
 
-(defsystem "shake-ed"
-  :description "shake-ed: A map editor for shake"
-  :version "0.0.1"
-  :author "Teon Banek <theongugl@gmail.com>"
-  :licence "GPL2"
-  :depends-on ("alexandria" "shiva" "shake-bspc"
-               "qtools" "qtcore" "qtgui" "qtsvg" "qtopengl")
-  :serial t
-  :components ((:file "package")
-               (:file "map-scene")
-               (:file "props-ed")
-               (:file "shake-ed")))
+(define-widget properties-editor (QWidget)
+  ())

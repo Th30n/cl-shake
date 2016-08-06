@@ -44,8 +44,12 @@
            #:scale-grid-step
            #:toggle-view-normals))
 
+(defpackage #:shake-ed.props-ed
+  (:use #:cl+qt #:shake-utils)
+  (:export #:properties-editor))
+
 (defpackage #:shake-ed
-  (:use #:cl+qt #:shake-utils #:shake-ed.map-scene)
+  (:use #:cl+qt #:shake-utils #:shake-ed.map-scene #:shake-ed.props-ed)
   (:export #:main)
   (:import-from #:shiva
                 #:v #:vx #:vy #:vz)

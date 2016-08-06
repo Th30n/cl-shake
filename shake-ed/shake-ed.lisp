@@ -118,6 +118,9 @@
                          (format nil "Pos ~4D, ~4D Zoom: ~,2F% Grid: ~3D"
                                  map-x map-y zoom-lvl grid-step))))))
 
+(define-subwidget (main props-dock) (q+:make-qdockwidget "Properties" main))
+(define-subwidget (main props-ed) (make-instance 'properties-editor))
+
 (define-subwidget (main scene) (make-instance 'map-scene))
 
 (define-slot (main mouse-scene-pos) ((x double) (y double))
@@ -265,7 +268,9 @@
       (add-action "Lines" :checked t :icon ":/modes/lines.svg")
       (add-action "Brushes" :icon ":/modes/brushes.svg")
       (add-action "Sectors" :icon ":/modes/sectors.svg")
-      (add-action "Things" :icon ":/modes/things.svg"))))
+      (add-action "Things" :icon ":/modes/things.svg")))
+  (q+:set-widget props-dock props-ed)
+  (q+:add-dock-widget main (q+:qt.right-dock-widget-area) props-dock))
 
 (define-finalizer (main destroy)
   (dolist (action (q+:actions mode-action-group))
