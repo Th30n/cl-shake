@@ -46,6 +46,7 @@
            #:convert-brush
            #:remove-selected
            #:rotate-selected
+           #:selected-items
            #:selected-sidedefs
            #:change-mode
            #:scale-grid-step
@@ -53,6 +54,8 @@
 
 (defpackage #:shake-ed.props-ed
   (:use #:cl+qt #:shake-utils #:shake-ed.utils)
+  (:import-from #:alexandria
+                #:length=)
   (:export #:properties-editor
            #:set-target))
 

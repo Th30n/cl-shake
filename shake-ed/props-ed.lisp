@@ -41,5 +41,7 @@
 
 (defun set-target (properties-editor target)
   (with-slots (sidedef) properties-editor
-    (setf sidedef target)
+    (setf sidedef (when (and (listp target) (length= 1 target)
+                             (sbsp:sidedef-p (first target)))
+                    (first target)))
     (q+:set-enabled properties-editor (when sidedef t))))

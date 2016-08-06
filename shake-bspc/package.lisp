@@ -31,6 +31,7 @@
            #:read-linedef
            ;; side definition
            #:sidedef
+           #:sidedef-p
            #:make-sidedef
            #:copy-sidedef
            #:sidedef-color

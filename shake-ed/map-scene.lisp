@@ -314,7 +314,8 @@
                     (dolist (line (q+:child-items group))
                       (set-default-pen line)))
                   (setf selected-items nil))))
-           (:things nil))))
+           (:things nil))
+         (signal! map-scene (selection-changed))))
       (t (stop-overriding)))))
 
 (defun items-at (map-scene scene-pos)
@@ -475,14 +476,19 @@
                                 graphics-item-brush-map)))
       (with-finalizing ((qline (q+:line lineitem)))
         (let ((p1 (v (q+:x1 qline) (q+:y1 qline)))
-              (p2 (v (q+:x2 qline) (q+:y2 qline))))
+              (p2 (v (q+:x2 qline) (q+:y2 qline)))
+              (surf-pairs (mapcar #'cons
+                                  (sbrush:brush-surfaces (convert-brush mbrush))
+                                  (sbrush:brush-surfaces (mbrush-brush mbrush)))))
           (flet ((line-match-p (seg)
                    (let ((start (sbsp:lineseg-start seg))
                          (end (sbsp:lineseg-end seg)))
                      (or (and (v= p1 start) (v= p2 end))
                          (and (v= p1 end) (v= p2 start))))))
-            (find-if #'line-match-p (sbrush:brush-surfaces (convert-brush mbrush))
-                     :key #'sbsp:sidedef-lineseg)))))))
+            (dolist (surf-pair surf-pairs)
+              (destructuring-bind (rotated-surf . orig-surf) surf-pair
+                (when (line-match-p (sbsp:sidedef-lineseg rotated-surf))
+                  (return orig-surf))))))))))
 
 (defun selected-sidedefs (scene)
   (with-slots (selected-items edit-mode) scene

@@ -114,6 +114,10 @@
 
 (define-subwidget (main scene) (make-instance 'map-scene))
 
+(define-slot (main scene-selection-changed) ()
+  (declare (connected scene (selection-changed)))
+  (set-target props-ed (selected-sidedefs scene)))
+
 (define-slot (main mouse-scene-pos) ((x double) (y double))
   (declare (connected scene (mouse-scene-pos double double)))
   (let ((map-x (scene->map-unit x))
