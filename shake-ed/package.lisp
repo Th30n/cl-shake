@@ -55,9 +55,10 @@
 (defpackage #:shake-ed.props-ed
   (:use #:cl+qt #:shake-utils #:shake-ed.utils)
   (:import-from #:alexandria
+                #:ends-with-subseq
                 #:length=)
   (:export #:properties-editor
-           #:set-target))
+           #:target))
 
 (defpackage #:shake-ed
   (:use #:cl+qt #:shake-utils #:shake-ed.utils #:shake-ed.map-scene

@@ -43,6 +43,7 @@
            ;; texinfo
            #:texinfo
            #:texinfo-p
+           #:make-texinfo
            #:texinfo-offset
            #:texinfo-name
            #:texinfo-draw-mode

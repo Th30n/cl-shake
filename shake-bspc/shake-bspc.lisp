@@ -68,7 +68,7 @@
   OFFSET is a 2D vector of offsets applied to ST coordinates.
   NAME is a file name of the texture.
   DRAW-MODE is one of :TILE or :SCALE-TO-FIT."
-  (offset nil :type (vec 2))
+  (offset (v 0 0) :type (vec 2))
   (name nil :type string)
   (draw-mode :tile))
 
