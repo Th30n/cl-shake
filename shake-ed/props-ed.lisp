@@ -21,13 +21,32 @@
 (defgeneric (setf target) (target editor)
   (:documentation "Set the editor target and update widget contents"))
 
+(defun draw-mode->combo-index (draw-mode)
+  (ecase draw-mode
+    (:scale-to-fit 0)
+    (:tile 1)))
+
+(defun combo-index->draw-mode (index)
+  (ecase index
+    (0 :scale-to-fit)
+    (1 :tile)))
+
 (define-widget texture-editor (QWidget)
-  ((texture-file-name :initform nil)
-   (texinfo :initform nil)))
+  ((texinfo :initform nil)))
 
 (define-subwidget (texture-editor choose-button)
     (q+:make-qpushbutton "Texture"))
+
 (define-subwidget (texture-editor name-label) (q+:make-qlabel "No texture"))
+
+(define-subwidget (texture-editor choose-widget) (q+:make-qwidget)
+  (let ((hbox (q+:make-qhboxlayout)))
+    (q+:set-layout choose-widget hbox)
+    (q+:add-widget hbox choose-button)
+    (q+:add-widget hbox name-label)))
+
+(define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
+  (q+:add-items draw-mode-combo (list "Scale To Fit" "Tile")))
 
 (define-signal (texture-editor target-changed) ())
 
@@ -43,22 +62,32 @@
               (q+:text name-label) name))
       (signal! texture-editor (target-changed)))))
 
+(define-slot (texture-editor draw-mode-changed) ((index int))
+  (declare (connected draw-mode-combo (current-index-changed int)))
+  (let ((new-draw-mode (combo-index->draw-mode index)))
+    (unless (eq (sbsp:texinfo-draw-mode texinfo) new-draw-mode)
+      (setf (sbsp:texinfo-draw-mode texinfo) new-draw-mode))))
+
 (define-initializer (texture-editor setup)
-  (let ((layout (q+:make-qhboxlayout)))
+  (let ((layout (q+:make-qvboxlayout)))
     (q+:set-layout texture-editor layout)
-    (q+:add-widget layout choose-button)
-    (q+:add-widget layout name-label)))
+    (q+:add-widget layout choose-widget)
+    (q+:add-widget layout draw-mode-combo)))
 
 (defmethod target ((editor texture-editor))
   (with-slots (texinfo) editor
     texinfo))
 
 (defmethod (setf target) (target (editor texture-editor))
-  (with-slots (texinfo name-label) editor
-    (setf texinfo target)
-    (q+:set-text name-label (if texinfo
-                                (sbsp:texinfo-name texinfo)
-                                "No texture")))
+  (with-slots (texinfo name-label draw-mode-combo) editor
+    (setf texinfo target
+          (q+:text name-label) (if texinfo
+                                   (sbsp:texinfo-name texinfo)
+                                   "No texture")
+          (q+:current-index draw-mode-combo) (if texinfo
+                                                 (draw-mode->combo-index
+                                                  (sbsp:texinfo-draw-mode texinfo))
+                                                 0)))
   target)
 
 (define-widget properties-editor (QWidget)
