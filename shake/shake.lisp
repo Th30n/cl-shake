@@ -350,7 +350,15 @@ DRAW and DELETE for drawing and deleting respectively."
                  (load-texture (data-path "share/textures/missing.bmp")))))
       (collect-textures bsp)
       (dolist (tex-name (remove-duplicates textures :test #'string=))
-        (add-res tex-name (lambda () (load-map-texture tex-name))
+        (add-res tex-name (lambda ()
+                            (let ((tex (load-map-texture tex-name)))
+                              (gl:bind-texture :texture-2d tex)
+                              (gl:generate-mipmap :texture-2d)
+                              (gl:tex-parameter :texture-2d :texture-min-filter
+                                                :linear-mipmap-nearest)
+                              (gl:tex-parameter :texture-2d :texture-mag-filter
+                                                :linear)
+                              tex))
                  (lambda (res) (gl:delete-textures (list res))))))))
 
 (defun spawn-player (things camera)
