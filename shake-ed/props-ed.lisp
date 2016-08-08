@@ -23,22 +23,20 @@
 
 (defun draw-mode->combo-index (draw-mode)
   (ecase draw-mode
-    (:scale-to-fit 0)
-    (:tile 1)))
+    (:tile 0)
+    (:scale-to-fit 1)))
 
 (defun combo-index->draw-mode (index)
   (ecase index
-    (0 :scale-to-fit)
-    (1 :tile)))
+    (0 :tile)
+    (1 :scale-to-fit)))
 
 (define-widget texture-editor (QWidget)
   ((texinfo :initform nil)))
 
 (define-subwidget (texture-editor choose-button)
     (q+:make-qpushbutton "Texture"))
-
 (define-subwidget (texture-editor name-label) (q+:make-qlabel "No texture"))
-
 (define-subwidget (texture-editor choose-widget) (q+:make-qwidget)
   (let ((hbox (q+:make-qhboxlayout)))
     (q+:set-layout choose-widget hbox)
@@ -46,7 +44,27 @@
     (q+:add-widget hbox name-label)))
 
 (define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
-  (q+:add-items draw-mode-combo (list "Scale To Fit" "Tile")))
+  (q+:add-items draw-mode-combo (list "Tile" "Scale To Fit")))
+
+(define-subwidget (texture-editor x-offset-label) (q+:make-qlabel "X offset"))
+(define-subwidget (texture-editor x-offset-spinbox) (q+:make-qdoublespinbox)
+  (setf (q+:range x-offset-spinbox) (values -1d0 1d0)
+        (q+:single-step x-offset-spinbox) 0.05d0))
+(define-subwidget (texture-editor x-offset-widget) (q+:make-qwidget)
+  (let ((hbox (q+:make-qhboxlayout)))
+    (q+:set-layout x-offset-widget hbox)
+    (q+:add-widget hbox x-offset-label)
+    (q+:add-widget hbox x-offset-spinbox)))
+
+(define-subwidget (texture-editor y-offset-label) (q+:make-qlabel "Y offset"))
+(define-subwidget (texture-editor y-offset-spinbox) (q+:make-qdoublespinbox)
+  (setf (q+:range y-offset-spinbox) (values -1d0 1d0)
+        (q+:single-step y-offset-spinbox) 0.05d0))
+(define-subwidget (texture-editor y-offset-widget) (q+:make-qwidget)
+  (let ((hbox (q+:make-qhboxlayout)))
+    (q+:set-layout y-offset-widget hbox)
+    (q+:add-widget hbox y-offset-label)
+    (q+:add-widget hbox y-offset-spinbox)))
 
 (define-signal (texture-editor target-changed) ())
 
@@ -57,7 +75,12 @@
     (when (and filepath (ends-with-subseq ".bmp" filepath))
       (let ((name (file-namestring filepath)))
         (unless texinfo
-          (setf texinfo (sbsp:make-texinfo :name name)))
+          (let ((offset (shiva:v (q+:value x-offset-spinbox)
+                                 (q+:value y-offset-spinbox)))
+                (draw-mode (combo-index->draw-mode
+                            (q+:current-index draw-mode-combo))))
+            (setf texinfo (sbsp:make-texinfo :name name :offset offset
+                                             :draw-mode draw-mode))))
         (setf (sbsp:texinfo-name texinfo) name
               (q+:text name-label) name))
       (signal! texture-editor (target-changed)))))
@@ -65,21 +88,38 @@
 (define-slot (texture-editor draw-mode-changed) ((index int))
   (declare (connected draw-mode-combo (current-index-changed int)))
   (let ((new-draw-mode (combo-index->draw-mode index)))
-    (unless (eq (sbsp:texinfo-draw-mode texinfo) new-draw-mode)
-      (setf (sbsp:texinfo-draw-mode texinfo) new-draw-mode))))
+    (unless (or (not texinfo)
+                (eq (sbsp:texinfo-draw-mode texinfo) new-draw-mode))
+      (setf (sbsp:texinfo-draw-mode texinfo) new-draw-mode)
+      (signal! texture-editor (target-changed)))))
+
+(define-slot (texture-editor x-offset-changed) ((val double))
+  (declare (connected x-offset-spinbox (value-changed double)))
+  (when texinfo
+    (setf (shiva:vx (sbsp:texinfo-offset texinfo)) val)
+    (signal! texture-editor (target-changed))))
+
+(define-slot (texture-editor y-offset-changed) ((val double))
+  (declare (connected y-offset-spinbox (value-changed double)))
+  (when texinfo
+    (setf (shiva:vy (sbsp:texinfo-offset texinfo)) val)
+    (signal! texture-editor (target-changed))))
 
 (define-initializer (texture-editor setup)
   (let ((layout (q+:make-qvboxlayout)))
     (q+:set-layout texture-editor layout)
     (q+:add-widget layout choose-widget)
-    (q+:add-widget layout draw-mode-combo)))
+    (q+:add-widget layout draw-mode-combo)
+    (q+:add-widget layout x-offset-widget)
+    (q+:add-widget layout y-offset-widget)))
 
 (defmethod target ((editor texture-editor))
   (with-slots (texinfo) editor
     texinfo))
 
 (defmethod (setf target) (target (editor texture-editor))
-  (with-slots (texinfo name-label draw-mode-combo) editor
+  (with-slots (texinfo name-label draw-mode-combo
+                       x-offset-spinbox y-offset-spinbox) editor
     (setf texinfo target
           (q+:text name-label) (if texinfo
                                    (sbsp:texinfo-name texinfo)
@@ -87,7 +127,12 @@
           (q+:current-index draw-mode-combo) (if texinfo
                                                  (draw-mode->combo-index
                                                   (sbsp:texinfo-draw-mode texinfo))
-                                                 0)))
+                                                 0))
+    (let ((offset (if texinfo
+                      (sbsp:texinfo-offset texinfo)
+                      (shiva:v 0 0))))
+      (setf (q+:value x-offset-spinbox) (shiva:vx offset)
+            (q+:value y-offset-spinbox) (shiva:vy offset))))
   target)
 
 (define-widget properties-editor (QWidget)
