@@ -19,10 +19,14 @@
 uniform sampler2D tex_albedo;
 uniform int has_albedo = 0;
 
+uniform vec3 light_dir = vec3(1.0f, 1.0f, -1.0f);
+uniform vec3 ambient = vec3(0.6f, 0.6f, 0.6f);
+
 in VS_OUT
 {
     vec2 uv;
     vec3 color;
+    vec3 normal;
 } fs_in;
 
 
@@ -31,7 +35,9 @@ out vec4 frag_color;
 void main(void)
 {
     // frag_color = vec4(1, 0, 0, 1);
-    frag_color = vec4(fs_in.color, 1);
+    float ndotl = max(dot(normalize(fs_in.normal), normalize(light_dir)), 0.0f);
+    vec3 albedo = fs_in.color;
     if (has_albedo == 1)
-        frag_color = frag_color * texture(tex_albedo, fs_in.uv);
+        albedo = albedo * texture(tex_albedo, fs_in.uv).rgb;
+    frag_color = vec4(albedo * ambient + albedo * ndotl, 1.0f);
 }
