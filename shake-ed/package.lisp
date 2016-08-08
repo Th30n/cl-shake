@@ -56,7 +56,8 @@
   (:use #:cl+qt #:shake-utils #:shake-ed.utils)
   (:import-from #:alexandria
                 #:ends-with-subseq
-                #:length=)
+                #:length=
+                #:when-let)
   (:export #:properties-editor
            #:target))
 

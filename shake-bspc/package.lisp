@@ -44,6 +44,7 @@
            #:texinfo
            #:texinfo-p
            #:make-texinfo
+           #:copy-texinfo
            #:texinfo-offset
            #:texinfo-name
            #:texinfo-draw-mode

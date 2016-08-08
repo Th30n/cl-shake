@@ -62,7 +62,7 @@
   target)
 
 (define-widget properties-editor (QWidget)
-  ((sidedef :initform nil)))
+  ((sidedefs :initform nil)))
 
 (define-subwidget (properties-editor color-button)
     (q+:make-qpushbutton "Color"))
@@ -70,32 +70,36 @@
 
 (define-slot (properties-editor color-button-clicked) ((checked bool))
   (declare (connected color-button (clicked bool)))
-  (when sidedef
+  (when-let ((sidedef (first sidedefs)))
     (with-finalizing* ((qcolor (vector->qcolor (sbsp:sidedef-color sidedef)))
                        (new-qcolor (q+:qcolordialog-get-color
                                     qcolor properties-editor)))
       (when (q+:is-valid new-qcolor)
-        (setf (sbsp:sidedef-color sidedef) (qcolor->vector new-qcolor))))))
+        (dolist (side sidedefs)
+          (setf (sbsp:sidedef-color side) (qcolor->vector new-qcolor)))))))
 
 (define-slot (properties-editor texinfo-changed) ()
   (declare (connected tex-ed (target-changed)))
-  (unless (sbsp:sidedef-texinfo sidedef)
-    (setf (sbsp:sidedef-texinfo sidedef) (target tex-ed))))
+  (let ((texinfo (target tex-ed)))
+    (unless (sbsp:sidedef-texinfo (first sidedefs))
+      (setf (sbsp:sidedef-texinfo (first sidedefs)) texinfo))
+    (dolist (side (cdr sidedefs))
+      (let ((tex-copy (sbsp:copy-texinfo texinfo)))
+        (zap #'copy-seq (sbsp:texinfo-offset tex-copy))
+        (setf (sbsp:sidedef-texinfo side) tex-copy)))))
 
 (define-initializer (properties-editor setup)
   (let ((layout (q+:make-qvboxlayout)))
     (q+:set-layout properties-editor layout)
     (q+:add-widget layout color-button)
     (q+:add-widget layout tex-ed 0 (q+:qt.align-top)))
-  (unless sidedef
+  (unless sidedefs
     (q+:set-enabled properties-editor nil)))
 
 (defmethod (setf target) (target (editor properties-editor))
-  (with-slots (sidedef tex-ed) editor
-    (setf sidedef (when (and (listp target) (length= 1 target)
-                             (sbsp:sidedef-p (first target)))
-                    (first target)))
-    (when sidedef
-      (setf (target tex-ed) (sbsp:sidedef-texinfo sidedef)))
-    (q+:set-enabled editor (when sidedef t)))
+  (with-slots (sidedefs tex-ed) editor
+    (setf sidedefs target)
+    (when sidedefs
+      (setf (target tex-ed) (sbsp:sidedef-texinfo (first sidedefs))))
+    (q+:set-enabled editor (when sidedefs t)))
   target)
