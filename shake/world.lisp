@@ -37,7 +37,8 @@
   (declare (type (vec 2) point))
   (if (sbsp:leaf-p hull)
       (sbsp:leaf-contents hull)
-      (ecase (sbsp:determine-side (sbsp:node-line hull) point)
+      (ecase (sbsp:determine-side (sbsp:lineseg-orig-line (sbsp:node-line hull))
+                                  point)
         ((or :front :on-line) (hull-point-contents (sbsp:node-front hull) point))
         (:back (hull-point-contents (sbsp:node-back hull) point)))))
 

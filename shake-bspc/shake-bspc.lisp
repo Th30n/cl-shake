@@ -164,11 +164,11 @@
         (setf (lineseg-t-start l2) t-split)
         (cons l1 l2)))))
 
-(defun determine-side (lineseg point)
-  "Determine on which side of a LINESEG is the given POINT located. Returns
+(defun determine-side (line point)
+  "Determine on which side of a LINE is the given POINT located. Returns
   :BACK, :FRONT or :ON-LINE as the primary value and distance as the second."
-  (let ((d (vdot (lineseg-normal lineseg)
-                 (v- point (lineseg-start lineseg)))))
+  (let ((d (vdot (linedef-normal line)
+                 (v- point (linedef-start line)))))
     (values (cond
               ((double= d 0d0) :on-line)
               ((plusp d) :front)
@@ -179,7 +179,7 @@
   "Returns true if the point is no the inner side of given linesegs which form
   a convex hull."
   (flet ((point-inside-p (seg)
-           (let ((side (determine-side seg point)))
+           (let ((side (determine-side (lineseg-orig-line seg) point)))
              (or (eq side :back) (eq side :on-line)))))
     (every #'point-inside-p linesegs)))
 
@@ -189,15 +189,16 @@
     (let ((picked-side :on-line))
       (doproduct ((test-seg linesegs) (seg linesegs))
         (unless (eq seg test-seg)
-          (let ((p1-side (determine-side seg (lineseg-start test-seg)))
-                (p2-side (determine-side seg (lineseg-end test-seg))))
-            (when (eq picked-side :on-line)
-              (cond
-                ((not (eq p1-side :on-line)) (setf picked-side p1-side))
-                ((not (eq p2-side :on-line)) (setf picked-side p2-side))))
-            (dolist (side (list p1-side p2-side))
-              (when (and (not (eq side :on-line)) (not (eq side picked-side)))
-                (return-from test nil))))))
+          (with-struct (lineseg- orig-line) seg
+            (let ((p1-side (determine-side orig-line (lineseg-start test-seg)))
+                  (p2-side (determine-side orig-line (lineseg-end test-seg))))
+                  (when (eq picked-side :on-line)
+                    (cond
+                      ((not (eq p1-side :on-line)) (setf picked-side p1-side))
+                      ((not (eq p2-side :on-line)) (setf picked-side p2-side))))
+                  (dolist (side (list p1-side p2-side))
+                    (when (and (not (eq side :on-line)) (not (eq side picked-side)))
+                      (return-from test nil)))))))
       picked-side)))
 
 (defun choose-splitter (surfaces splitters)
@@ -378,7 +379,7 @@
   "Traverse the BSP in back to front order relative to given POINT."
   (bsp-rec bsp
            (lambda (node front back)
-             (ecase (determine-side (node-line node) point)
+             (ecase (determine-side (lineseg-orig-line (node-line node)) point)
                ((or :front :on-line) (append (funcall back) (funcall front)))
                (:back (append (funcall front) (funcall back)))))
            #'leaf-surfaces))

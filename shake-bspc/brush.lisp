@@ -154,7 +154,7 @@
                                  (if (< (vy a) (vy b)) a b)
                                  (if (< (vx a) (vx b)) a b))) points)))
     (flet ((in-front-p (line point)
-             (let ((side (determine-side (linedef->lineseg line) point)))
+             (let ((side (determine-side line point)))
                (if (eq :on-line side)
                    (with-struct (linedef- start end) line
                      (double> (vdistsq start point) (vdistsq start end)))
