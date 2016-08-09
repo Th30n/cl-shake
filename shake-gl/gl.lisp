@@ -126,7 +126,7 @@ Example usage:
                        (error "Uniform ~S not found" ,uniform-name)
                        loc))))))
     (let ((locations (if (consp names)
-                         (loop for n in names collect (get-location n))
+                         (mapcar #'get-location names)
                          ;; User convenience for one uniform.
                          (list (get-location names)))))
       `(let ,locations
