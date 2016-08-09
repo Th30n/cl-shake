@@ -127,9 +127,9 @@
 
 (defstruct node
   "A node in the BSP tree. The geometry is stored in leaves. LINE is the
-  splitting LINESEG used at this node. Children are stored in FRONT and BACK
+  splitting LINEDEF used at this node. Children are stored in FRONT and BACK
   slots."
-  (line nil :type lineseg)
+  (line nil :type linedef)
   (front nil :type (or node leaf))
   (back nil :type (or node leaf)))
 
@@ -288,7 +288,7 @@
               (multiple-value-bind
                     (front back on-splitter) (partition-surfaces splitter rest)
                 (let ((used-splitters (append on-splitter splitters)))
-                  (make-node :line (sidedef-lineseg splitter-surf)
+                  (make-node :line splitter
                              ;; Add the splitter itself to front.
                              :front (build-bsp (cons splitter-surf front)
                                                used-splitters)
@@ -352,7 +352,7 @@
   (bsp-rec bsp
            (lambda (node front back)
              (format stream "~S~%" :node)
-             (write-lineseg (node-line node) stream)
+             (write-linedef (node-line node) stream)
              (funcall front)
              (funcall back))
            (lambda (leaf)
@@ -366,10 +366,10 @@
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
     (ecase node-type
-      (:node (let ((seg (read-lineseg stream))
+      (:node (let ((line (read-linedef stream))
                    (front (read-bsp stream))
                    (back (read-bsp stream)))
-               (make-node :line seg :front front :back back)))
+               (make-node :line line :front front :back back)))
       (:leaf (let* ((contents (read stream))
                     (num-surfs (read stream))
                     (surfs (repeat num-surfs (read-sidedef stream))))
@@ -379,7 +379,7 @@
   "Traverse the BSP in back to front order relative to given POINT."
   (bsp-rec bsp
            (lambda (node front back)
-             (ecase (determine-side (lineseg-orig-line (node-line node)) point)
+             (ecase (determine-side (node-line node) point)
                ((or :front :on-line) (append (funcall back) (funcall front)))
                (:back (append (funcall front) (funcall back)))))
            #'leaf-surfaces))

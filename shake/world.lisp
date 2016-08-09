@@ -26,10 +26,10 @@
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
-(defun dist-line-point (lineseg point)
-  (declare (type sbsp:lineseg lineseg) (type (vec 2) point))
-  (vdot (sbsp:lineseg-normal lineseg)
-        (v- point (sbsp:lineseg-start lineseg))))
+(defun dist-line-point (line point)
+  (declare (type sbsp:linedef line) (type (vec 2) point))
+  (vdot (sbsp:linedef-normal line)
+        (v- point (sbsp:linedef-start line))))
 
 (defun hull-point-contents (hull point)
   "Traverse the HULL to the leaf where POINT is located and return
@@ -37,8 +37,7 @@
   (declare (type (vec 2) point))
   (if (sbsp:leaf-p hull)
       (sbsp:leaf-contents hull)
-      (ecase (sbsp:determine-side (sbsp:lineseg-orig-line (sbsp:node-line hull))
-                                  point)
+      (ecase (sbsp:determine-side (sbsp:node-line hull) point)
         ((or :front :on-line) (hull-point-contents (sbsp:node-front hull) point))
         (:back (hull-point-contents (sbsp:node-back hull) point)))))
 
@@ -87,7 +86,7 @@
                 ;; Continue through the other part.
                 (recursive-hull-check hull mid p2 other-side midf p2f)
                 ;; Other side is solid, this is the impact point.
-                (let ((normal (sbsp:lineseg-normal (sbsp:node-line node))))
+                (let ((normal (sbsp:linedef-normal (sbsp:node-line node))))
                   (when (minusp t1)
                     (setf normal (v- normal)))
                   (multiple-value-bind (adj-midf adj-mid)
