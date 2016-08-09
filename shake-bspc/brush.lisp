@@ -70,19 +70,6 @@
     (make-brush :contents contents
                 :surfaces (repeat surf-count (sbsp:read-sidedef stream)))))
 
-(defun bounds-of-linedefs (lines)
-  (let ((mins (copy-seq (linedef-start (car lines))))
-        (maxs (copy-seq (linedef-start (car lines)))))
-    (doproduct ((line lines)
-                (point (list (linedef-start line) (linedef-end line)))
-                (cons mins maxs))
-      (dotimes (i (length mins))
-        (let ((x (aref point i))
-              (max-x (aref maxs i))
-              (min-x (aref mins i)))
-          (setf (aref maxs i) (max x max-x))
-          (setf (aref mins i) (min x min-x)))))))
-
 (defun brush-bounds (brush)
   (bounds-of-linedefs (brush-lines brush)))
 

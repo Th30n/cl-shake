@@ -33,6 +33,20 @@
         (make-linedef :start (v -2 1) :end (v 5 1))
         (make-linedef :start (v 3 2) :end (v 3 -2))))
 
+(defparameter *expected-boxes*
+  (list
+   (cons (v -2 -2) (v 5 5))
+   (list (cons (v 0 -2) (v 5 5))
+         (list (cons (v 0 -2) (v 5 1))
+               (cons (v 0 -2) (v 3 1))
+               (cons (v 3 -2) (v 5 1)))
+         (list (cons (v 0 1) (v 5 5))
+               (cons (v 0 1) (v 3 5))
+               (cons (v 3 1) (v 5 5))))
+   (list (cons (v -2 -2) (v 0 5))
+         (cons (v -2 -2) (v 0 1))
+         (cons (v -2 1) (v 0 5)))))
+
 (subtest "Testing split-lineseg"
   (let* ((line (car *test-linedefs*))
          (seg (linedef->lineseg line)))
@@ -100,5 +114,12 @@
                               :t-start 0d0 :t-end 0.25d0)
                 (sidedef-lineseg (third surfs)))
           :test #'equalp))))
+
+(subtest "Test build-bsp produces correct axis aligned bounding boxes"
+  (let ((boxes (bsp-rec (build-bsp (mapcar #'linedef->sidedef *test-linedefs*))
+                        (lambda (node front back)
+                          (list (node-bounds node) (funcall front) (funcall back)))
+                        #'leaf-bounds)))
+    (is boxes *expected-boxes* :test #'equalp)))
 
 (finalize)

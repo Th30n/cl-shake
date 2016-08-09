@@ -29,6 +29,7 @@
            #:linedef=
            #:write-linedef
            #:read-linedef
+           #:bounds-of-linedefs
            ;; side definition
            #:sidedef
            #:sidedef-p
@@ -60,6 +61,7 @@
            ;; bsp nodes
            #:node
            #:node-p
+           #:node-bounds
            #:node-line
            #:node-front
            #:node-back
@@ -67,6 +69,7 @@
            #:read-bsp
            #:leaf
            #:leaf-p
+           #:leaf-bounds
            #:leaf-contents
            #:leaf-surfaces
            ;; map editor interface
@@ -101,7 +104,11 @@
            #:determine-side
            #:bsp-trav
            #:bsp-rec
-           #:back-to-front))
+           #:back-to-front)
+  (:import-from #:alexandria
+                #:compose
+                #:maxf
+                #:minf))
 
 (defpackage #:shake-bspc.brush
   (:nicknames #:sbrush)
