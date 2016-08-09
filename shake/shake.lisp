@@ -332,23 +332,17 @@ DRAW and DELETE for drawing and deleting respectively."
            #'delete-font))
 
 (defun load-map-textures (bsp)
-  (let (textures)
-    (labels ((collect-textures (node)
-               (if (sbsp:leaf-p node)
-                   (dolist (surf (sbsp:leaf-surfaces node))
-                     (when (sbsp:sidedef-texinfo surf)
-                       (push (string-downcase
-                              (sbsp:texinfo-name (sbsp:sidedef-texinfo surf)))
-                             textures)))
-                   (progn
-                     (collect-textures (sbsp:node-front node))
-                     (collect-textures (sbsp:node-back node)))))
-             (load-map-texture (name)
-               (if-let ((fname (data-path (concatenate 'string "share/textures/"
-                                                       name))))
-                 (load-texture fname)
-                 (load-texture (data-path "share/textures/missing.bmp")))))
-      (collect-textures bsp)
+  (labels ((texture-name (surf)
+             (when-let ((texinfo (sbsp:sidedef-texinfo surf)))
+               (string-downcase (sbsp:texinfo-name texinfo))))
+           (leaf-textures (leaf)
+             (remove nil (mapcar #'texture-name (sbsp:leaf-surfaces leaf))))
+           (load-map-texture (name)
+             (if-let ((fname (data-path (concatenate 'string "share/textures/"
+                                                     name))))
+               (load-texture fname)
+               (load-texture (data-path "share/textures/missing.bmp")))))
+    (let ((textures (sbsp:bsp-trav bsp #'append #'leaf-textures)))
       (dolist (tex-name (remove-duplicates textures :test #'string=))
         (add-res tex-name (lambda ()
                             (let ((tex (load-map-texture tex-name)))
@@ -359,7 +353,7 @@ DRAW and DELETE for drawing and deleting respectively."
                               (gl:tex-parameter :texture-2d :texture-mag-filter
                                                 :linear)
                               tex))
-                 (lambda (res) (gl:delete-textures (list res))))))))
+                 (compose #'gl:delete-textures #'list))))))
 
 (defun spawn-player (things camera)
   (dolist (thing things)

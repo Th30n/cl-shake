@@ -99,6 +99,8 @@
            #:convex-hull-p
            #:point-in-hull-p
            #:determine-side
+           #:bsp-trav
+           #:bsp-rec
            #:back-to-front))
 
 (defpackage #:shake-bspc.brush

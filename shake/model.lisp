@@ -66,13 +66,12 @@
                 :faces (make-triangles sidedef)
                 :texcoords (make-texcoords sidedef)))
 
-(defun nadapt-nodes (node)
-  (if (sbsp:leaf-p node)
-      (zap (curry #'mapcar #'sidedef->surface) (sbsp:leaf-surfaces node))
-      (progn
-        (nadapt-nodes (sbsp:node-front node))
-        (nadapt-nodes (sbsp:node-back node))))
-  node)
+(defun nadapt-nodes (bsp)
+  (sbsp:bsp-trav bsp (constantly nil)
+                 (lambda (leaf)
+                   (zap (curry #'mapcar #'sidedef->surface)
+                        (sbsp:leaf-surfaces leaf))))
+  bsp)
 
 (defun bspfile->model (bspfile)
   (make-model :hull (sbsp:bspfile-clip-nodes bspfile)

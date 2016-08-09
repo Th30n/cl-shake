@@ -318,22 +318,49 @@
         (t-end (read stream)))
     (make-lineseg :orig-line linedef :t-start t-start :t-end t-end)))
 
+(defun bsp-trav (bsp node-fun &optional (base #'identity))
+  "Recurse the given BSP node and apply NODE-FUN to results of traversing
+  front and back side. BASE is applied on leaf nodes."
+  (labels ((rec (node)
+             (if (leaf-p node)
+                 (if (functionp base)
+                     (funcall base node)
+                     base)
+                 (funcall node-fun
+                          (rec (node-front node))
+                          (rec (node-back node))))))
+    (rec bsp)))
+
+(defun bsp-rec (bsp node-fun &optional (base #'identity))
+  "Recurse the given BSP node. NODE-FUN is called with 3 arguments: NODE,
+  FRONT and BACK. The NODE is the current split node, while FRONT and BACK are
+  functions for recursing to front and back, respectively. Optional BASE
+  argument is the function to be called on leaf nodes."
+  (labels ((rec (node)
+             (if (leaf-p node)
+                 (if (functionp base)
+                     (funcall base node)
+                     base)
+                 (funcall node-fun node
+                          (lambda () (rec (node-front node)))
+                          (lambda () (rec (node-back node)))))))
+    (rec bsp)))
+
 (defun write-bsp (bsp stream)
-  (cond
-    ((node-p bsp)
-     ;; preorder traverse write
-     (format stream "~S~%" :node)
-     (with-struct (node- line front back) bsp
-       (write-lineseg line stream)
-       (write-bsp front stream)
-       (write-bsp back stream)))
-    (t
-     (format stream "~S~%" :leaf)
-     (with-struct (leaf- contents surfaces) bsp
-       (format stream "~S~%" contents)
-       (format stream "~S~%" (list-length surfaces))
-       (dolist (surf surfaces)
-         (write-sidedef surf stream))))))
+  ;; preorder traverse write
+  (bsp-rec bsp
+           (lambda (node front back)
+             (format stream "~S~%" :node)
+             (write-lineseg (node-line node) stream)
+             (funcall front)
+             (funcall back))
+           (lambda (leaf)
+             (format stream "~S~%" :leaf)
+             (with-struct (leaf- contents surfaces) leaf
+               (format stream "~S~%" contents)
+               (format stream "~S~%" (list-length surfaces))
+               (dolist (surf surfaces)
+                 (write-sidedef surf stream))))))
 
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
@@ -349,11 +376,9 @@
 
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."
-  (if (leaf-p bsp)
-      (leaf-surfaces bsp)
-      (with-struct (node- line front back) bsp
-        (ecase (determine-side line point)
-          ((or :front :on-line) (append (back-to-front point back)
-                                        (back-to-front point front)))
-          (:back (append (back-to-front point front)
-                         (back-to-front point back)))))))
+  (bsp-rec bsp
+           (lambda (node front back)
+             (ecase (determine-side (node-line node) point)
+               ((or :front :on-line) (append (funcall back) (funcall front)))
+               (:back (append (funcall front) (funcall back)))))
+           #'leaf-surfaces))
