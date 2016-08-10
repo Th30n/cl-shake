@@ -29,6 +29,13 @@
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
            #:vdist #:vdistsq
            #:quat #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x
-           #:mat #:m*
+           #:mat #:mat-row #:mat-col #:m*
            #:translation #:scale #:rotation
-           #:ortho #:perspective))
+           #:ortho #:perspective)
+  ;; swizzle operators
+  (:export #:vxxx #:vxxy #:vxxz #:vxyx #:vxyy #:vxyz #:vxzx #:vxzy #:vxzz
+           #:vyxx :vyxy :vyxz :vyyx :vyyy :vyyz :vyzx :vyzy :vyzz :vzxx :vzxy
+           #:vzxz :vzyx :vzyy :vzyz :vzzx :vzzy :vzzz)
+  (:export #:vrrr #:vrrg #:vrrb #:vrgr #:vrgg #:vrgb #:vrbr #:vrbg #:vrbb
+           #:vgrr #:vgrg #:vgrb #:vggr #:vggg #:vggb #:vgbr #:vgbg #:vgbb
+           #:vbrr #:vbrg :vbrb #:vbgr #:vbgg #:vbgb #:vbbr #:vbbg #:vbbb))

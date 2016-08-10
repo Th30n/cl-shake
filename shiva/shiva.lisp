@@ -211,6 +211,30 @@
 (defmacro vz (vector) `(aref ,vector 2))
 (defmacro vw (vector) `(aref ,vector 3))
 
+(defmacro define-swizzle (&rest components)
+  "Define a swizzle operator for vector using given COMPONENTS. Inspired by
+  GLSL swizzling."
+  (flet ((comp->accessor (comp)
+           (ecase comp
+             ((x r) 'vx)
+             ((y g) 'vy)
+             ((z b) 'vz)
+             ((w a) 'vw))))
+    (let ((accessors (mapcar #'comp->accessor components))
+          (op-name (apply #'symbolicate 'v components)))
+      `(defun ,op-name (vector)
+         (v ,@(mapcar (lambda (accessor) `(,accessor vector)) accessors))))))
+
+(defmacro define-swizzles (&rest component-lists)
+  "Generate swizzle operators using a Cartesian product of COMPONENT-LISTS."
+  `(progn
+     ,@(apply #'map-product (lambda (&rest components)
+                              `(define-swizzle ,@components))
+              component-lists)))
+
+(define-swizzles (x y z) (x y z) (x y z))
+(define-swizzles (r g b) (r g b) (r g b))
+
 (defun v3->v2 (v)
   "Convert VEC 3 to VEC 2 by dropping the y axis."
   (declare (type (vec 3) v))
@@ -236,6 +260,22 @@ with ROWS."
                 (for elt in row)
                 (setf (aref matrix i j) (coerce elt 'double-float))))
     matrix))
+
+(defun mat-row (matrix row-index)
+  "Return a matrix row as a vector."
+  (destructuring-bind (rows cols) (array-dimensions matrix)
+    (declare (ignore rows))
+    (apply #'v
+           (iter (for col-index below cols)
+                 (collect (aref matrix row-index col-index))))))
+
+(defun mat-col (matrix col-index)
+  "Return a matrix column as a vector."
+  (destructuring-bind (rows cols) (array-dimensions matrix)
+    (declare (ignore cols))
+    (apply #'v
+           (iter (for row-index below rows)
+                 (collect (aref matrix row-index col-index))))))
 
 (defun midentity (n)
   "Construct a square identity matrix of dimensions N."
