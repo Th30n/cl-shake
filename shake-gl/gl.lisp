@@ -48,6 +48,26 @@ of ARRAYS. All arrays must have the same number of elements."
   (with-foreign-array (value-ptr :float (apply #'vector values))
     (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))
 
+(defun map-buffer (target count type access &key (offset 0))
+  "Maps a part of a buffer bound to TARGET. Foreign TYPE and COUNT elements of
+  that type determine the map length. Optional OFFSET determines the start of
+  the buffer. Returns the mapping as a GL:GL-ARRAY."
+  (let ((length (* count (cffi:foreign-type-size type)))
+        (byte-offset (* offset (cffi:foreign-type-size type)))
+        (access-flags (cffi:foreign-bitfield-value
+                       '%gl::mapbufferusagemask access)))
+    (gl::make-gl-array-from-pointer
+     (%gl:map-buffer-range target byte-offset length access-flags)
+     type count)))
+
+(defmacro with-mapped-buffer ((gl-array target count type access &key (offset 0))
+                              &body body)
+  `(let ((,gl-array (map-buffer ,target ,count ,type ,access :offset ,offset)))
+     (declare (dynamic-extent ,gl-array))
+     (unwind-protect
+          (progn ,@body)
+       (gl:unmap-buffer ,target))))
+
 (defmacro buffer-data (target usage type arrays)
   `(with-foreign-array (ptr ,type ,arrays)
      (let* ((arrays ,arrays)
