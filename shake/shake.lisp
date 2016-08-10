@@ -62,11 +62,14 @@ and rotation as a quaternion."
   (projection-matrix (camera-projection camera)))
 
 (defmacro define-extract-frustum-plane (plane-name vfun row-index)
+  "Define a frustum plane extraction function. Taken from
+  Real-Time Rendering 3rd edition, 16.14.1 Frustum Plane Extraction"
   `(defun ,(symbolicate plane-name '-frustum-plane) (camera)
      (with-struct (camera- projection-matrix view-transform) camera
        (let* ((m (m* projection-matrix view-transform))
               (plane (v- (,vfun (mat-row m 3) (mat-row m ,row-index)))))
-         (make-plane :normal (vxyz plane) :dist (vw plane))))))
+         (make-plane :normal (vnormalize (vxyz plane))
+                     :dist (/ (vw plane) (vnorm (vxyz plane))))))))
 
 (define-extract-frustum-plane left v+ 0)
 (define-extract-frustum-plane right v- 0)
@@ -74,6 +77,32 @@ and rotation as a quaternion."
 (define-extract-frustum-plane top v- 1)
 (define-extract-frustum-plane near v+ 2)
 (define-extract-frustum-plane far v- 2)
+
+(defun intersect-frustum-2d (frustum-planes bounds)
+  "Intersect the frustum with axis aligned bounding rectangle. Returns
+  NIL if bounds are outside, :INTERSECT if they intersect and :INSIDE if
+  bounds are completely inside the frustum."
+  (destructuring-bind (mins . maxs) bounds
+    (flet ((intersect-plane (plane)
+             "Intersect a plane with AABB. Based on the algorithm from
+            Real-Time Rendering 3rd edition, 16.10.1 AABB"
+             (with-struct (plane- normal dist) plane
+               (let* ((center (vscale 0.5d0 (v+ mins maxs)))
+                      (h (vscale 0.5d0 (v- maxs mins)))
+                      (s (+ (vdot (v2->v3 center) normal) dist))
+                      (e (+ (* (vx h) (abs (vx normal)))
+                            ;; Note 2D vy iz vz in 3D.
+                            (* (vy h) (abs (vz normal))))))
+                 (cond
+                   ((double> (- s e) 0d0) nil) ;; outside
+                   ((double> 0d0 (+ s e)) :inside)
+                   (t :intersect))))))
+      (let (intersect-type)
+        (dolist (plane frustum-planes intersect-type)
+          (if-let ((intersect (intersect-plane plane)))
+            (when (or (not intersect-type) (eq :intersect intersect))
+              (setf intersect-type intersect))
+            (return)))))))
 
 (defparameter *bsp* nil)
 
@@ -482,10 +511,37 @@ DRAW and DELETE for drawing and deleting respectively."
     (format t "GLSL Version: ~S~%" glsl-version)
     (finish-output)))
 
+(defun collect-visible-surfaces (camera bsp)
+  (with-struct (camera- position) camera
+    (let ((pos-2d (v (vx position) (vz position)))
+          (frustum (mapcar (rcurry #'funcall camera)
+                           (list #'left-frustum-plane #'right-frustum-plane
+                                 #'near-frustum-plane #'far-frustum-plane))))
+      (labels ((rec (node &optional (test-frustum-p t))
+                 (if (sbsp:leaf-p node)
+                     (when (or (not test-frustum-p)
+                               (intersect-frustum-2d frustum
+                                                     (sbsp:leaf-bounds node)))
+                       (sbsp:leaf-surfaces node))
+                     ;; split node
+                     (let ((front (sbsp:node-front node))
+                           (back (sbsp:node-back node)))
+                       (when-let ((intersect (or (not test-frustum-p)
+                                                 (intersect-frustum-2d
+                                                  frustum (sbsp:node-bounds node)))))
+                         ;; Frustum testing is no longer needed if the bounds
+                         ;; are completely inside.
+                         (let ((test-p (and test-frustum-p
+                                            (not (eq :inside intersect)))))
+                           (ecase (sbsp:determine-side (sbsp:node-line node) pos-2d)
+                             ((or :front :on-line)
+                              (append (rec back test-p) (rec front test-p)))
+                             (:back
+                              (append (rec front test-p) (rec back test-p))))))))))
+        (remove nil (rec bsp))))))
+
 (defun get-map-walls (camera bsp)
-  (let* ((pos (camera-position camera))
-         (pos-2d (v (vx pos) (vz pos)))
-         (surfs (sbsp:back-to-front pos-2d (smdl:model-nodes bsp))))
+  (when-let ((surfs (collect-visible-surfaces camera (smdl:model-nodes bsp))))
     (flet ((make-vertex-data (surfs)
              (let ((positions (mappend #'smdl:surface-faces surfs))
                    (colors (mappend (lambda (s)
