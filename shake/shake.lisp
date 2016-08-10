@@ -19,20 +19,61 @@
 (defvar *base-dir*
   #.(directory-namestring (or *compile-file-truename* *load-truename*)))
 
+(defstruct plane
+  (normal nil :type (vec 3) :read-only t)
+  (dist nil :type double-float :read-only t))
+
+(defstruct projection
+  (matrix nil :type (mat 4) :read-only t))
+
+(defstruct (perspective (:include projection)
+                        (:constructor make-perspective-priv))
+  (fovy nil :type (double-float 0d0) :read-only t)
+  (aspect nil :type (double-float 0d0) :read-only t)
+  (near nil :type (double-float 0d0) :read-only t)
+  (far nil :type (double-float 0d0) :read-only t))
+
+(defun make-perspective (fovy aspect near far)
+  (assert (double> (coerce far 'double-float) (coerce near 'double-float)))
+  (make-perspective-priv :fovy (coerce fovy 'double-float)
+                         :aspect (coerce aspect 'double-float)
+                         :near (coerce near 'double-float)
+                         :far (coerce far 'double-float)
+                         :matrix (perspective fovy aspect near far)))
+
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
 and rotation as a quaternion."
-  projection
+  (projection nil :type projection)
   (position (v 0 0 0) :type (vec 3))
   (rotation (q 0 0 0 1) :type quat))
 
 (defun camera-view-transform (camera)
+  "Returns a matrix which transforms from world to camera space."
   (declare (type camera camera))
   (let* ((pos (camera-position camera))
          (translation (translation
                        :x (- (vx pos)) :y (- (vy pos)) :z (- (vz pos))))
          (q (qconj (camera-rotation camera))))
     (m* (q->mat q) translation)))
+
+(defun camera-projection-matrix (camera)
+  (declare (type camera camera))
+  (projection-matrix (camera-projection camera)))
+
+(defmacro define-extract-frustum-plane (plane-name vfun row-index)
+  `(defun ,(symbolicate plane-name '-frustum-plane) (camera)
+     (with-struct (camera- projection-matrix view-transform) camera
+       (let* ((m (m* projection-matrix view-transform))
+              (plane (v- (,vfun (mat-row m 3) (mat-row m ,row-index)))))
+         (make-plane :normal (vxyz plane) :dist (vw plane))))))
+
+(define-extract-frustum-plane left v+ 0)
+(define-extract-frustum-plane right v- 0)
+(define-extract-frustum-plane bottom v+ 1)
+(define-extract-frustum-plane top v- 1)
+(define-extract-frustum-plane near v+ 2)
+(define-extract-frustum-plane far v- 2)
 
 (defparameter *bsp* nil)
 
@@ -380,9 +421,9 @@ DRAW and DELETE for drawing and deleting respectively."
             (setf *bsp* (smdl:load-model "test.bsp"))
             (with-resources "main"
               (load-main-resources)
-              (let* ((proj (perspective (* deg->rad 60d0)
-                                        (/ *win-width* *win-height*)
-                                        0.1d0 100d0))
+              (let* ((proj (make-perspective (* deg->rad 60d0)
+                                             (/ *win-width* *win-height*)
+                                             0.1d0 100d0))
                      (camera (make-camera :projection proj :position (v 1 0.5 8)))
                      (frame-timer (make-timer)))
                 (load-map-textures (smdl:model-nodes *bsp*))
@@ -476,7 +517,7 @@ DRAW and DELETE for drawing and deleting respectively."
   (res-let (shader-prog)
     (gl:use-program shader-prog)
     (uniform-mvp shader-prog
-                 (m* (camera-projection camera)
+                 (m* (camera-projection-matrix camera)
                      (camera-view-transform camera))))
   (dolist (vertex-data (get-map-walls camera *bsp*))
     (destructuring-bind (triangles triangle-colors uvs normals) vertex-data
