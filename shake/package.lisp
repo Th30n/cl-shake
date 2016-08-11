@@ -43,7 +43,7 @@
            #:surface-color
            #:surface-faces
            #:surface-texcoords
-           #:surface-gl-arrays)
+           #:surface-gl-data)
   (:import-from #:sbsp
                 #:lineseg-start
                 #:lineseg-end

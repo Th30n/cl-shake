@@ -20,7 +20,7 @@
   "Extended SIDEDEF which contains 3D faces for rendering."
   faces
   texcoords
-  gl-arrays)
+  gl-data)
 
 (defstruct model
   "A 3D model. The NODES slot contains bsp nodes for rendering. The HULL slot
@@ -60,29 +60,30 @@
                         (v u-start 1) (v u-end 0) (v u-end 1))))))))
 
 
-(defun load-gl-arrays (surface)
-  (flet ((make-gl-array (data)
-           (let ((arr (gl:alloc-gl-array :float (reduce #'+ (mapcar #'array-total-size data))))
-                 (offset 0))
-             (dolist (vec data)
-               (dotimes (i (array-total-size vec))
-                 (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
-                 (incf offset)))
-             (cons (gl:gl-array-byte-size arr) arr))))
-  (with-struct (surface- faces texcoords color) surface
-    (let ((position-array (make-gl-array faces))
-          (color-array (make-gl-array (make-list 6 :initial-element color)))
-          (normal-array (make-gl-array
-                         (make-list 6 :initial-element
-                                    (v2->v3 (sbsp:lineseg-normal
-                                             (sbsp:sidedef-lineseg surface))))))
-          (uv-array (when texcoords (make-gl-array texcoords))))
-      (setf (surface-gl-arrays surface)
-            (list position-array color-array normal-array uv-array)))))
+(defun load-gl-data (surface)
+  (with-struct (surface- faces texcoords color lineseg) surface
+    (let ((data
+           (loop for pos in faces
+              and color in (make-list 6 :initial-element color)
+              and normal in (make-list 6 :initial-element
+                                       (v2->v3 (sbsp:lineseg-normal lineseg)))
+              and uv in (if texcoords texcoords
+                            (make-list 6 :initial-element (v 0 0)))
+              append (list pos color normal uv))))
+      (flet ((make-gl-array (data)
+               (let ((arr (gl:alloc-gl-array
+                           :float (reduce #'+ (mapcar #'array-total-size data))))
+                     (offset 0))
+                 (dolist (vec data)
+                   (dotimes (i (array-total-size vec))
+                     (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
+                     (incf offset)))
+                 (cons (gl:gl-array-byte-size arr) arr))))
+        (setf (surface-gl-data surface) (make-gl-array data)))))
   surface)
 
 (defun sidedef->surface (sidedef)
-  (load-gl-arrays
+  (load-gl-data
    (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
                  :color (sbsp:sidedef-color sidedef)
                  :texinfo (sbsp:sidedef-texinfo sidedef)
@@ -110,5 +111,4 @@
     (sbsp:bsp-trav nodes (constantly nil)
                    (lambda (leaf)
                      (dolist (surf (sbsp:leaf-surfaces leaf))
-                       (dolist (array (surface-gl-arrays surf))
-                         (when array (gl:free-gl-array (cdr array)))))))))
+                       (gl:free-gl-array (cdr (surface-gl-data surf))))))))
