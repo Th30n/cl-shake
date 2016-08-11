@@ -23,30 +23,31 @@ and is implementation dependant."
     (ecase foreign-type
       (:float 'single-float))))
 
-(defmacro with-foreign-array ((ptr ftype arrays) &body body)
-  "Bind PTR to a foreign array containing all the elements from the given list
-of ARRAYS. All arrays must have the same number of elements."
-  (with-gensyms (comps ltype garrays total-size)
+(defmacro with-gl-array ((gl-array ftype arrays) &body body)
+  "Bind GL-ARRAY to a GL:GL-ARRAY containing all the elements from the given
+  list of ARRAYS."
+  (with-gensyms (ltype garrays total-size ptr)
     `(let* ((,garrays (ensure-list ,arrays))
             (,ltype ,(if (constantp ftype)
                          `(quote ,(foreign-type->lisp-type ftype))
                          `(foreign-type->lisp-type ftype)))
-            (,comps (array-total-size (car ,garrays)))
-            (,total-size (* (list-length ,garrays) ,comps)))
-       (dolist (a ,garrays)
-         (when (/= ,comps (array-total-size a))
-           (error "All arrays must have the same number of elements")))
+            (,total-size (reduce #'+ (mapcar #'array-total-size ,garrays))))
+       ;; For some reason, gl:with-gl-array and gl:glaref slow things down.
        (cffi:with-foreign-object (,ptr ,ftype ,total-size)
          ;; No need for genysms here as the body is outside the loop.
-         (loop for offset by ,comps and a in ,garrays
-            do (dotimes (i ,comps)
-                 (setf (cffi:mem-aref ,ptr ,ftype (+ offset i))
-                       (coerce (row-major-aref a i) ,ltype))))
-         ,@body))))
+         (let ((findex 0))
+           (dolist (a ,garrays)
+             (dotimes (i (array-total-size a))
+               (setf (cffi:mem-aref ,ptr ,ftype findex)
+                     (coerce (row-major-aref a i) ,ltype))
+               (incf findex))))
+         (let ((,gl-array (gl::make-gl-array-from-pointer ,ptr ,ftype ,total-size)))
+           (declare (dynamic-extent ,gl-array))
+           ,@body)))))
 
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
-  (with-foreign-array (value-ptr :float (apply #'vector values))
-    (%gl:clear-buffer-fv buffer drawbuffer value-ptr)))
+  (with-gl-array (value-array :float (apply #'vector values))
+    (%gl:clear-buffer-fv buffer drawbuffer (gl::gl-array-pointer value-array))))
 
 (defun map-buffer (target count type access &key (offset 0))
   "Maps a part of a buffer bound to TARGET. Foreign TYPE and COUNT elements of
@@ -69,12 +70,8 @@ of ARRAYS. All arrays must have the same number of elements."
        (gl:unmap-buffer ,target))))
 
 (defmacro buffer-data (target usage type arrays)
-  `(with-foreign-array (ptr ,type ,arrays)
-     (let* ((arrays ,arrays)
-            (comps (array-total-size (car arrays)))
-            (data (gl::make-gl-array-from-pointer
-                   ptr ,type (* comps (list-length ,arrays)))))
-       (gl:buffer-data ,target ,usage data))))
+  `(with-gl-array (data ,type ,arrays)
+     (gl:buffer-data ,target ,usage data)))
 
 (defun load-shader (vs-file fs-file &optional gs-file)
   "Return shader program, created from given VS-FILE and FS-FILE paths to a
@@ -153,5 +150,6 @@ Example usage:
          ,@body))))
 
 (defun uniform-matrix-4f (location matrices &key (transpose t))
-  (with-foreign-array (ptr :float matrices)
-    (%gl:uniform-matrix-4fv location (length matrices) transpose ptr)))
+  (with-gl-array (gl-array :float matrices)
+    (%gl:uniform-matrix-4fv location (length matrices) transpose
+                            (gl::gl-array-pointer gl-array))))

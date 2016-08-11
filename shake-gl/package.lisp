@@ -21,7 +21,7 @@
   (:use #:cl #:alexandria)
   (:export #:clear-buffer-fv
            #:load-shader
-           #:with-foreign-array
+           #:with-gl-array
            #:with-uniform-locations
            #:uniform-matrix-4f
            #:buffer-data))
