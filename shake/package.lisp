@@ -53,7 +53,8 @@
 (defpackage #:shake.render
   (:nicknames #:srend)
   (:use #:cl #:alexandria #:shiva #:shake-utils)
-  (:export #:render-surface))
+  (:export #:render-surface
+           #:with-draw-frame))
 
 (defpackage #:shake
   (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data)

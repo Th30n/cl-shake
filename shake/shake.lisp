@@ -546,16 +546,14 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun render (camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
-  (gl:bind-vertex-array (res "vertex-array"))
   (res-let (shader-prog)
     (gl:use-program shader-prog)
     (uniform-mvp shader-prog
                  (m* (camera-projection-matrix camera)
                      (camera-view-transform camera))))
-  (dolist (surface (get-map-walls camera *bsp*))
-    (srend:render-surface surface))
-  (gl:bind-vertex-array 0)
-  (gl:check-error))
+  (srend:with-draw-frame ()
+    (dolist (surface (get-map-walls camera *bsp*))
+      (srend:render-surface surface))))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp

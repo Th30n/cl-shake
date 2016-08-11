@@ -16,69 +16,138 @@
 
 (in-package #:shake.render)
 
-(defun add-surface-vertex-data (surface vertex-buffers &key (offset 0))
-  (destructuring-bind
-        (position-buffer color-buffer uv-buffer normal-buffer) vertex-buffers
+(defstruct batch
+  vertex-array
+  buffers
+  offsets
+  texture
+  (draw-count 0)
+  (max-bytes 0)
+  (free-p nil))
+
+(defun init-batch (byte-size)
+  (let ((buffers (gl:gen-buffers 4))
+        (vertex-array (gl:gen-vertex-array)))
+    (dolist (buf buffers)
+      (gl:bind-buffer :array-buffer buf)
+      (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer)
+                       :static-draw))
+    (make-batch :vertex-array vertex-array :buffers buffers
+                :offsets (make-list 4 :initial-element 0)
+                :max-bytes byte-size)))
+
+(defun free-batch (batch)
+  (gl:delete-buffers (batch-buffers batch))
+  (gl:delete-vertex-arrays (list (batch-vertex-array batch)))
+  (setf (batch-free-p batch) t))
+
+(defun draw-batch (batch)
+  (assert (not (batch-free-p batch)))
+  (gl:bind-vertex-array (batch-vertex-array batch))
+  (destructuring-bind (positions colors uvs normals) (batch-buffers batch)
     ;; positions
-    (sgl:with-gl-array (position-gl-array :float (smdl:surface-faces surface))
-      (gl:bind-buffer :array-buffer position-buffer)
-      (gl:buffer-sub-data :array-buffer position-gl-array))
+    (gl:bind-buffer :array-buffer positions)
+    (gl:enable-vertex-attrib-array 0)
+    (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
     ;; colors
-    (sgl:with-gl-array (data :float (make-list 6 :initial-element
-                                               (smdl:surface-color surface)))
-      (gl:bind-buffer :array-buffer color-buffer)
-      (gl:buffer-sub-data :array-buffer data))
+    (gl:bind-buffer :array-buffer colors)
+    (gl:enable-vertex-attrib-array 1)
+    (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
     ;; normals
-    (let ((normals (make-list 6 :initial-element
-                              (v2->v3 (sbsp:lineseg-normal
-                                       (sbsp:sidedef-lineseg surface))))))
-      (sgl:with-gl-array (data :float normals)
-        (gl:bind-buffer :array-buffer normal-buffer)
-        (gl:buffer-sub-data :array-buffer data)))
+    (gl:bind-buffer :array-buffer normals)
+    (gl:enable-vertex-attrib-array 3)
+    (gl:vertex-attrib-pointer 3 3 :float nil 0 (cffi:null-pointer))
     ;; uvs
-    (when (sbsp:sidedef-texinfo surface)
-      (sgl:with-gl-array (data :float (smdl:surface-texcoords surface))
-        (gl:bind-buffer :array-buffer uv-buffer)
-        (gl:buffer-sub-data :array-buffer data)))))
+    (let ((tex-name (batch-texture batch)))
+      (sgl:with-uniform-locations (sdata:res "shader-prog") (has-albedo tex-albedo)
+        (if tex-name
+            (progn
+              (gl:active-texture :texture0)
+              (gl:bind-texture :texture-2d (sdata:res tex-name))
+              (gl:uniformi tex-albedo-loc 0)
+              (gl:uniformi has-albedo-loc 1)
+              (gl:bind-buffer :array-buffer uvs)
+              (gl:enable-vertex-attrib-array 2)
+              (gl:vertex-attrib-pointer 2 2 :float nil 0 (cffi:null-pointer)))
+            (progn
+              (gl:uniformi has-albedo-loc 0)
+              (gl:disable-vertex-attrib-array 2)))))
+    (gl:draw-arrays :triangles 0 (batch-draw-count batch)))
+  (gl:check-error)
+  (gl:bind-vertex-array 0))
+
+(defun add-surface-vertex-data (surface batch)
+  (destructuring-bind (position-buffer color-buffer uv-buffer normal-buffer)
+      (batch-buffers batch)
+    (flet ((fill-buffer (buf byte-offset data)
+             (sgl:with-gl-array (gl-array :float data)
+               (gl:bind-buffer :array-buffer buf)
+               (gl:buffer-sub-data :array-buffer gl-array :offset 0
+                                   :buffer-offset byte-offset)
+               (gl:bind-buffer :array-buffer 0)
+               (gl:gl-array-byte-size gl-array))))
+      (with-struct (batch- offsets) batch
+        ;; positions
+        (incf (batch-draw-count batch)
+              (list-length (smdl:surface-faces surface)))
+        (incf (first (batch-offsets batch))
+              (fill-buffer position-buffer (first offsets)
+                           (smdl:surface-faces surface)))
+        ;; colors
+        (incf (second (batch-offsets batch))
+              (fill-buffer color-buffer (second offsets)
+                           (make-list 6 :initial-element
+                                      (smdl:surface-color surface))))
+        ;; normals
+        (let ((normals (make-list 6 :initial-element
+                                  (v2->v3 (sbsp:lineseg-normal
+                                           (sbsp:sidedef-lineseg surface))))))
+          (incf (fourth (batch-offsets batch))
+                (fill-buffer normal-buffer (fourth offsets) normals)))
+        ;; uvs
+        (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
+                    (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
+          (assert (or (not (batch-texture batch))
+                      (string= (batch-texture batch) tex-name)))
+          (setf (batch-texture batch) tex-name)
+          (incf (third (batch-offsets batch))
+                (fill-buffer uv-buffer (third offsets)
+                             (smdl:surface-texcoords surface))))))))
 
 (defun render-surface (surface)
-  (sdata:with-resources "render"
-    (let ((buffers (sdata:add-res "buffers" (lambda () (gl:gen-buffers 4))
-                                  #'gl:delete-buffers)))
-      (flet ((init-buffer (buf byte-size)
-               (gl:bind-buffer :array-buffer buf)
-               (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer)
-                                :stream-draw)))
-        (dolist (buf buffers)
-          (init-buffer buf (* 10 1024)))) ;; 10kB
-      (add-surface-vertex-data surface buffers)
-      (destructuring-bind (positions colors uvs normals) buffers
-        ;; positions
-        (gl:bind-buffer :array-buffer positions)
-        (gl:enable-vertex-attrib-array 0)
-        (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
-        ;; colors
-        (gl:bind-buffer :array-buffer colors)
-        (gl:enable-vertex-attrib-array 1)
-        (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
-        ;; normals
-        (gl:bind-buffer :array-buffer normals)
-        (gl:enable-vertex-attrib-array 3)
-        (gl:vertex-attrib-pointer 3 3 :float nil 0 (cffi:null-pointer))
-        ;; uvs
-        (let ((tex-name (when-let ((texinfo (sbsp:sidedef-texinfo surface)))
-                          (string-downcase (sbsp:texinfo-name texinfo)))))
-          (sgl:with-uniform-locations (sdata:res "shader-prog") (has-albedo tex-albedo)
-            (if tex-name
-                (progn
-                  (gl:active-texture :texture0)
-                  (gl:bind-texture :texture-2d (sdata:res tex-name))
-                  (gl:uniformi tex-albedo-loc 0)
-                  (gl:uniformi has-albedo-loc 1)
-                  (gl:bind-buffer :array-buffer uvs)
-                  (gl:enable-vertex-attrib-array 2)
-                  (gl:vertex-attrib-pointer 2 2 :float nil 0 (cffi:null-pointer)))
-                (progn
-                  (gl:uniformi has-albedo-loc 0)
-                  (gl:disable-vertex-attrib-array 2)))))
-        (gl:draw-arrays :triangles 0 (list-length (smdl:surface-faces surface)))))))
+  (declare (special *batches*))
+  (let ((current-batch (car *batches*))
+        (surface-space (* (cffi:foreign-type-size :float)
+                          (reduce #'+ (mapcar #'array-total-size
+                                              (smdl:surface-faces surface))))))
+    (labels ((tex-match-p (batch)
+               (let ((current-texture (batch-texture batch))
+                     (texinfo (sbsp:sidedef-texinfo surface)))
+                 (or (and (not current-texture) (not texinfo))
+                     (and current-texture texinfo
+                          (string= current-texture
+                                   (string-downcase (sbsp:texinfo-name texinfo)))))))
+             (can-add-p (batch)
+               (with-struct (batch- offsets max-bytes) batch
+                 (let ((free-space (- max-bytes (apply #'max offsets))))
+                   (and (tex-match-p batch)
+                        (> free-space surface-space))))))
+      (let ((batch
+             (if (and current-batch (can-add-p current-batch))
+                 current-batch
+                 (car (push (init-batch (max surface-space (* 10 1024))) ;; 10 kB
+                            *batches*)))))
+        (add-surface-vertex-data surface batch)))))
+
+(defmacro with-draw-frame (() &body body)
+  "Establishes the environment where SHAKE.RENDER package functions can be
+  used."
+  (with-gensyms (body-result)
+    `(let ((*batches* nil))
+       (declare (special *batches*))
+       (let ((,body-result (multiple-value-list (progn ,@body))))
+         (dolist (batch (reverse *batches*))
+           (draw-batch batch)
+           (free-batch batch))
+         (setf *batches* nil)
+         (values-list ,body-result)))))
