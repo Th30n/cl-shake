@@ -541,30 +541,7 @@ DRAW and DELETE for drawing and deleting respectively."
         (remove nil (rec bsp))))))
 
 (defun get-map-walls (camera bsp)
-  (when-let ((surfs (collect-visible-surfaces camera (smdl:model-nodes bsp))))
-    (flet ((make-vertex-data (surfs)
-             (let ((positions (mappend #'smdl:surface-faces surfs))
-                   (colors (mappend (lambda (s)
-                                      (make-list 6 :initial-element
-                                                 (smdl:surface-color s)))
-                                    surfs))
-                   (uvs (mappend #'smdl:surface-texcoords surfs))
-                   (tex-name (when-let ((texinfo (sbsp:sidedef-texinfo
-                                                  (first surfs))))
-                               (string-downcase (sbsp:texinfo-name texinfo))))
-                   (normals (mappend (lambda (s)
-                                       (let ((normal (sbsp:lineseg-normal (sbsp:sidedef-lineseg s))))
-                                         (make-list 6 :initial-element (v (vx normal) 0 (vy normal)))))
-                                     surfs)))
-               (list positions colors (when uvs (cons tex-name uvs)) normals)))
-           (equal-texture-p (s1 s2)
-             (let ((t1 (sbsp:sidedef-texinfo s1))
-                   (t2 (sbsp:sidedef-texinfo s2)))
-               (or (eq t1 t2)
-                   (and (sbsp:texinfo-p t1) (sbsp:texinfo-p t2)
-                        (string= (string-downcase (sbsp:texinfo-name t1))
-                                 (string-downcase (sbsp:texinfo-name t2))))))))
-      (mapcar #'make-vertex-data (group-by #'equal-texture-p surfs)))))
+  (collect-visible-surfaces camera (smdl:model-nodes bsp)))
 
 (defun render (camera)
   (declare (special *win-width* *win-height*))
@@ -575,42 +552,8 @@ DRAW and DELETE for drawing and deleting respectively."
     (uniform-mvp shader-prog
                  (m* (camera-projection-matrix camera)
                      (camera-view-transform camera))))
-  (dolist (vertex-data (get-map-walls camera *bsp*))
-    (destructuring-bind (triangles triangle-colors uvs normals) vertex-data
-      (with-resources "render"
-        (destructuring-bind (vbo color-buffer uv-buffer normal-buffer)
-            (add-res "buffers" (lambda () (gl:gen-buffers 4)) #'gl:delete-buffers)
-          (gl:bind-buffer :array-buffer vbo)
-          (buffer-data :array-buffer :static-draw :float triangles)
-          (gl:enable-vertex-attrib-array 0)
-          (gl:vertex-attrib-pointer 0 3 :float nil 0 (cffi:null-pointer))
-
-          (gl:bind-buffer :array-buffer color-buffer)
-          (buffer-data :array-buffer :static-draw :float triangle-colors)
-          (gl:enable-vertex-attrib-array 1)
-          (gl:vertex-attrib-pointer 1 3 :float nil 0 (cffi:null-pointer))
-
-          (with-uniform-locations (res "shader-prog") (has-albedo tex-albedo)
-            (if uvs
-                (progn
-                  (gl:active-texture :texture0)
-                  (gl:bind-texture :texture-2d (res (first uvs)))
-                  (gl:uniformi tex-albedo-loc 0)
-                  (gl:uniformi has-albedo-loc 1)
-                  (gl:bind-buffer :array-buffer uv-buffer)
-                  (buffer-data :array-buffer :static-draw :float (rest uvs))
-                  (gl:enable-vertex-attrib-array 2)
-                  (gl:vertex-attrib-pointer 2 2 :float nil 0 (cffi:null-pointer)))
-                (progn
-                  (gl:uniformi has-albedo-loc 0)
-                  (gl:disable-vertex-attrib-array 2))))
-          (gl:bind-buffer :array-buffer normal-buffer)
-          (buffer-data :array-buffer :static-draw :float normals)
-          (gl:enable-vertex-attrib-array 3)
-          (gl:vertex-attrib-pointer 3 3 :float nil 0 (cffi:null-pointer))
-          ;;    (clear-buffer-fv :depth 0 1)
-          (gl:draw-arrays :triangles 0 (list-length triangles))))))
-  ;;    (gl:draw-arrays :lines 0 10)
+  (dolist (surface (get-map-walls camera *bsp*))
+    (srend:render-surface surface))
   (gl:bind-vertex-array 0)
   (gl:check-error))
 

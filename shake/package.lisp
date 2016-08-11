@@ -50,6 +50,11 @@
                 #:lineseg-t-end
                 #:linedef-end))
 
+(defpackage #:shake.render
+  (:nicknames #:srend)
+  (:use #:cl #:alexandria #:shiva #:shake-utils)
+  (:export #:render-surface))
+
 (defpackage #:shake
   (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data)
   (:export #:main
