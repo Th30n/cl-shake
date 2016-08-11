@@ -34,6 +34,7 @@
   (:nicknames #:smdl)
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.data)
   (:export #:load-model
+           #:free-model
            #:model
            #:model-nodes
            #:model-hull
@@ -41,7 +42,8 @@
            #:surface
            #:surface-color
            #:surface-faces
-           #:surface-texcoords)
+           #:surface-texcoords
+           #:surface-gl-arrays)
   (:import-from #:sbsp
                 #:lineseg-start
                 #:lineseg-end

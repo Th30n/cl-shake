@@ -104,8 +104,6 @@ and rotation as a quaternion."
               (setf intersect-type intersect))
             (return)))))))
 
-(defparameter *bsp* nil)
-
 (defun get-color (surface) (sbsp:sidedef-color surface))
 
 (defun nrotate-camera (xrel yrel camera)
@@ -368,7 +366,7 @@ DRAW and DELETE for drawing and deleting respectively."
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (camera-position player) end-pos)
-          (let ((hull (smdl:model-hull *bsp*)))
+          (let ((hull (smdl:model-hull (res "world-model"))))
             (setf (camera-position player)
                   (player-ground-move origin velocity hull)))))))
 
@@ -447,16 +445,18 @@ DRAW and DELETE for drawing and deleting respectively."
           (sdl2:set-relative-mouse-mode 1)
           ;; (gl:enable :depth-test :cull-face)
           (with-data-dirs *base-dir*
-            (setf *bsp* (smdl:load-model "test.bsp"))
             (with-resources "main"
               (load-main-resources)
               (let* ((proj (make-perspective (* deg->rad 60d0)
                                              (/ *win-width* *win-height*)
                                              0.1d0 100d0))
                      (camera (make-camera :projection proj :position (v 1 0.5 8)))
-                     (frame-timer (make-timer)))
-                (load-map-textures (smdl:model-nodes *bsp*))
-                (spawn-player (smdl:model-things *bsp*) camera)
+                     (frame-timer (make-timer))
+                     (world-model (add-res "world-model"
+                                           (lambda () (smdl:load-model "test.bsp"))
+                                           #'smdl:free-model)))
+                (load-map-textures (smdl:model-nodes world-model))
+                (spawn-player (smdl:model-things world-model) camera)
                 (symbol-macrolet ((input-focus-p
                                    (member :input-focus
                                            (sdl2:get-window-flags win)))
@@ -546,14 +546,14 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun render (camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
-  (res-let (shader-prog)
+  (res-let (shader-prog world-model)
     (gl:use-program shader-prog)
     (uniform-mvp shader-prog
                  (m* (camera-projection-matrix camera)
-                     (camera-view-transform camera))))
-  (srend:with-draw-frame ()
-    (dolist (surface (get-map-walls camera *bsp*))
-      (srend:render-surface surface))))
+                     (camera-view-transform camera)))
+    (srend:with-draw-frame ()
+      (dolist (surface (get-map-walls camera world-model))
+        (srend:render-surface surface)))))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp

@@ -19,7 +19,8 @@
 (defstruct (surface (:include sbsp:sidedef))
   "Extended SIDEDEF which contains 3D faces for rendering."
   faces
-  texcoords)
+  texcoords
+  gl-arrays)
 
 (defstruct model
   "A 3D model. The NODES slot contains bsp nodes for rendering. The HULL slot
@@ -59,12 +60,34 @@
                         (v u-start 1) (v u-end 0) (v u-end 1))))))))
 
 
+(defun load-gl-arrays (surface)
+  (flet ((make-gl-array (data)
+           (let ((arr (gl:alloc-gl-array :float (reduce #'+ (mapcar #'array-total-size data))))
+                 (offset 0))
+             (dolist (vec data)
+               (dotimes (i (array-total-size vec))
+                 (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
+                 (incf offset)))
+             (cons (gl:gl-array-byte-size arr) arr))))
+  (with-struct (surface- faces texcoords color) surface
+    (let ((position-array (make-gl-array faces))
+          (color-array (make-gl-array (make-list 6 :initial-element color)))
+          (normal-array (make-gl-array
+                         (make-list 6 :initial-element
+                                    (v2->v3 (sbsp:lineseg-normal
+                                             (sbsp:sidedef-lineseg surface))))))
+          (uv-array (when texcoords (make-gl-array texcoords))))
+      (setf (surface-gl-arrays surface)
+            (list position-array color-array normal-array uv-array)))))
+  surface)
+
 (defun sidedef->surface (sidedef)
-  (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
-                :color (sbsp:sidedef-color sidedef)
-                :texinfo (sbsp:sidedef-texinfo sidedef)
-                :faces (make-triangles sidedef)
-                :texcoords (make-texcoords sidedef)))
+  (load-gl-arrays
+   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
+                 :color (sbsp:sidedef-color sidedef)
+                 :texinfo (sbsp:sidedef-texinfo sidedef)
+                 :faces (make-triangles sidedef)
+                 :texcoords (make-texcoords sidedef))))
 
 (defun nadapt-nodes (bsp)
   (sbsp:bsp-trav bsp (constantly nil)
@@ -82,3 +105,10 @@
   (with-data-file (file model-fname)
     (bspfile->model (sbsp:read-bspfile file))))
 
+(defun free-model (model)
+  (with-struct (model- nodes) model
+    (sbsp:bsp-trav nodes (constantly nil)
+                   (lambda (leaf)
+                     (dolist (surf (sbsp:leaf-surfaces leaf))
+                       (dolist (array (surface-gl-arrays surf))
+                         (when array (gl:free-gl-array (cdr array)))))))))

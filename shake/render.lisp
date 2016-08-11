@@ -80,39 +80,32 @@
   (destructuring-bind (position-buffer color-buffer uv-buffer normal-buffer)
       (batch-buffers batch)
     (flet ((fill-buffer (buf byte-offset data)
-             (sgl:with-gl-array (gl-array :float data)
-               (gl:bind-buffer :array-buffer buf)
-               (gl:buffer-sub-data :array-buffer gl-array :offset 0
-                                   :buffer-offset byte-offset)
-               (gl:bind-buffer :array-buffer 0)
-               (gl:gl-array-byte-size gl-array))))
+             (gl:bind-buffer :array-buffer buf)
+             (gl:buffer-sub-data :array-buffer (cdr data)
+                                 :buffer-offset byte-offset)
+             (car data)))
       (with-struct (batch- offsets) batch
-        ;; positions
-        (incf (batch-draw-count batch)
-              (list-length (smdl:surface-faces surface)))
-        (incf (first (batch-offsets batch))
-              (fill-buffer position-buffer (first offsets)
-                           (smdl:surface-faces surface)))
-        ;; colors
-        (incf (second (batch-offsets batch))
-              (fill-buffer color-buffer (second offsets)
-                           (make-list 6 :initial-element
-                                      (smdl:surface-color surface))))
-        ;; normals
-        (let ((normals (make-list 6 :initial-element
-                                  (v2->v3 (sbsp:lineseg-normal
-                                           (sbsp:sidedef-lineseg surface))))))
+        (destructuring-bind (position-array color-array normal-array uv-array)
+            (smdl::surface-gl-arrays surface)
+          ;; positions
+          (incf (batch-draw-count batch)
+                (list-length (smdl:surface-faces surface)))
+          (incf (first (batch-offsets batch))
+                (fill-buffer position-buffer (first offsets) position-array))
+          ;; colors
+          (incf (second (batch-offsets batch))
+                (fill-buffer color-buffer (second offsets) color-array))
+          ;; normals
           (incf (fourth (batch-offsets batch))
-                (fill-buffer normal-buffer (fourth offsets) normals)))
-        ;; uvs
-        (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
-                    (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
-          (assert (or (not (batch-texture batch))
-                      (string= (batch-texture batch) tex-name)))
-          (setf (batch-texture batch) tex-name)
-          (incf (third (batch-offsets batch))
-                (fill-buffer uv-buffer (third offsets)
-                             (smdl:surface-texcoords surface))))))))
+                (fill-buffer normal-buffer (fourth offsets) normal-array))
+          ;; uvs
+          (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
+                      (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
+            (assert (or (not (batch-texture batch))
+                        (string= (batch-texture batch) tex-name)))
+            (setf (batch-texture batch) tex-name)
+            (incf (third (batch-offsets batch))
+                  (fill-buffer uv-buffer (third offsets) uv-array))))))))
 
 (defun render-surface (surface)
   (declare (special *batches*))
@@ -130,8 +123,8 @@
              (can-add-p (batch)
                (with-struct (batch- offsets max-bytes) batch
                  (let ((free-space (- max-bytes (apply #'max offsets))))
-                   (and (tex-match-p batch)
-                        (> free-space surface-space))))))
+                   (and (> free-space surface-space)
+                        (tex-match-p batch))))))
       (let ((batch
              (if (and current-batch (can-add-p current-batch))
                  current-batch
@@ -149,5 +142,4 @@
          (dolist (batch (reverse *batches*))
            (draw-batch batch)
            (free-batch batch))
-         (setf *batches* nil)
          (values-list ,body-result)))))
