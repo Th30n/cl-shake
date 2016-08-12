@@ -113,7 +113,7 @@
           (setf (batch-texture batch) tex-name))))))
 
 (defun init-draw-frame ()
-  (make-array 10 :element-type 'batch :fill-pointer 0))
+  (make-array 10 :element-type 'batch :fill-pointer 0 :adjustable t))
 
 (defun finish-draw-frame (batches)
   (declare (type (vector batch) batches)
