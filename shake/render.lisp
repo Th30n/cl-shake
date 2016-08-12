@@ -19,10 +19,10 @@
 (defstruct batch
   vertex-array
   buffer
-  (offset 0)
+  (offset 0 :type fixnum)
   texture
-  (draw-count 0)
-  (max-bytes 0)
+  (draw-count 0 :type fixnum)
+  (max-bytes 0 :type fixnum)
   (free-p nil))
 
 (defun init-batch (byte-size)
@@ -82,17 +82,41 @@
       (let ((gl-data (smdl::surface-gl-data surface)))
         (incf (batch-draw-count batch)
               (list-length (smdl:surface-faces surface)))
-        (incf (batch-offset batch) (fill-buffer buffer offset gl-data))
+        (incf (batch-offset batch)
+              (the fixnum (fill-buffer buffer offset gl-data)))
         (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
                     (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
-          (assert (or (not (batch-texture batch))
-                      (string= (batch-texture batch) tex-name)))
           (setf (batch-texture batch) tex-name))))))
 
-(defun render-surface (surface)
+(defun init-draw-frame ()
+  (make-array 10 :element-type 'batch :fill-pointer 0))
+
+(defun finish-draw-frame (batches)
+  (declare (type (vector batch) batches)
+           (optimize (speed 3) (space 3)))
+  (dotimes (i (length batches))
+    (let ((batch (aref batches i)))
+      (draw-batch batch)
+      (free-batch batch))))
+
+(defun add-new-batch (byte-size)
   (declare (special *batches*))
-  (let ((current-batch (car *batches*))
+  (declare (optimize (speed 3) (space 3)))
+  (let ((batch (init-batch byte-size)))
+    (vector-push-extend batch *batches*)
+    batch))
+
+(defun get-current-batch ()
+  (declare (special *batches*)
+           (optimize (speed 3) (space 3)))
+  (when (length>= 1 *batches*)
+    (aref (the (vector batch) *batches*)
+          (1- (length (the (vector batch) *batches*))))))
+
+(defun render-surface (surface)
+  (let ((current-batch (get-current-batch))
         (surface-space (car (smdl:surface-gl-data surface))))
+    (declare (type fixnum surface-space))
     (labels ((tex-match-p (batch)
                (let ((current-texture (batch-texture batch))
                      (texinfo (sbsp:sidedef-texinfo surface)))
@@ -108,18 +132,15 @@
       (let ((batch
              (if (and current-batch (can-add-p current-batch))
                  current-batch
-                 (car (push (init-batch (max surface-space (* 10 1024))) ;; 10 kB
-                            *batches*)))))
+                 (add-new-batch (max surface-space (* 10 1024)))))) ;; 10kB
         (add-surface-vertex-data surface batch)))))
 
 (defmacro with-draw-frame (() &body body)
   "Establishes the environment where SHAKE.RENDER package functions can be
   used."
   (with-gensyms (body-result)
-    `(let ((*batches* nil))
+    `(let ((*batches* (init-draw-frame)))
        (declare (special *batches*))
        (let ((,body-result (multiple-value-list (progn ,@body))))
-         (dolist (batch (reverse *batches*))
-           (draw-batch batch)
-           (free-batch batch))
+         (finish-draw-frame *batches*)
          (values-list ,body-result)))))

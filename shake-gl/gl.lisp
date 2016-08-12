@@ -139,6 +139,7 @@ Example usage:
                    (var-name (symbolicate (to-symbol name) "-LOC")))
                `(,var-name
                  (let ((loc (gl:get-uniform-location ,program ,uniform-name)))
+                   (declare (type integer loc))
                    (if (= loc -1)
                        (error "Uniform ~S not found" ,uniform-name)
                        loc))))))

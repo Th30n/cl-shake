@@ -78,7 +78,8 @@
                    (dotimes (i (array-total-size vec))
                      (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
                      (incf offset)))
-                 (cons (gl:gl-array-byte-size arr) arr))))
+                 (cons (coerce (gl:gl-array-byte-size arr) 'fixnum)
+                       arr))))
         (setf (surface-gl-data surface) (make-gl-array data)))))
   surface)
 

@@ -65,11 +65,15 @@ and rotation as a quaternion."
   "Define a frustum plane extraction function. Taken from
   Real-Time Rendering 3rd edition, 16.14.1 Frustum Plane Extraction"
   `(defun ,(symbolicate plane-name '-frustum-plane) (camera)
+     (declare (optimize (speed 3) (space 3)))
      (with-struct (camera- projection-matrix view-transform) camera
        (let* ((m (m* projection-matrix view-transform))
-              (plane (v- (,vfun (mat-row m 3) (mat-row m ,row-index)))))
+              (plane (v- (,vfun (the (vec 4) (mat-row m 3))
+                                (the (vec 4) (mat-row m ,row-index))))))
+         (declare (type (mat 4) m) (type (vec 4) plane))
          (make-plane :normal (vnormalize (vxyz plane))
-                     :dist (/ (vw plane) (vnorm (vxyz plane))))))))
+                     :dist (/ (vw plane) (the double-float
+                                              (vnorm (vxyz plane)))))))))
 
 (define-extract-frustum-plane left v+ 0)
 (define-extract-frustum-plane right v- 0)
@@ -82,17 +86,24 @@ and rotation as a quaternion."
   "Intersect the frustum with axis aligned bounding rectangle. Returns
   NIL if bounds are outside, :INTERSECT if they intersect and :INSIDE if
   bounds are completely inside the frustum."
+  (declare (type (cons (vec 2) (vec 2)) bounds)
+           (optimize (speed 3) (space 3) (safety 0) (debug 0)))
   (destructuring-bind (mins . maxs) bounds
+    (declare (type (vec 2) mins maxs))
     (flet ((intersect-plane (plane)
              "Intersect a plane with AABB. Based on the algorithm from
             Real-Time Rendering 3rd edition, 16.10.1 AABB"
              (with-struct (plane- normal dist) plane
-               (let* ((center (vscale 0.5d0 (v+ mins maxs)))
-                      (h (vscale 0.5d0 (v- maxs mins)))
-                      (s (+ (vdot (v2->v3 center) normal) dist))
+               (let* ((center (the (vec 2) (vscale 0.5d0 (v+ mins maxs))))
+                      (h (the (vec 2) (vscale 0.5d0 (v- maxs mins))))
+                      (s (the double-float
+                              (+ (the double-float (vdot (v2->v3 center) normal))
+                                 dist)))
                       (e (+ (* (vx h) (abs (vx normal)))
                             ;; Note 2D vy iz vz in 3D.
                             (* (vy h) (abs (vz normal))))))
+                 (declare (dynamic-extent center h s e)
+                          (type double-float s e))
                  (cond
                    ((double> (- s e) 0d0) nil) ;; outside
                    ((double> 0d0 (+ s e)) :inside)
@@ -543,6 +554,41 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun get-map-walls (camera bsp)
   (collect-visible-surfaces camera (smdl:model-nodes bsp)))
 
+(defun render-world (camera world-model)
+  (declare (optimize (speed 3) (space 3) (safety 0) (debug 0)))
+  (with-struct (camera- position) camera
+    (let ((pos-2d (the (vec 2) (v (vx position) (vz position))))
+          (frustum (list (left-frustum-plane camera) (right-frustum-plane camera)
+                         (near-frustum-plane camera) (far-frustum-plane camera))))
+      (declare (dynamic-extent pos-2d frustum))
+      (labels ((rec (node &optional (test-frustum-p t))
+                 (declare (type (or sbsp:node sbsp:leaf) node))
+                 (declare (type boolean test-frustum-p))
+                 (if (sbsp:leaf-p node)
+                     (when (or (not test-frustum-p)
+                               (intersect-frustum-2d frustum
+                                                     (sbsp:leaf-bounds node)))
+                       (dolist (surf (sbsp:leaf-surfaces node))
+                         (srend:render-surface surf)))
+                     ;; split node
+                     (let ((front (sbsp:node-front node))
+                           (back (sbsp:node-back node)))
+                       (when-let ((intersect (or (not test-frustum-p)
+                                                 (intersect-frustum-2d
+                                                  frustum (sbsp:node-bounds node)))))
+                         ;; Frustum testing is no longer needed if the bounds
+                         ;; are completely inside.
+                         (let ((test-p (and test-frustum-p
+                                            (not (eq :inside intersect)))))
+                           (ecase (sbsp:determine-side (sbsp:node-line node) pos-2d)
+                             ((or :front :on-line)
+                              (rec back test-p)
+                              (rec front test-p))
+                             (:back
+                              (rec front test-p)
+                              (rec back test-p)))))))))
+        (rec (smdl:model-nodes world-model))))))
+
 (defun render (camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
@@ -552,8 +598,7 @@ DRAW and DELETE for drawing and deleting respectively."
                  (m* (camera-projection-matrix camera)
                      (camera-view-transform camera)))
     (srend:with-draw-frame ()
-      (dolist (surface (get-map-walls camera world-model))
-        (srend:render-surface surface)))))
+      (render-world camera world-model))))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp
