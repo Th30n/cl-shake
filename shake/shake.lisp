@@ -330,7 +330,7 @@ DRAW and DELETE for drawing and deleting respectively."
         ;; Invert the Y movement.
         (yrel (- (cdr *mouse*)))
         (sens 1.5d0)
-        (move-speed 5)
+        (move-speed 5d0)
         (cmd (make-ticcmd)))
     (when (game-key-down-p :scancode-w)
       (incf (ticcmd-forward-move cmd) move-speed))
