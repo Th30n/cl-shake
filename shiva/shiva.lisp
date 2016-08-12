@@ -107,6 +107,7 @@
 
 (defun m* (m1 m2
 	   &aux (n1 (1- (array-dimension m1 0))) (n2 (1- (array-dimension m1 1))) (n3 (1- (array-dimension m2 1))))
+  (declare (optimize (speed 3) (space 3)))
   (tensor ((i 0 n1) (j 0 n2) (k 0 n3)) ((out (list (1+ n1) (1+ n3)))) (:simple-arrays (m1 m2))
 	  ($ i ($ k (setf (out i k) (sum j (* (m1 i j) (m2 j k))))))
 	  out))
@@ -116,7 +117,8 @@
   (tensor ((i 0 n)) () (:simple-arrays (v1 v2))
 	  (sum i (* (v1 i) (v2 i)))))
 
-(defun vnorm (v) (sqrt (vdot v v)))
+(declaim (inline vnorm vnormalize vdist vdistsq))
+(defun vnorm (v) (sqrt (the double-float (vdot v v))))
 (defun vnormalize (v) (vscale (/ 1d0 (vnorm v)) v))
 (defun vdist (v1 v2) (vnorm (v- v1 v2)))
 (defun vdistsq (v1 v2) (let ((d (v- v1 v2))) (vdot d d)))
@@ -199,9 +201,12 @@
 
 (defun v (&rest elements)
   "Create a vector of double-float and will it with ELEMENTS."
+  (declare (dynamic-extent elements)
+           (optimize (speed 3) (space 3)))
   (let* ((n (length elements))
 	 (vector (make-array n :element-type 'double-float)))
     (iter (for i from 0)
+          (declare (type fixnum i))
 	  (for elt in elements)
 	  (setf (aref vector i) (coerce elt 'double-float)))
     vector))
@@ -343,15 +348,21 @@ with ROWS."
 (defun double= (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
   "Compare floating points using epsilon difference and fallback to relative
 epsilon. Doesn't handle infinities."
-  (declare (type double-float a b))
+  (declare (type double-float a b epsilon rel-epsilon)
+           (optimize (speed 3) (space 3)))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
+    (declare (type double-float diff max)
+             (dynamic-extent diff max))
     (or (<= diff epsilon) ;; Needed when near zero.
         (<= diff (* max rel-epsilon)))))
 
 (defun double> (number &rest more-numbers)
-  (loop for (a b) on (cons number more-numbers)
-     never (and b (or (double= a b) (< a b)))))
+  (declare (optimize (speed 3) (space 3))
+           (dynamic-extent more-numbers))
+  (iter (for (a b) on (cons number more-numbers))
+        (never (and b (or (double= a b) (< (the double-float a)
+                                           (the double-float b)))))))
 
 (defun v= (v1 v2 &key (test #'double=))
   "Perform a comparison of two vectors."
@@ -404,6 +415,8 @@ epsilon. Doesn't handle infinities."
 
 (defun vrotate (quaternion vector)
   "Rotate a 3 component VECTOR by given QUATERNION."
+  (declare (type quat quaternion) (type (vec 3) vector)
+           (optimize (speed 3) (space 3)))
   (vnormalize
    (car (q* (q* quaternion (q (vx vector) (vy vector) (vz vector) 0))
             (qconj quaternion)))))
