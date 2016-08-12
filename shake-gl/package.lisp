@@ -24,4 +24,6 @@
            #:with-gl-array
            #:with-uniform-locations
            #:uniform-matrix-4f
-           #:buffer-data))
+           #:buffer-data
+           #:map-buffer
+           #:with-mapped-buffer))

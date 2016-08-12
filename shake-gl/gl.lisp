@@ -53,10 +53,12 @@ and is implementation dependant."
   "Maps a part of a buffer bound to TARGET. Foreign TYPE and COUNT elements of
   that type determine the map length. Optional OFFSET determines the start of
   the buffer. Returns the mapping as a GL:GL-ARRAY."
-  (let ((length (* count (cffi:foreign-type-size type)))
-        (byte-offset (* offset (cffi:foreign-type-size type)))
-        (access-flags (cffi:foreign-bitfield-value
-                       '%gl::mapbufferusagemask access)))
+  (declare (optimize (speed 3) (space 3)))
+  (let* ((foreign-size (cffi:foreign-type-size type))
+         (length (* count foreign-size))
+         (byte-offset (* offset foreign-size))
+         (access-flags (cffi:foreign-bitfield-value
+                        '%gl::mapbufferusagemask access)))
     (gl::make-gl-array-from-pointer
      (%gl:map-buffer-range target byte-offset length access-flags)
      type count)))

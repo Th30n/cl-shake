@@ -19,6 +19,7 @@
 (defstruct batch
   vertex-array
   buffer
+  mapped
   (offset 0 :type fixnum)
   texture
   (draw-count 0 :type fixnum)
@@ -32,23 +33,35 @@
     (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer)
                      :static-draw)
     (make-batch :vertex-array vertex-array :buffer buffer
-                :max-bytes byte-size)))
+                :max-bytes byte-size
+                :mapped (sgl:map-buffer :array-buffer (/ byte-size 4) :float
+                                        '(:map-write-bit :map-unsynchronized-bit
+                                          :map-invalidate-buffer
+                                          :map-flush-explicit-bit)))))
 
 (defun free-batch (batch)
-  (gl:delete-buffers (list (batch-buffer batch)))
-  (gl:delete-vertex-arrays (list (batch-vertex-array batch)))
-  (setf (batch-free-p batch) t))
+  (with-struct (batch- vertex-array buffer mapped) batch
+    (when mapped
+      (gl:bind-buffer :array-buffer buffer)
+      (gl:unmap-buffer :array-buffer)
+      (gl:bind-buffer 0)
+      (setf (batch-mapped batch) nil))
+    (gl:delete-buffers (list buffer))
+    (gl:delete-vertex-arrays (list vertex-array))
+    (setf (batch-free-p batch) t)))
 
-(defun draw-batch (batch)
-  (assert (not (batch-free-p batch)))
+(defun finish-batch (batch)
   (gl:bind-vertex-array (batch-vertex-array batch))
+  (gl:bind-buffer :array-buffer (batch-buffer batch))
   (let ((stride (* 4 (+ 3 3 3 2)))
         (color-offset (* 4 3))
         (normal-offset (* 4 (+ 3 3)))
-        (uv-offset (* 4 (+ 3 3 3)))
-        (tex-name (batch-texture batch)))
+        (uv-offset (* 4 (+ 3 3 3))))
     ;; positions
-    (gl:bind-buffer :array-buffer (batch-buffer batch))
+    (when (batch-mapped batch)
+      (%gl:flush-mapped-buffer-range :array-buffer 0 (batch-offset batch))
+      (gl:unmap-buffer :array-buffer)
+      (setf (batch-mapped batch) nil))
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil stride (cffi:null-pointer))
     ;; colors
@@ -59,7 +72,15 @@
     (gl:vertex-attrib-pointer 3 3 :float nil stride normal-offset)
     ;; uvs
     (gl:enable-vertex-attrib-array 2)
-    (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset)
+    (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset))
+  (gl:bind-vertex-array 0))
+
+(defun draw-batch (batch)
+  (assert (not (batch-free-p batch)))
+  (when (batch-mapped batch)
+    (finish-batch batch))
+  (let ((tex-name (batch-texture batch)))
+    (gl:bind-vertex-array (batch-vertex-array batch))
     (sgl:with-uniform-locations (sdata:res "shader-prog") (has-albedo tex-albedo)
       (if tex-name
           (progn
@@ -73,17 +94,20 @@
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface batch)
-  (flet ((fill-buffer (buf byte-offset data)
-           (gl:bind-buffer :array-buffer buf)
-           (gl:buffer-sub-data :array-buffer (cdr data)
-                               :buffer-offset byte-offset)
+  (flet ((fill-buffer (byte-offset data)
+           (cffi:foreign-funcall
+            "memcpy"
+            :pointer (cffi:mem-aptr (gl::gl-array-pointer (batch-mapped batch))
+                                    :float (/ byte-offset 4))
+            :pointer (gl::gl-array-pointer (cdr data))
+            :int (car data))
            (car data)))
-    (with-struct (batch- offset buffer) batch
+    (with-struct (batch- offset) batch
       (let ((gl-data (smdl::surface-gl-data surface)))
         (incf (batch-draw-count batch)
               (list-length (smdl:surface-faces surface)))
         (incf (batch-offset batch)
-              (the fixnum (fill-buffer buffer offset gl-data)))
+              (the fixnum (fill-buffer offset gl-data)))
         (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
                     (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
           (setf (batch-texture batch) tex-name))))))
@@ -102,6 +126,8 @@
 (defun add-new-batch (byte-size)
   (declare (special *batches*))
   (declare (optimize (speed 3) (space 3)))
+  (when-let ((current-batch (get-current-batch)))
+    (finish-batch current-batch))
   (let ((batch (init-batch byte-size)))
     (vector-push-extend batch *batches*)
     batch))
