@@ -19,12 +19,12 @@
 (defstruct batch
   vertex-array
   buffer
-  mapped
   (offset 0 :type fixnum)
   texture
   (draw-count 0 :type fixnum)
   (max-bytes 0 :type fixnum)
-  (free-p nil))
+  (free-p nil :type boolean)
+  (ready-p nil :type boolean))
 
 (defun init-batch (byte-size)
   (let ((buffer (car (gl:gen-buffers 1)))
@@ -33,24 +33,17 @@
     (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer)
                      :static-draw)
     (make-batch :vertex-array vertex-array :buffer buffer
-                :max-bytes byte-size
-                :mapped (sgl:map-buffer :array-buffer (/ byte-size 4) :float
-                                        '(:map-write-bit :map-unsynchronized-bit
-                                          :map-invalidate-buffer
-                                          :map-flush-explicit-bit)))))
+                :max-bytes byte-size)))
 
 (defun free-batch (batch)
-  (with-struct (batch- vertex-array buffer mapped) batch
-    (when mapped
-      (gl:bind-buffer :array-buffer buffer)
-      (gl:unmap-buffer :array-buffer)
-      (gl:bind-buffer 0)
-      (setf (batch-mapped batch) nil))
+  (with-struct (batch- vertex-array buffer) batch
     (gl:delete-buffers (list buffer))
     (gl:delete-vertex-arrays (list vertex-array))
-    (setf (batch-free-p batch) t)))
+    (setf (batch-free-p batch) t
+          (batch-ready-p batch) nil)))
 
 (defun finish-batch (batch)
+  (assert (not (batch-free-p batch)))
   (gl:bind-vertex-array (batch-vertex-array batch))
   (gl:bind-buffer :array-buffer (batch-buffer batch))
   (let ((stride (* 4 (+ 3 3 3 2)))
@@ -58,10 +51,6 @@
         (normal-offset (* 4 (+ 3 3)))
         (uv-offset (* 4 (+ 3 3 3))))
     ;; positions
-    (when (batch-mapped batch)
-      (%gl:flush-mapped-buffer-range :array-buffer 0 (batch-offset batch))
-      (gl:unmap-buffer :array-buffer)
-      (setf (batch-mapped batch) nil))
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil stride (cffi:null-pointer))
     ;; colors
@@ -73,11 +62,12 @@
     ;; uvs
     (gl:enable-vertex-attrib-array 2)
     (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset))
-  (gl:bind-vertex-array 0))
+  (gl:bind-vertex-array 0)
+  (setf (batch-ready-p batch) t))
 
 (defun draw-batch (batch)
   (assert (not (batch-free-p batch)))
-  (when (batch-mapped batch)
+  (unless (batch-ready-p batch)
     (finish-batch batch))
   (let ((tex-name (batch-texture batch)))
     (gl:bind-vertex-array (batch-vertex-array batch))
@@ -95,12 +85,11 @@
 
 (defun add-surface-vertex-data (surface batch)
   (flet ((fill-buffer (byte-offset data)
-           (cffi:foreign-funcall
-            "memcpy"
-            :pointer (cffi:mem-aptr (gl::gl-array-pointer (batch-mapped batch))
-                                    :float (/ byte-offset 4))
-            :pointer (gl::gl-array-pointer (cdr data))
-            :int (car data))
+           (gl:bind-buffer :array-buffer (batch-buffer batch))
+           (gl:buffer-sub-data :array-buffer (cdr data)
+                               :buffer-offset byte-offset
+                               :size (car data))
+           (gl:bind-buffer :array-buffer 0)
            (car data)))
     (with-struct (batch- offset) batch
       (let ((gl-data (smdl::surface-gl-data surface)))
