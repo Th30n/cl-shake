@@ -49,9 +49,15 @@
 (defun init-render-system ()
   (make-render-system :gl-config (init-gl-config)))
 
-(defmacro with-render-system ((render-system) &body body)
-  `(let ((,render-system (init-render-system)))
-     (progn ,@body)))
+(defmacro with-render-system ((render-system window) &body body)
+  (with-gensyms (context)
+    `(sdl2:with-gl-context (,context ,window)
+       (handler-case
+           (sdl2:gl-set-swap-interval 0)
+         (error () ;; sdl2 doesn't export sdl-error
+           (format t "Setting swap interval not supported~%")))
+       (let ((,render-system (init-render-system)))
+         (progn ,@body)))))
 
 (defstruct batch
   vertex-array
@@ -138,16 +144,22 @@
                     (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
           (setf (batch-texture batch) tex-name))))))
 
-(defun init-draw-frame ()
-  (make-array 10 :element-type 'batch :fill-pointer 0 :adjustable t))
+(defun init-draw-frame (render-system)
+  (if-let ((batches (render-system-batches render-system)))
+    batches
+    (setf (render-system-batches render-system)
+          (make-array 10 :element-type 'batch
+                      :fill-pointer 0 :adjustable t))))
 
-(defun finish-draw-frame (batches)
-  (declare (type (vector batch) batches)
-           (optimize (speed 3) (space 3)))
-  (dotimes (i (length batches))
-    (let ((batch (aref batches i)))
-      (draw-batch batch)
-      (free-batch batch))))
+(defun finish-draw-frame (render-system)
+  (declare (optimize (speed 3) (space 3)))
+  (let ((batches (render-system-batches render-system)))
+    (declare (type (vector batch) batches))
+    (dotimes (i (length batches))
+      (let ((batch (aref batches i)))
+        (draw-batch batch)
+        (free-batch batch)))
+    (setf (fill-pointer batches) 0)))
 
 (defun add-new-batch (byte-size)
   (declare (special *batches*))
@@ -187,12 +199,12 @@
                  (add-new-batch (max surface-space (* 10 1024)))))) ;; 10kB
         (add-surface-vertex-data surface batch)))))
 
-(defmacro with-draw-frame (() &body body)
+(defmacro with-draw-frame ((render-system) &body body)
   "Establishes the environment where SHAKE.RENDER package functions can be
   used."
   (with-gensyms (body-result)
-    `(let ((*batches* (init-draw-frame)))
+    `(let ((*batches* (init-draw-frame ,render-system)))
        (declare (special *batches*))
        (let ((,body-result (multiple-value-list (progn ,@body))))
-         (finish-draw-frame *batches*)
+         (finish-draw-frame ,render-system)
          (values-list ,body-result)))))
