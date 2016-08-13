@@ -179,10 +179,16 @@ around the local X axis. The vertical angle is clamped."
            (nreset-timer ,timer)))
        (values-list ,vals))))
 
+(defun load-image-from-file (image-file)
+  (sdl2:load-bmp image-file))
+
+(defun free-image (image)
+  (sdl2:free-surface image))
+
 (defun load-texture (texture-file)
   "Load a texture from given string file path. Returns the OpenGL texture
 object as the primary value. Second and third value are image width and height."
-  (let* ((surface (sdl2:load-bmp texture-file))
+  (let* ((surface (load-image-from-file texture-file))
          (pixels (sdl2:surface-pixels surface))
          (width (sdl2:surface-width surface))
          (height (sdl2:surface-height surface))
@@ -193,7 +199,7 @@ object as the primary value. Second and third value are image width and height."
                      :bgr :unsigned-byte pixels)
     (gl:tex-parameter :texture-2d :texture-min-filter :nearest)
     (gl:tex-parameter :texture-2d :texture-mag-filter :nearest)
-    (sdl2:free-surface surface)
+    (free-image surface)
     (values tex width height)))
 
 (defun make-point-renderer ()
@@ -419,20 +425,34 @@ DRAW and DELETE for drawing and deleting respectively."
            (load-map-texture (name)
              (if-let ((fname (data-path (concatenate 'string "share/textures/"
                                                      name))))
-               (load-texture fname)
-               (load-texture (data-path "share/textures/missing.bmp")))))
-    (let ((textures (sbsp:bsp-trav bsp #'append #'leaf-textures)))
-      (dolist (tex-name (remove-duplicates textures :test #'string=))
-        (add-res tex-name (lambda ()
-                            (let ((tex (load-map-texture tex-name)))
-                              (gl:bind-texture :texture-2d tex)
-                              (gl:generate-mipmap :texture-2d)
-                              (gl:tex-parameter :texture-2d :texture-min-filter
-                                                :linear-mipmap-nearest)
-                              (gl:tex-parameter :texture-2d :texture-mag-filter
-                                                :linear)
-                              tex))
-                 (compose #'gl:delete-textures #'list))))))
+               (load-image-from-file fname)
+               (load-image-from-file (data-path "share/textures/missing.bmp")))))
+    (let* ((textures (remove-duplicates (sbsp:bsp-trav bsp #'append
+                                                       #'leaf-textures)
+                                        :test #'string=))
+           (array-tex (first (gl:gen-textures 1)))
+           (texture-map (make-hash-table :test #'equal)))
+      (gl:active-texture :texture0) ;; Not needed?
+      (gl:bind-texture :texture-2d-array array-tex)
+      ;; TODO: Replace with glTexStorage3D when available.
+      (gl:tex-image-3d :texture-2d-array 0 :srgb8 1024 1024 (list-length textures)
+                       0 :bgr :unsigned-byte (cffi:null-pointer))
+      (let ((layer 0))
+        (dolist (tex-name textures)
+          (let ((image (load-map-texture tex-name)))
+            (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer
+                                 (sdl2:surface-width image)
+                                 (sdl2:surface-height image) 1 :bgr
+                                 :unsigned-byte (sdl2:surface-pixels image)))
+          (setf (gethash tex-name texture-map) layer)
+          (incf layer)))
+      (gl:generate-mipmap :texture-2d-array)
+      (gl:tex-parameter :texture-2d-array :texture-min-filter
+                        :linear-mipmap-nearest)
+      (gl:tex-parameter :texture-2d-array :texture-mag-filter :linear)
+      (gl:bind-texture :texture-2d-array 0)
+      (add-res "map-textures" (lambda () (cons texture-map array-tex))
+               (lambda (tex-res) (gl:delete-textures (list (cdr tex-res))))))))
 
 (defun spawn-player (things camera)
   (dolist (thing things)

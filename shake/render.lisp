@@ -21,7 +21,10 @@
   (vendor nil :type string :read-only t)
   (renderer nil :type string :read-only t)
   (version-string nil :type string :read-only t)
-  (glsl-version-string nil :type string :read-only t))
+  (glsl-version-string nil :type string :read-only t)
+  (max-texture-size nil :type integer :read-only t)
+  (max-3d-texture-size nil :type integer :read-only t)
+  (max-array-texture-layers nil :type integer :read-only t))
 
 (defun init-gl-config ()
   "Create GL-CONFIG and fill with information from GL context."
@@ -29,16 +32,24 @@
    :vendor (gl:get-string :vendor)
    :renderer (gl:get-string :renderer)
    :version-string (gl:get-string :version)
-   :glsl-version-string (gl:get-string :shading-language-version)))
+   :glsl-version-string (gl:get-string :shading-language-version)
+   :max-texture-size (gl:get-integer :max-texture-size)
+   :max-3d-texture-size (gl:get-integer :max-3d-texture-size)
+   :max-array-texture-layers (gl:get-integer :max-array-texture-layers)))
 
 (defun print-gl-info (gl-config)
   "Print basic OpenGL information."
-  (with-struct (gl-config- vendor renderer version-string glsl-version-string)
+  (with-struct (gl-config- vendor renderer version-string glsl-version-string
+                           max-texture-size max-3d-texture-size
+                           max-array-texture-layers)
       gl-config
     (format t "GL Vendor: ~S~%" vendor)
     (format t "GL Renderer: ~S~%" renderer)
     (format t "GL Version: ~S~%" version-string)
     (format t "GLSL Version: ~S~%" glsl-version-string)
+    (format t "Max texture size: ~S~%" max-texture-size)
+    (format t "Max 3D texture size: ~S~%" max-3d-texture-size)
+    (format t "Max array texture layers: ~S~%" max-array-texture-layers)
     (finish-output)))
 
 (defstruct render-system
@@ -118,10 +129,12 @@
       (if tex-name
           (progn
             (gl:active-texture :texture0)
-            (gl:bind-texture :texture-2d (sdata:res tex-name))
-            (gl:uniformi tex-albedo-loc 0)
-            (gl:uniformi has-albedo-loc 1))
-          (gl:uniformi has-albedo-loc 0)))
+            (destructuring-bind (texture-map . tex-array)
+                (sdata:res "map-textures")
+              (gl:bind-texture :texture-2d-array tex-array)
+              (gl:uniformi tex-albedo-loc 0)
+              (gl:uniformi has-albedo-loc (gethash tex-name texture-map -1))))
+          (gl:uniformi has-albedo-loc -1)))
     (gl:draw-arrays :triangles 0 (batch-draw-count batch)))
   (gl:check-error)
   (gl:bind-vertex-array 0))
