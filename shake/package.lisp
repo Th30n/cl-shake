@@ -55,7 +55,12 @@
 (defpackage #:shake.render
   (:nicknames #:srend)
   (:use #:cl #:alexandria #:shiva #:shake-utils)
-  (:export #:render-surface
+  (:export #:gl-config
+           #:print-gl-info
+           #:render-system
+           #:render-system-gl-config
+           #:with-render-system
+           #:render-surface
            #:with-draw-frame))
 
 (defpackage #:shake

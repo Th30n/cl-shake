@@ -16,6 +16,43 @@
 
 (in-package #:shake.render)
 
+(defstruct gl-config
+  "Stores constants of various capabilities for the initialized GL context."
+  (vendor nil :type string :read-only t)
+  (renderer nil :type string :read-only t)
+  (version-string nil :type string :read-only t)
+  (glsl-version-string nil :type string :read-only t))
+
+(defun init-gl-config ()
+  "Create GL-CONFIG and fill with information from GL context."
+  (make-gl-config
+   :vendor (gl:get-string :vendor)
+   :renderer (gl:get-string :renderer)
+   :version-string (gl:get-string :version)
+   :glsl-version-string (gl:get-string :shading-language-version)))
+
+(defun print-gl-info (gl-config)
+  "Print basic OpenGL information."
+  (with-struct (gl-config- vendor renderer version-string glsl-version-string)
+      gl-config
+    (format t "GL Vendor: ~S~%" vendor)
+    (format t "GL Renderer: ~S~%" renderer)
+    (format t "GL Version: ~S~%" version-string)
+    (format t "GLSL Version: ~S~%" glsl-version-string)
+    (finish-output)))
+
+(defstruct render-system
+  "Rendering related global variables and constants."
+  (gl-config nil :type gl-config :read-only t)
+  batches)
+
+(defun init-render-system ()
+  (make-render-system :gl-config (init-gl-config)))
+
+(defmacro with-render-system ((render-system) &body body)
+  `(let ((,render-system (init-render-system)))
+     (progn ,@body)))
+
 (defstruct batch
   vertex-array
   buffer

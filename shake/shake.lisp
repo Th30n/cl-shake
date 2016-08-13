@@ -451,56 +451,57 @@ DRAW and DELETE for drawing and deleting respectively."
       (sdl2:with-window (win :title "shake" :w *win-width* :h *win-height*
                              :flags '(:shown :opengl))
         (sdl2:with-gl-context (context win)
-          (handler-case
-              (sdl2:gl-set-swap-interval 0)
-            (error () ;; sdl2 doesn't export sdl-error
-              (format t "Setting swap interval not supported~%")))
-          (print-gl-info)
-          (sdl2:set-relative-mouse-mode 1)
-          ;; (gl:enable :depth-test :cull-face)
-          (with-data-dirs *base-dir*
-            (with-resources "main"
-              (load-main-resources)
-              (let* ((proj (make-perspective (* deg->rad 60d0)
-                                             (/ *win-width* *win-height*)
-                                             0.1d0 100d0))
-                     (camera (make-camera :projection proj :position (v 1 0.5 8)))
-                     (frame-timer (make-timer))
-                     (world-model (add-res "world-model"
-                                           (lambda () (smdl:load-model "test.bsp"))
-                                           #'smdl:free-model)))
-                (load-map-textures (smdl:model-nodes world-model))
-                (spawn-player (smdl:model-things world-model) camera)
-                (symbol-macrolet ((input-focus-p
-                                   (member :input-focus
-                                           (sdl2:get-window-flags win)))
-                                  (minimized-p
-                                   (member :minimized
-                                           (sdl2:get-window-flags win))))
-                  (start-game-loop)
-                  (sdl2:with-event-loop (:method :poll)
-                    (:quit () t)
-                    (:keydown
-                     (:keysym keysym)
-                     (when input-focus-p
-                       (press-game-key (sdl2:scancode keysym))))
-                    (:keyup
-                     (:keysym keysym)
-                     (when input-focus-p
-                       (release-game-key (sdl2:scancode keysym))))
-                    (:mousemotion
-                     (:xrel xrel :yrel yrel)
-                     (when input-focus-p
-                       (update-mouse-relative xrel yrel)))
-                    (:idle ()
-                           (with-timer (frame-timer)
-                             (try-run-tics #'build-ticcmd
-                                           (lambda (tic) (run-tic camera tic)))
-                             (unless minimized-p
-                               (clear-buffer-fv :color 0 0 0 0)
-                               (render camera)
-                               (draw-timer-stats frame-timer)
-                               (sdl2:gl-swap-window win))))))))))))))
+          (srend:with-render-system (render-system)
+            (srend:print-gl-info (srend:render-system-gl-config render-system))
+            (handler-case
+                (sdl2:gl-set-swap-interval 0)
+              (error () ;; sdl2 doesn't export sdl-error
+                (format t "Setting swap interval not supported~%")))
+            (sdl2:set-relative-mouse-mode 1)
+            ;; (gl:enable :depth-test :cull-face)
+            (with-data-dirs *base-dir*
+              (with-resources "main"
+                (load-main-resources)
+                (let* ((proj (make-perspective (* deg->rad 60d0)
+                                               (/ *win-width* *win-height*)
+                                               0.1d0 100d0))
+                       (camera (make-camera :projection proj :position (v 1 0.5 8)))
+                       (frame-timer (make-timer))
+                       (world-model (add-res "world-model"
+                                             (lambda () (smdl:load-model "test.bsp"))
+                                             #'smdl:free-model)))
+                  (load-map-textures (smdl:model-nodes world-model))
+                  (spawn-player (smdl:model-things world-model) camera)
+                  (symbol-macrolet ((input-focus-p
+                                     (member :input-focus
+                                             (sdl2:get-window-flags win)))
+                                    (minimized-p
+                                     (member :minimized
+                                             (sdl2:get-window-flags win))))
+                    (start-game-loop)
+                    (sdl2:with-event-loop (:method :poll)
+                      (:quit () t)
+                      (:keydown
+                       (:keysym keysym)
+                       (when input-focus-p
+                         (press-game-key (sdl2:scancode keysym))))
+                      (:keyup
+                       (:keysym keysym)
+                       (when input-focus-p
+                         (release-game-key (sdl2:scancode keysym))))
+                      (:mousemotion
+                       (:xrel xrel :yrel yrel)
+                       (when input-focus-p
+                         (update-mouse-relative xrel yrel)))
+                      (:idle ()
+                             (with-timer (frame-timer)
+                               (try-run-tics #'build-ticcmd
+                                             (lambda (tic) (run-tic camera tic)))
+                               (unless minimized-p
+                                 (clear-buffer-fv :color 0 0 0 0)
+                                 (render camera)
+                                 (draw-timer-stats frame-timer)
+                                 (sdl2:gl-swap-window win)))))))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
