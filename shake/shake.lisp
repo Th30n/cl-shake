@@ -451,7 +451,10 @@ DRAW and DELETE for drawing and deleting respectively."
       (sdl2:with-window (win :title "shake" :w *win-width* :h *win-height*
                              :flags '(:shown :opengl))
         (sdl2:with-gl-context (context win)
-          (sdl2:gl-set-swap-interval 0)
+          (handler-case
+              (sdl2:gl-set-swap-interval 0)
+            (error () ;; sdl2 doesn't export sdl-error
+              (format t "Setting swap interval not supported~%")))
           (print-gl-info)
           (sdl2:set-relative-mouse-mode 1)
           ;; (gl:enable :depth-test :cull-face)
