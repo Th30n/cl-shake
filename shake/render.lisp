@@ -16,6 +16,70 @@
 
 (in-package #:shake.render)
 
+(defstruct image
+  (name nil :type string :read-only t)
+  (tex-type :texture-2d :read-only t)
+  (width 0 :type fixnum :read-only t)
+  (height 0 :type fixnum :read-only t)
+  (files nil :type list :read-only t)
+  (gl-tex -1 :type integer))
+
+(defun load-image (image)
+  (assert (not (image-loaded-p image)))
+  (setf (image-gl-tex image) (first (gl:gen-textures 1)))
+  (bind-image image)
+  (flet ((read-image-from-file (fname)
+           (if-let ((fname (sdata:data-path
+                            (concatenate 'string "share/textures/" fname))))
+             (sdl2:load-bmp fname)
+             (sdl2:load-bmp (sdata:data-path "share/textures/missing.bmp")))))
+    (with-struct (image- tex-type width height files) image
+      (ecase tex-type
+        (:texture-2d-array
+         (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height
+                          (list-length files) 0 :bgr :unsigned-byte
+                          (cffi:null-pointer))
+         (let ((layer 0))
+           (dolist (fname files)
+             (let ((data (read-image-from-file fname)))
+               ;; missing.bmp is of different resolution; TODO: Procedurally
+               ;; fill a default texture of required size.
+               ;; (assert (= width (sdl2:surface-width data)))
+               ;; (assert (= height (sdl2:surface-height data)))
+               (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer
+                                    (sdl2:surface-width data)
+                                    (sdl2:surface-height data) 1
+                                    :bgr :unsigned-byte (sdl2:surface-pixels data))
+               (incf layer)
+               (sdl2:free-surface data))))))
+      (gl:generate-mipmap tex-type)
+      (gl:tex-parameter tex-type :texture-min-filter :linear-mipmap-nearest)
+      (gl:tex-parameter tex-type :texture-mag-filter :linear)))
+  image)
+
+(defun purge-image (image)
+  (when (image-loaded-p image)
+    (gl:delete-textures (list (image-gl-tex image)))
+    (setf (image-gl-tex image) -1)))
+
+(defun bind-image (image)
+  (unless (image-loaded-p image)
+    (load-image image))
+  (with-struct (image- tex-type gl-tex) image
+    (gl:bind-texture tex-type gl-tex)))
+
+(defun image-loaded-p (image)
+  (/= (image-gl-tex image) -1))
+
+(defun image-storage-size (image)
+  "Return the estimated size in bytes this image is using in GL."
+  (if (not (image-loaded-p image))
+      0d0
+      (with-struct (image- width height files) image
+        (* width height (list-length files)
+           3 ;; 3 bytes per pixel; TODO: Calc for different formats.
+           (/ 4 3))))) ;; Account for mipmaps; TODO: Calc without mipmaps.
+
 (defstruct gl-config
   "Stores constants of various capabilities for the initialized GL context."
   (vendor nil :type string :read-only t)
@@ -55,10 +119,18 @@
 (defstruct render-system
   "Rendering related global variables and constants."
   (gl-config nil :type gl-config :read-only t)
-  batches)
+  batches
+  (images nil :type list)
+  (image-map (make-hash-table :test #'equal)))
 
 (defun init-render-system ()
   (make-render-system :gl-config (init-gl-config)))
+
+(defun shutdown-render-system (render-system)
+  (dolist (image (render-system-images render-system))
+    (purge-image image))
+  (setf (render-system-images render-system) nil)
+  (clrhash (render-system-image-map render-system)))
 
 (defmacro with-render-system ((render-system window) &body body)
   (with-gensyms (context)
@@ -68,7 +140,28 @@
          (error () ;; sdl2 doesn't export sdl-error
            (format t "Setting swap interval not supported~%")))
        (let ((,render-system (init-render-system)))
-         (progn ,@body)))))
+         (unwind-protect
+              (progn ,@body)
+           (shutdown-render-system ,render-system))))))
+
+(defun load-map-images (render-system image-names)
+  (let ((image (make-image :name "map-textures"
+                           :tex-type :texture-2d-array
+                           :width 1024 :height 1024 :files image-names)))
+    (load-image image)
+    (push image (render-system-images render-system))
+    (with-struct (render-system- image-map) render-system
+      (setf (gethash "map-textures" image-map) image)
+      (let ((layer 0))
+        (dolist (image-name image-names)
+          (setf (gethash image-name image-map) (cons image layer))
+          (incf layer))))))
+
+(defun print-memory-usage (render-system)
+  "Print the estimate of used memory in GL."
+  (with-struct (render-system- images) render-system
+    (let ((image-usage (reduce #'+ (mapcar #'image-storage-size images))))
+      (format t "Total image allocation: ~:D bytes~%" image-usage))))
 
 (defstruct batch
   vertex-array
@@ -123,19 +216,8 @@
   (assert (not (batch-free-p batch)))
   (unless (batch-ready-p batch)
     (finish-batch batch))
-  (let ((tex-name (batch-texture batch)))
-    (gl:bind-vertex-array (batch-vertex-array batch))
-    (sgl:with-uniform-locations (sdata:res "shader-prog") (has-albedo tex-albedo)
-      (if tex-name
-          (progn
-            (gl:active-texture :texture0)
-            (destructuring-bind (texture-map . tex-array)
-                (sdata:res "map-textures")
-              (gl:bind-texture :texture-2d-array tex-array)
-              (gl:uniformi tex-albedo-loc 0)
-              (gl:uniformi has-albedo-loc (gethash tex-name texture-map -1))))
-          (gl:uniformi has-albedo-loc -1)))
-    (gl:draw-arrays :triangles 0 (batch-draw-count batch)))
+  (gl:bind-vertex-array (batch-vertex-array batch))
+  (gl:draw-arrays :triangles 0 (batch-draw-count batch))
   (gl:check-error)
   (gl:bind-vertex-array 0))
 
@@ -166,13 +248,22 @@
 
 (defun finish-draw-frame (render-system)
   (declare (optimize (speed 3) (space 3)))
-  (let ((batches (render-system-batches render-system)))
+  (with-struct (render-system- batches image-map) render-system
     (declare (type (vector batch) batches))
+    (sgl:with-uniform-locations (sdata:res "shader-prog")
+        (has-albedo tex-albedo)
+      (gl:uniformi tex-albedo-loc 0)
+      (gl:active-texture :texture0)
+      (bind-image (gethash "map-textures" image-map))
     (dotimes (i (length batches))
       (let ((batch (aref batches i)))
+        (if-let ((tex-name (batch-texture batch)))
+          (let ((layer (cdr (gethash tex-name image-map))))
+            (gl:uniformi has-albedo-loc layer))
+          (gl:uniformi has-albedo-loc -1))
         (draw-batch batch)
         (free-batch batch)))
-    (setf (fill-pointer batches) 0)))
+    (setf (fill-pointer batches) 0))))
 
 (defun add-new-batch (byte-size)
   (declare (special *batches*))

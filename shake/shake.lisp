@@ -416,43 +416,17 @@ DRAW and DELETE for drawing and deleting respectively."
              (load-font (data-path "share/font-16.bmp") 16 #\Space))
            #'delete-font))
 
-(defun load-map-textures (bsp)
+(defun load-map-textures (render-system bsp)
   (labels ((texture-name (surf)
              (when-let ((texinfo (sbsp:sidedef-texinfo surf)))
                (string-downcase (sbsp:texinfo-name texinfo))))
            (leaf-textures (leaf)
-             (remove nil (mapcar #'texture-name (sbsp:leaf-surfaces leaf))))
-           (load-map-texture (name)
-             (if-let ((fname (data-path (concatenate 'string "share/textures/"
-                                                     name))))
-               (load-image-from-file fname)
-               (load-image-from-file (data-path "share/textures/missing.bmp")))))
+             (remove nil (mapcar #'texture-name (sbsp:leaf-surfaces leaf)))))
     (let* ((textures (remove-duplicates (sbsp:bsp-trav bsp #'append
                                                        #'leaf-textures)
-                                        :test #'string=))
-           (array-tex (first (gl:gen-textures 1)))
-           (texture-map (make-hash-table :test #'equal)))
-      (gl:active-texture :texture0) ;; Not needed?
-      (gl:bind-texture :texture-2d-array array-tex)
-      ;; TODO: Replace with glTexStorage3D when available.
-      (gl:tex-image-3d :texture-2d-array 0 :srgb8 1024 1024 (list-length textures)
-                       0 :bgr :unsigned-byte (cffi:null-pointer))
-      (let ((layer 0))
-        (dolist (tex-name textures)
-          (let ((image (load-map-texture tex-name)))
-            (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer
-                                 (sdl2:surface-width image)
-                                 (sdl2:surface-height image) 1 :bgr
-                                 :unsigned-byte (sdl2:surface-pixels image)))
-          (setf (gethash tex-name texture-map) layer)
-          (incf layer)))
-      (gl:generate-mipmap :texture-2d-array)
-      (gl:tex-parameter :texture-2d-array :texture-min-filter
-                        :linear-mipmap-nearest)
-      (gl:tex-parameter :texture-2d-array :texture-mag-filter :linear)
-      (gl:bind-texture :texture-2d-array 0)
-      (add-res "map-textures" (lambda () (cons texture-map array-tex))
-               (lambda (tex-res) (gl:delete-textures (list (cdr tex-res))))))))
+                                        :test #'string=)))
+      (srend:load-map-images render-system textures)
+      (srend:print-memory-usage render-system))))
 
 (defun spawn-player (things camera)
   (dolist (thing things)
@@ -484,7 +458,7 @@ DRAW and DELETE for drawing and deleting respectively."
                      (world-model (add-res "world-model"
                                            (lambda () (smdl:load-model "test.bsp"))
                                            #'smdl:free-model)))
-                (load-map-textures (smdl:model-nodes world-model))
+                (load-map-textures render-system (smdl:model-nodes world-model))
                 (spawn-player (smdl:model-things world-model) camera)
                 (symbol-macrolet ((input-focus-p
                                    (member :input-focus
