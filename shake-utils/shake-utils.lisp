@@ -32,6 +32,15 @@ the structure."
      (dolist (,var-b ,list-b)
        ,@body)))
 
+(defmacro dolist-enum ((idx-var elt-var list &optional result) &body body)
+  "Behaves like DOLIST, but binds the IDX-VAR to the index of the current
+  element."
+  `(let ((,idx-var 0))
+     (declare (type fixnum ,idx-var))
+     (dolist (,elt-var ,list ,result)
+       ,@body
+       (incf ,idx-var))))
+
 (defmacro zap (fn place &rest args)
   "Set the PLACE to the result of applying the function FN to the current
   value of place and ARGS. For example:

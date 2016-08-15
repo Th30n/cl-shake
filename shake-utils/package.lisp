@@ -19,7 +19,8 @@
 (defpackage #:shake-utils
   (:nicknames #:shut #:sutils)
   (:use #:cl #:alexandria)
-  (:export #:doproduct
+  (:export #:dolist-enum
+           #:doproduct
            #:group-by
            #:length>=
            #:notf

@@ -39,19 +39,17 @@
          (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height
                           (list-length files) 0 :bgr :unsigned-byte
                           (cffi:null-pointer))
-         (let ((layer 0))
-           (dolist (fname files)
-             (let ((data (read-image-from-file fname)))
-               ;; missing.bmp is of different resolution; TODO: Procedurally
-               ;; fill a default texture of required size.
-               ;; (assert (= width (sdl2:surface-width data)))
-               ;; (assert (= height (sdl2:surface-height data)))
-               (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer
-                                    (sdl2:surface-width data)
-                                    (sdl2:surface-height data) 1
-                                    :bgr :unsigned-byte (sdl2:surface-pixels data))
-               (incf layer)
-               (sdl2:free-surface data))))))
+         (dolist-enum (layer fname files)
+           (let ((data (read-image-from-file fname)))
+             ;; missing.bmp is of different resolution; TODO: Procedurally
+             ;; fill a default texture of required size.
+             ;; (assert (= width (sdl2:surface-width data)))
+             ;; (assert (= height (sdl2:surface-height data)))
+             (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer
+                                  (sdl2:surface-width data)
+                                  (sdl2:surface-height data) 1
+                                  :bgr :unsigned-byte (sdl2:surface-pixels data))
+             (sdl2:free-surface data)))))
       (gl:generate-mipmap tex-type)
       (gl:tex-parameter tex-type :texture-min-filter :linear-mipmap-nearest)
       (gl:tex-parameter tex-type :texture-mag-filter :linear)))
@@ -152,10 +150,8 @@
     (push image (render-system-images render-system))
     (with-struct (render-system- image-map) render-system
       (setf (gethash "map-textures" image-map) image)
-      (let ((layer 0))
-        (dolist (image-name image-names)
-          (setf (gethash image-name image-map) (cons image layer))
-          (incf layer))))))
+      (dolist-enum (layer image-name image-names)
+        (setf (gethash image-name image-map) (cons image layer))))))
 
 (defun print-memory-usage (render-system)
   "Print the estimate of used memory in GL."
