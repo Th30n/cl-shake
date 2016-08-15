@@ -59,6 +59,8 @@
   (error "file-exists-p not implemented"))
 
 (defmacro with-data-dirs (basedir &body body)
+  "Sets up the environment for searching data files. BASEDIR is added to a
+  list of search paths, which by default contains the current directory."
   `(let ((*search-paths* (list "" (pathname-as-directory ,basedir))))
      (declare (special *search-paths*))
      ,@body))
@@ -82,6 +84,8 @@
         (return full-path)))))
 
 (defmacro with-data-file ((stream filespec) &body body)
+  "Behaves like WITH-OPEN-FILE, but searches the FILESPEC in search paths. If
+  the file is not found, an error will be raised."
   `(with-open-file (,stream (data-path ,filespec))
      ,@body))
 
@@ -91,10 +95,6 @@
   load-fun
   free-fun)
 
-(defstruct res-type
-  name
-  load-fun)
-
 (defstruct res-scope
   name
   (res-map (make-hash-table :test 'equal)))
@@ -102,25 +102,9 @@
 (defvar *resource-scopes* nil
   "Currently active resource scopes, orderer from nearest.")
 
-(symbol-macrolet
-    ((res-types
-      ((lambda ()
-         (declare (special *resource-types*))
-         (when (boundp '*resource-types*)
-           *resource-types*)))))
-
-  (defun get-res-type (res-name)
-    (flet ((matches-ext (res-type)
-             (let ((ext (concatenate 'string "." (res-type-name res-type))))
-               (ends-with-subseq ext res-name))))
-      (find-if #'matches-ext res-types))))
-
 (defun get-resource-from-scope (res-scope res-name)
   (with-struct (res-scope- res-map) res-scope
-    (if-let ((res (gethash res-name res-map)))
-      res
-      (when-let (res-type (get-res-type res-name))
-        (funcall (res-type-load-fun res-type) res-name)))))
+    (gethash res-name res-map)))
 
 (symbol-macrolet
     ((resource-scopes
