@@ -425,7 +425,8 @@ DRAW and DELETE for drawing and deleting respectively."
     (let* ((textures (remove-duplicates (sbsp:bsp-trav bsp #'append
                                                        #'leaf-textures)
                                         :test #'string=)))
-      (srend:load-map-images render-system textures)
+      (srend:load-map-images (srend::render-system-image-manager render-system)
+                             textures)
       (srend:print-memory-usage render-system))))
 
 (defun spawn-player (things camera)
@@ -444,10 +445,10 @@ DRAW and DELETE for drawing and deleting respectively."
       (declare (special *win-width* *win-height*))
       (sdl2:with-window (win :title "shake" :w *win-width* :h *win-height*
                              :flags '(:shown :opengl))
-        (srend:with-render-system (render-system win)
-          (srend:print-gl-info (srend:render-system-gl-config render-system))
-          (sdl2:set-relative-mouse-mode 1)
-          (with-data-dirs *base-dir*
+        (with-data-dirs *base-dir*
+          (srend:with-render-system (render-system win)
+            (srend:print-gl-info (srend:render-system-gl-config render-system))
+            (sdl2:set-relative-mouse-mode 1)
             (with-resources "main"
               (load-main-resources)
               (let* ((proj (make-perspective (* deg->rad 60d0)

@@ -56,17 +56,14 @@
   "Rendering related global variables and constants."
   (gl-config nil :type gl-config :read-only t)
   batches
-  (images nil :type list)
-  (image-map (make-hash-table :test #'equal)))
+  (image-manager nil :type image-manager))
 
 (defun init-render-system ()
-  (make-render-system :gl-config (init-gl-config)))
+  (make-render-system :gl-config (init-gl-config)
+                      :image-manager (init-image-manager)))
 
 (defun shutdown-render-system (render-system)
-  (dolist (image (render-system-images render-system))
-    (purge-image image))
-  (setf (render-system-images render-system) nil)
-  (clrhash (render-system-image-map render-system)))
+  (shutdown-image-manager (render-system-image-manager render-system)))
 
 (defmacro with-render-system ((render-system window) &body body)
   (with-gensyms (context)
@@ -80,20 +77,10 @@
               (progn ,@body)
            (shutdown-render-system ,render-system))))))
 
-(defun load-map-images (render-system image-names)
-  (let ((image (make-image :name "map-textures"
-                           :tex-type :texture-2d-array
-                           :width 1024 :height 1024 :files image-names)))
-    (load-image image)
-    (push image (render-system-images render-system))
-    (with-struct (render-system- image-map) render-system
-      (setf (gethash "map-textures" image-map) image)
-      (dolist-enum (layer image-name image-names)
-        (setf (gethash image-name image-map) (cons image layer))))))
-
 (defun print-memory-usage (render-system)
   "Print the estimate of used memory in GL."
-  (with-struct (render-system- images) render-system
+  (with-struct (image-manager- images)
+      (render-system-image-manager render-system)
     (let ((image-usage (reduce #'+ (mapcar #'image-storage-size images))))
       (format t "Total image allocation: ~:D bytes~%" image-usage))))
 
@@ -182,22 +169,23 @@
 
 (defun finish-draw-frame (render-system)
   (declare (optimize (speed 3) (space 3)))
-  (with-struct (render-system- batches image-map) render-system
+  (with-struct (render-system- batches image-manager) render-system
     (declare (type (vector batch) batches))
-    (sgl:with-uniform-locations (sdata:res "shader-prog")
-        (has-albedo tex-albedo)
-      (gl:uniformi tex-albedo-loc 0)
-      (gl:active-texture :texture0)
-      (bind-image (gethash "map-textures" image-map))
-    (dotimes (i (length batches))
-      (let ((batch (aref batches i)))
-        (if-let ((tex-name (batch-texture batch)))
-          (let ((layer (cdr (gethash tex-name image-map))))
-            (gl:uniformi has-albedo-loc layer))
-          (gl:uniformi has-albedo-loc -1))
-        (draw-batch batch)
-        (free-batch batch)))
-    (setf (fill-pointer batches) 0))))
+    (let ((map-textures (get-image image-manager "map-textures")))
+      (sgl:with-uniform-locations (sdata:res "shader-prog")
+          (has-albedo tex-albedo)
+        (gl:uniformi tex-albedo-loc 0)
+        (gl:active-texture :texture0)
+        (bind-image map-textures)
+        (dotimes (i (length batches))
+          (let ((batch (aref batches i)))
+            (if-let ((tex-name (batch-texture batch)))
+              (when-let ((layer (get-image-layer map-textures tex-name)))
+                (gl:uniformi has-albedo-loc layer))
+              (gl:uniformi has-albedo-loc -1))
+            (draw-batch batch)
+            (free-batch batch)))))
+      (setf (fill-pointer batches) 0)))
 
 (defun add-new-batch (byte-size)
   (declare (special *batches*))

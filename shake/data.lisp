@@ -74,7 +74,8 @@
        ,@rem-body)))
 
 (define-data-fun data-path (filename)
-  "Construct a path to FILENAME by looking for it in to *SEARCH-PATHS*."
+  "Construct a path to FILENAME by looking for it in to
+  *SEARCH-PATHS*. Returns NIL if file not found."
   (dolist (search *search-paths*)
     (when-let ((full-path (file-exists-p (merge-pathnames filename search))))
       (unless (directory-pathname-p full-path)
