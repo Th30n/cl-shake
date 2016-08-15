@@ -21,6 +21,7 @@
   (:use #:cl #:alexandria)
   (:export #:dolist-enum
            #:doproduct
+           #:dovector
            #:group-by
            #:length>=
            #:notf

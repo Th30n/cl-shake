@@ -41,6 +41,15 @@ the structure."
        ,@body
        (incf ,idx-var))))
 
+(defmacro dovector ((var vector &optional result) &body body)
+  "Behaves like DOLIST, but on a one dimensional array."
+  (with-gensyms (i n gvector)
+    `(let* ((,gvector ,vector)
+            (,n (length ,vector)))
+       (dotimes (,i ,n ,result)
+         (let ((,var (aref ,gvector ,i)))
+           ,@body)))))
+
 (defmacro zap (fn place &rest args)
   "Set the PLACE to the result of applying the function FN to the current
   value of place and ARGS. For example:
