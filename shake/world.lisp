@@ -26,11 +26,6 @@
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
-(defun dist-line-point (line point)
-  (declare (type sbsp:linedef line) (type (vec 2) point))
-  (vdot (sbsp:linedef-normal line)
-        (v- point (sbsp:linedef-start line))))
-
 (defun hull-point-contents (hull point)
   "Traverse the HULL to the leaf where POINT is located and return
   LEAF-CONTENTS. Splitting line is offset by given RADIUS."
@@ -54,6 +49,10 @@
     frac))
 
 (defun adjust-midf (hull p1 p2 p1f p2f mid midf frac)
+  "Returns adjusted splitting fraction MIDF as the primary value, and adjusted
+  MID point as the secondary. Adjustment is done such that the split point is
+  moved outside of the solid area if it ended up inside due to floating point
+  errors."
   (do ()
       ((not (eq (hull-point-contents hull (v3->v2 mid)) :contents-solid))
        (values midf mid))
@@ -64,6 +63,9 @@
               mid (v+ p1 (vscale frac (v- p2 p1)))))))
 
 (defun split-hull-check (hull node t1 t2 p1 p2 p1f p2f)
+  "Check for collision on both sides of given hull NODE. T1 and T2 are
+  distances to splitting node line for points P1 and P2. P1F and P2F are
+  fractions of the movement line from P1 to P2."
   (let* ((frac (cross-fraction t1 t2))
          (midf (+ p1f (* frac (- p2f p1f))))
          (mid (v+ p1 (vscale frac (v- p2 p1)))))
@@ -97,15 +99,18 @@
                      t)))))))))
 
 (defun recursive-hull-check (hull p1 p2 &optional (node nil) (p1f 0d0) (p2f 1d0))
-  "Checks the HULL for the nearest collision on the way from P1 to P2."
+  "Checks the HULL for the nearest collision on the way from P1 to P2. Returns
+  the MTRACE of the final movement. The secondary value is T if there were
+  collisions."
   (declare (type (vec 3) p1 p2))
   (unless node
     (setf node hull))
   (if (sbsp:leaf-p node)
       (values (make-mtrace :endpos p2) nil)
-      (let ((t1 (dist-line-point (sbsp:node-line node) (v3->v2 p1)))
-            (t2 (dist-line-point (sbsp:node-line node) (v3->v2 p2))))
+      (let ((t1 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p1)))
+            (t2 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p2))))
         (cond
+          ;; XXX: floating point comparison?!
           ((and (minusp t1) (minusp t2))
            ;; Path is behind the line.
            (recursive-hull-check hull p1 p2 (sbsp:node-back node) p1f p2f))

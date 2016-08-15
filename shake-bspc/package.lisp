@@ -30,6 +30,7 @@
            #:write-linedef
            #:read-linedef
            #:bounds-of-linedefs
+           #:dist-line-point
            ;; side definition
            #:sidedef
            #:sidedef-p

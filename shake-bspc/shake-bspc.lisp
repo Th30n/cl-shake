@@ -194,11 +194,16 @@
         (setf (lineseg-t-start l2) t-split)
         (cons l1 l2)))))
 
+(defun dist-line-point (line point)
+  "Return the distance between the given LINE and POINT."
+  (declare (type linedef line) (type (vec 2) point))
+  (vdot (linedef-normal line)
+        (v- point (linedef-start line))))
+
 (defun determine-side (line point)
   "Determine on which side of a LINE is the given POINT located. Returns
   :BACK, :FRONT or :ON-LINE as the primary value and distance as the second."
-  (let ((d (vdot (linedef-normal line)
-                 (v- point (linedef-start line)))))
+  (let ((d (dist-line-point line point)))
     (values (cond
               ((double= d 0d0) :on-line)
               ((plusp d) :front)
