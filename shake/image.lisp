@@ -16,12 +16,16 @@
 
 (in-package #:shake.render)
 
+(defstruct image-opts
+  (width 0 :type fixnum :read-only t)
+  (height 0 :type fixnum :read-only t)
+  (depth 1 :type fixnum :read-only t))
+
 (defstruct image
   (name nil :type string :read-only t)
   (tex-type :texture-2d :read-only t)
-  (width 0 :type fixnum)
-  (height 0 :type fixnum)
-  (files nil :type list :read-only t)
+  (opts nil :type (or null image-opts))
+  (files nil :type list)
   (gl-tex -1 :type integer)
   ;; In case of array texture, maps file name to layer index.
   (layer-map (make-hash-table :test #'equal)))
@@ -35,49 +39,58 @@
     (assert (image-loaded-p image))
     (gethash name layer-map)))
 
+(defun read-image-from-file (fname)
+  (sdl2:load-bmp (image-path fname)))
+
+(defun load-image-to-array (name binary-image image-array)
+  (bind-image image-array)
+  (with-struct (image-opts- width height) (image-opts image-array)
+    (assert (= width (sdl2:surface-width binary-image)))
+    (assert (= height (sdl2:surface-height binary-image)))
+    (let ((layer (hash-table-count (image-layer-map image-array))))
+      (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer width height 1 :bgr
+                           :unsigned-byte (sdl2:surface-pixels binary-image))
+      (gl:generate-mipmap :texture-2d-array)
+      (setf (gethash name (image-layer-map image-array)) layer))))
+
 (defun load-image (image)
   (assert (not (image-loaded-p image)))
-  (flet ((read-image-from-file (fname)
-           (sdl2:load-bmp (image-path fname))))
-    (with-struct (image- tex-type files) image
-      (setf (image-gl-tex image) (first (gl:gen-textures 1)))
-      (bind-image image)
-      (ecase tex-type
-        (:texture-2d-array
-         (assert (length>= 1 files))
-         (let* ((binary-images
-                 (mapcar (lambda (fname)
-                           (cons fname (read-image-from-file fname)))
-                         files))
-                (width (sdl2:surface-width (cdr (first binary-images))))
-                (height (sdl2:surface-height (cdr (first binary-images)))))
-           (setf (image-width image) width
-                 (image-height image) height)
-           (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height
-                            (list-length files) 0 :bgr :unsigned-byte
-                            (cffi:null-pointer))
-           (dolist-enum (layer bimage binary-images)
-             ;; TODO: Better error handling.
-             (destructuring-bind (name . data) bimage
-               (assert (= width (sdl2:surface-width data)))
-               (assert (= height (sdl2:surface-height data)))
-               (gl:tex-sub-image-3d :texture-2d-array 0 0 0 layer width height 1
-                                    :bgr :unsigned-byte (sdl2:surface-pixels data))
-               (setf (gethash name (image-layer-map image)) layer)
-               (sdl2:free-surface data)))))
-        (:texture-2d
-         (assert (length= 1 files))
-         (let* ((data (read-image-from-file (first files)))
-                (width (sdl2:surface-width data))
-                (height (sdl2:surface-height data)))
-           (setf (image-width image) width
-                 (image-height image) height)
-           (gl:tex-image-2d :texture-2d 0 :srgb8 width height 0
-                            :bgr :unsigned-byte (sdl2:surface-pixels data))
-           (sdl2:free-surface data))))
-      (gl:generate-mipmap tex-type)
-      (gl:tex-parameter tex-type :texture-min-filter :linear-mipmap-nearest)
-      (gl:tex-parameter tex-type :texture-mag-filter :linear)))
+  (with-struct (image- tex-type files) image
+    (setf (image-gl-tex image) (first (gl:gen-textures 1)))
+    (bind-image image)
+    (ecase tex-type
+      (:texture-2d-array
+       (assert (length>= 1 files))
+       (let* ((depth (list-length files))
+              (binary-images
+               (mapcar (lambda (fname)
+                         (cons fname (read-image-from-file fname)))
+                       files))
+              (width (sdl2:surface-width (cdr (first binary-images))))
+              (height (sdl2:surface-height (cdr (first binary-images)))))
+         (setf (image-opts image) (make-image-opts :width width
+                                                   :height height
+                                                   :depth depth))
+         (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height depth 0
+                          :bgr :unsigned-byte (cffi:null-pointer))
+         (dolist (bimage binary-images)
+           ;; TODO: Better error handling.
+           (destructuring-bind (name . data) bimage
+             (load-image-to-array name data image)
+             (sdl2:free-surface data)))))
+      (:texture-2d
+       (assert (length= 1 files))
+       (let* ((data (read-image-from-file (first files)))
+              (width (sdl2:surface-width data))
+              (height (sdl2:surface-height data)))
+         (setf (image-opts image) (make-image-opts :width width
+                                                   :height height))
+         (gl:tex-image-2d :texture-2d 0 :srgb8 width height 0
+                          :bgr :unsigned-byte (sdl2:surface-pixels data))
+         (sdl2:free-surface data))))
+    (gl:generate-mipmap tex-type)
+    (gl:tex-parameter tex-type :texture-min-filter :linear-mipmap-nearest)
+    (gl:tex-parameter tex-type :texture-mag-filter :linear))
   image)
 
 (defun purge-image (image)
@@ -97,40 +110,78 @@
 (defun image-storage-size (image)
   "Return the estimated size in bytes this image is using in GL."
   (if (not (image-loaded-p image))
-      0d0
-      (with-struct (image- width height files) image
-        (* width height (list-length files)
-           3 ;; 3 bytes per pixel; TODO: Calc for different formats.
-           (/ 4 3))))) ;; Account for mipmaps; TODO: Calc without mipmaps.
+      0
+      (with-struct (image- opts) image
+        (with-struct (image-opts- width height depth) opts
+          (* width height depth
+             3 ;; 3 bytes per pixel; TODO: Calc for different formats.
+             (/ 4 3)))))) ;; Account for mipmaps; TODO: Calc without mipmaps.
 
 (defstruct image-manager
   (images nil :type list)
+  ;; Maps image name to image structure.
   (image-map (make-hash-table :test #'equal) :type hash-table)
+  ;; Maps image-opts to a list of images.
+  (image-opts-map (make-hash-table :test #'equalp) :type hash-table)
   missing-image)
 
 (defun get-image (image-manager name)
-  (with-struct (image-manager- image-map missing-image) image-manager
-    (gethash name image-map missing-image)))
+  (with-struct (image-manager- image-map) image-manager
+    (gethash name image-map)))
+
+(defun get-images-with-opts (image-manager opts)
+  (gethash opts (image-manager-image-opts-map image-manager)))
 
 (defun add-image (image-manager image)
   (push image (image-manager-images image-manager))
-  (setf (gethash (image-name image)
-                 (image-manager-image-map image-manager)) image))
+  (setf (gethash (image-name image) (image-manager-image-map image-manager))
+        image))
 
-(defun load-image-from-file (image-manager fname &key (tex-type :texture-2d))
+(defun find-image-array (image-manager opts)
+  (with-struct (image-opts- depth) opts
+    (dolist (image (get-images-with-opts image-manager opts))
+      (when (> depth (hash-table-count (image-layer-map image)))
+        (return image)))))
+
+(defun get-or-create-image-array (image-manager name opts)
+  (if-let ((image-array (find-image-array image-manager opts)))
+    image-array
+    (let ((image-array (make-image :name name :tex-type :texture-2d-array
+                                   :opts opts)))
+      (setf (image-gl-tex image-array) (first (gl:gen-textures 1)))
+      (bind-image image-array)
+      (with-struct (image-opts- width height depth) opts
+        (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height depth
+                         0 :bgr :unsigned-byte (cffi:null-pointer)))
+      (gl:tex-parameter :texture-2d-array :texture-min-filter
+                        :linear-mipmap-nearest)
+      (gl:tex-parameter :texture-2d-array :texture-mag-filter :linear)
+      (setf (gethash opts (image-manager-image-opts-map image-manager))
+            (list image-array))
+      (add-image image-manager image-array)
+      image-array)))
+
+(defun load-image-from-file (image-manager fname)
   (if-let ((found-image (get-image image-manager fname)))
     found-image
-    (let ((image (make-image :name fname :tex-type tex-type
-                             :files (list fname))))
-      (add-image image-manager image)
-      (load-image image))))
+    (let ((binary-image (read-image-from-file fname)))
+      (unwind-protect
+           (let* ((opts (make-image-opts
+                         :width (sdl2:surface-width binary-image)
+                         :height (sdl2:surface-height binary-image)
+                         :depth 10))
+                  (image-array (get-or-create-image-array image-manager fname
+                                                          opts)))
+             (push fname (image-files image-array))
+             (setf (gethash fname (image-manager-image-map image-manager))
+                   image-array)
+             (load-image-to-array fname binary-image image-array))
+        (sdl2:free-surface binary-image)))))
 
 (defun load-map-images (image-manager image-names)
-  (let ((image (make-image :name "map-textures" :tex-type :texture-2d-array
-                           :files (remove-if (compose #'not #'image-path)
-                                             image-names))))
-    (add-image image-manager image)
-    (load-image image)))
+  (dolist (name image-names)
+    (when (image-path name)
+      (load-image-from-file image-manager name))))
 
 (defun init-image-manager ()
   (let ((im (make-image-manager)))
@@ -142,4 +193,5 @@
   (dolist (image (image-manager-images image-manager))
     (purge-image image))
   (setf (image-manager-images image-manager) nil)
-  (clrhash (image-manager-image-map image-manager)))
+  (clrhash (image-manager-image-map image-manager))
+  (clrhash (image-manager-image-opts-map image-manager)))
