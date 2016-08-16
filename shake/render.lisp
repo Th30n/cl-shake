@@ -84,23 +84,29 @@
     (let ((image-usage (reduce #'+ (mapcar #'image-storage-size images))))
       (format t "Total image allocation: ~:D bytes~%" image-usage))))
 
+(defconstant +max-batch-size+ 512
+  "Maximum count of objects in a batch. This should be consistent across
+  shaders.")
+
 (defstruct batch
   vertex-array
   buffer
   (offset 0 :type fixnum)
   texture
+  (layers nil :type list)
+  (objects 0 :type fixnum)
   (draw-count 0 :type fixnum)
   (max-bytes 0 :type fixnum)
   (free-p nil :type boolean)
   (ready-p nil :type boolean))
 
 (defun init-batch (byte-size)
-  (let ((buffer (car (gl:gen-buffers 1)))
+  (let ((buffer (first (gl:gen-buffers 1)))
         (vertex-array (gl:gen-vertex-array)))
     (gl:bind-buffer :array-buffer buffer)
-    (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer)
-                     :static-draw)
-    (make-batch :vertex-array vertex-array :buffer buffer
+    (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer) :static-draw)
+    (make-batch :vertex-array vertex-array
+                :buffer buffer
                 :max-bytes byte-size)))
 
 (defun free-batch (batch)
@@ -113,11 +119,11 @@
 (defun finish-batch (batch)
   (assert (not (batch-free-p batch)))
   (gl:bind-vertex-array (batch-vertex-array batch))
-  (gl:bind-buffer :array-buffer (batch-buffer batch))
   (let ((stride (* 4 (+ 3 3 3 2)))
         (color-offset (* 4 3))
         (normal-offset (* 4 (+ 3 3)))
         (uv-offset (* 4 (+ 3 3 3))))
+    (gl:bind-buffer :array-buffer (batch-buffer batch))
     ;; positions
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil stride (cffi:null-pointer))
@@ -138,11 +144,25 @@
   (unless (batch-ready-p batch)
     (finish-batch batch))
   (gl:bind-vertex-array (batch-vertex-array batch))
-  (gl:draw-arrays :triangles 0 (batch-draw-count batch))
-  (gl:check-error)
+  (let ((layers (reverse (batch-layers batch)))
+        (layer-count (list-length (batch-layers batch)))
+        (draw-start 0))
+    (sgl:with-uniform-locations (sdata:res "shader-prog")
+        (tex-layer draw-id)
+      (cffi:with-foreign-object (layer-array :int layer-count)
+        (dolist-enum (ix layer-pair layers)
+          (let ((layer (car layer-pair)))
+            (setf (cffi:mem-aref layer-array :int ix) layer)))
+        (%gl:uniform-1iv tex-layer-loc layer-count layer-array))
+      (dolist-enum (ix layer-pair layers)
+        (gl:uniformi draw-id-loc ix)
+        (let ((draw-count (cdr layer-pair)))
+          (gl:draw-arrays :triangles draw-start draw-count)
+          (incf draw-start draw-count)))))
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface batch)
+  (declare (special *rs*))
   (flet ((fill-buffer (byte-offset data)
            (gl:bind-buffer :array-buffer (batch-buffer batch))
            (gl:buffer-sub-data :array-buffer (cdr data)
@@ -151,14 +171,18 @@
            (gl:bind-buffer :array-buffer 0)
            (car data)))
     (with-struct (batch- offset) batch
-      (let ((gl-data (smdl::surface-gl-data surface)))
-        (incf (batch-draw-count batch)
-              (list-length (smdl:surface-faces surface)))
+      (let ((gl-data (smdl::surface-gl-data surface))
+            (draw-count (list-length (smdl:surface-faces surface)))
+            (tex-name (when-let ((texinfo (sbsp:sidedef-texinfo surface)))
+                                (string-downcase (sbsp:texinfo-name texinfo)))))
+        (with-struct (render-system- image-manager) *rs*
+          (let* ((map-textures (get-image image-manager "map-textures"))
+                 (layer (get-image-layer map-textures tex-name)))
+            (push (cons (if layer layer -1) draw-count) (batch-layers batch))))
         (incf (batch-offset batch)
               (the fixnum (fill-buffer offset gl-data)))
-        (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
-                    (tex-name (string-downcase (sbsp:texinfo-name texinfo))))
-          (setf (batch-texture batch) tex-name))))))
+        (incf (batch-draw-count batch) draw-count)
+        (incf (batch-objects batch))))))
 
 (defun init-draw-frame (render-system)
   (if-let ((batches (render-system-batches render-system)))
@@ -172,16 +196,11 @@
   (with-struct (render-system- batches image-manager) render-system
     (declare (type (vector batch) batches))
     (let ((map-textures (get-image image-manager "map-textures")))
-      (sgl:with-uniform-locations (sdata:res "shader-prog")
-          (has-albedo tex-albedo)
+      (sgl:with-uniform-locations (sdata:res "shader-prog") (tex-albedo)
         (gl:uniformi tex-albedo-loc 0)
         (gl:active-texture :texture0)
         (bind-image map-textures)
         (dovector (batch batches)
-          (if-let ((tex-name (batch-texture batch)))
-            (when-let ((layer (get-image-layer map-textures tex-name)))
-              (gl:uniformi has-albedo-loc layer))
-            (gl:uniformi has-albedo-loc -1))
           (draw-batch batch)
           (free-batch batch))))
       (setf (fill-pointer batches) 0)))
@@ -206,30 +225,24 @@
   (let ((current-batch (get-current-batch))
         (surface-space (car (smdl:surface-gl-data surface))))
     (declare (type fixnum surface-space))
-    (labels ((tex-match-p (batch)
-               (let ((current-texture (batch-texture batch))
-                     (texinfo (sbsp:sidedef-texinfo surface)))
-                 (or (and (not current-texture) (not texinfo))
-                     (and current-texture texinfo
-                          (string= current-texture
-                                   (string-downcase (sbsp:texinfo-name texinfo)))))))
-             (can-add-p (batch)
-               (with-struct (batch- offset max-bytes) batch
+    (labels ((can-add-p (batch)
+               (with-struct (batch- offset max-bytes objects) batch
                  (let ((free-space (- max-bytes offset)))
                    (and (> free-space surface-space)
-                        (tex-match-p batch))))))
+                        (< objects +max-batch-size+))))))
       (let ((batch
              (if (and current-batch (can-add-p current-batch))
                  current-batch
-                 (add-new-batch (max surface-space (* 10 1024)))))) ;; 10kB
+                 (add-new-batch (max surface-space (* 100 1024)))))) ;; 100kB
         (add-surface-vertex-data surface batch)))))
 
 (defmacro with-draw-frame ((render-system) &body body)
   "Establishes the environment where SHAKE.RENDER package functions can be
   used."
   (with-gensyms (body-result)
-    `(let ((*batches* (init-draw-frame ,render-system)))
-       (declare (special *batches*))
+    `(let ((*batches* (init-draw-frame ,render-system))
+           (*rs* ,render-system))
+       (declare (special *batches* *rs*))
        (let ((,body-result (multiple-value-list (progn ,@body))))
          (finish-draw-frame ,render-system)
          (values-list ,body-result)))))

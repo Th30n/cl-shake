@@ -16,16 +16,21 @@
 
 #version 330 core
 
+#define MAX_BATCH_SIZE 512
+
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 color;
 layout (location = 2) in vec2 uv;
 layout (location = 3) in vec3 normal;
 
 uniform mat4 mvp = mat4(1.0);
+uniform int draw_id = 0;
+uniform int tex_layer[MAX_BATCH_SIZE];
 
 out VS_OUT
 {
     vec2 uv;
+    float layer;
     vec3 color;
     vec3 normal;
 } vs_out;
@@ -34,6 +39,7 @@ void main(void)
 {
     gl_Position = mvp * vec4(position, 1.0);
     vs_out.uv = uv;
+    vs_out.layer = float(tex_layer[draw_id]);
     vs_out.color = color;
     vs_out.normal = normal;
 }
