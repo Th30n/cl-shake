@@ -17,12 +17,20 @@
 (in-package #:shake-utils)
 
 (defmacro with-struct ((name . fields) struct &body body)
-  "Bind variables to FIELDS from STRUCT. NAME is a prefix associated with
-the structure."
+  "Bind variables to FIELDS from STRUCT. NAME is a prefix associated with the
+  structure. A binding can be just the field name or a list of 2 elements:
+  (VAR FIELD).
+
+  The following example will bind VAL-A to the value of MYSTRUCT-VAL-A and B
+  to MYSTRUCT-VAL-B.
+  (with-struct (mystruct- val-a (b val-b)) struct-instance
+    ..."
   (let ((gs (gensym)))
     `(let ((,gs ,struct))
        (let ,(mapcar (lambda (f)
-                       `(,f (,(symbolicate name f) ,gs)))
+                       (if (atom f)
+                           `(,f (,(symbolicate name f) ,gs))
+                           `(,(first f) (,(symbolicate name (second f)) ,gs))))
                      fields)
          ,@body))))
 
