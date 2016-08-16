@@ -45,6 +45,22 @@ and is implementation dependant."
            (declare (dynamic-extent ,gl-array))
            ,@body)))))
 
+(cffi:defcstruct draw-arrays-indirect-command
+  (count :unsigned-int)
+  (prim-count :unsigned-int)
+  (first :unsigned-int)
+  (base-instance :unsigned-int))
+
+(defun set-draw-arrays-command (cmd-ptr count &key (prim-count 1)
+                                                (first 0) (base-instance 0))
+  (macrolet ((cmd-slot (slot)
+               `(cffi:foreign-slot-value
+                 cmd-ptr '(:struct draw-arrays-indirect-command) ',slot)))
+    (setf (cmd-slot count) count
+          (cmd-slot prim-count) prim-count
+          (cmd-slot first) first
+          (cmd-slot base-instance) base-instance)))
+
 (defun clear-buffer-fv (buffer drawbuffer &rest values)
   (with-gl-array (value-array :float (apply #'vector values))
     (%gl:clear-buffer-fv buffer drawbuffer (gl::gl-array-pointer value-array))))

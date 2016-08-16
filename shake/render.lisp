@@ -24,7 +24,9 @@
   (glsl-version-string nil :type string :read-only t)
   (max-texture-size nil :type integer :read-only t)
   (max-3d-texture-size nil :type integer :read-only t)
-  (max-array-texture-layers nil :type integer :read-only t))
+  (max-array-texture-layers nil :type integer :read-only t)
+  (multi-draw-indirect-p nil :type boolean :read-only t)
+  (base-instance-p nil :type boolean :read-only t))
 
 (defun init-gl-config ()
   "Create GL-CONFIG and fill with information from GL context."
@@ -35,7 +37,9 @@
    :glsl-version-string (gl:get-string :shading-language-version)
    :max-texture-size (gl:get-integer :max-texture-size)
    :max-3d-texture-size (gl:get-integer :max-3d-texture-size)
-   :max-array-texture-layers (gl:get-integer :max-array-texture-layers)))
+   :max-array-texture-layers (gl:get-integer :max-array-texture-layers)
+   :multi-draw-indirect-p (gl:extension-present-p "GL_ARB_multi_draw_indirect")
+   :base-instance-p (gl:extension-present-p "GL_ARB_base_instance")))
 
 (defun print-gl-info (gl-config)
   "Print basic OpenGL information."
@@ -91,6 +95,7 @@
 (defstruct batch
   vertex-array
   buffer
+  id-buffer
   (offset 0 :type fixnum)
   texture
   (layers nil :type list)
@@ -101,22 +106,23 @@
   (ready-p nil :type boolean))
 
 (defun init-batch (byte-size)
-  (let ((buffer (first (gl:gen-buffers 1)))
+  (let ((buffers (gl:gen-buffers 2))
         (vertex-array (gl:gen-vertex-array)))
-    (gl:bind-buffer :array-buffer buffer)
+    (gl:bind-buffer :array-buffer (first buffers))
     (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer) :static-draw)
     (make-batch :vertex-array vertex-array
-                :buffer buffer
+                :buffer (first buffers)
+                :id-buffer (second buffers)
                 :max-bytes byte-size)))
 
 (defun free-batch (batch)
-  (with-struct (batch- vertex-array buffer) batch
-    (gl:delete-buffers (list buffer))
+  (with-struct (batch- vertex-array buffer id-buffer) batch
+    (gl:delete-buffers (list buffer id-buffer))
     (gl:delete-vertex-arrays (list vertex-array))
     (setf (batch-free-p batch) t
           (batch-ready-p batch) nil)))
 
-(defun finish-batch (batch)
+(defun finish-batch (batch gl-config)
   (assert (not (batch-free-p batch)))
   (gl:bind-vertex-array (batch-vertex-array batch))
   (let ((stride (* 4 (+ 3 3 3 2)))
@@ -135,30 +141,70 @@
     (gl:vertex-attrib-pointer 3 3 :float nil stride normal-offset)
     ;; uvs
     (gl:enable-vertex-attrib-array 2)
-    (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset))
+    (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset)
+    ;; draw-ids
+    (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
+      (let ((id-buffer (batch-id-buffer batch))
+            (id-count (if (and multi-draw-indirect-p base-instance-p)
+                          (list-length (batch-layers batch))
+                          (batch-draw-count batch))))
+        (gl:with-gl-array (id-array :int :count id-count)
+          (let ((array-index 0))
+            (dolist-enum (ix layer-pair (reverse (batch-layers batch)))
+              (if (and multi-draw-indirect-p base-instance-p)
+                  (setf (gl:glaref id-array ix) ix)
+                  (repeat (cdr layer-pair)
+                    (setf (gl:glaref id-array array-index) ix)
+                    (incf array-index)))))
+          (gl:bind-buffer :array-buffer id-buffer)
+          (gl:buffer-data :array-buffer :static-draw id-array)
+          (gl:vertex-attrib-ipointer 4 1 :int 0 (cffi:null-pointer))
+          (when (and multi-draw-indirect-p base-instance-p)
+            (%gl:vertex-attrib-divisor 4 1))
+          (gl:enable-vertex-attrib-array 4)))))
   (gl:bind-vertex-array 0)
   (setf (batch-ready-p batch) t))
 
-(defun draw-batch (batch)
+(defun draw-batch (batch gl-config)
   (assert (not (batch-free-p batch)))
   (unless (batch-ready-p batch)
-    (finish-batch batch))
+    (finish-batch batch gl-config))
   (gl:bind-vertex-array (batch-vertex-array batch))
   (let ((layers (reverse (batch-layers batch)))
         (layer-count (list-length (batch-layers batch)))
         (draw-start 0))
     (sgl:with-uniform-locations (sdata:res "shader-prog")
-        (tex-layer draw-id)
+        (tex-layer)
       (cffi:with-foreign-object (layer-array :int layer-count)
         (dolist-enum (ix layer-pair layers)
           (let ((layer (car layer-pair)))
             (setf (cffi:mem-aref layer-array :int ix) layer)))
         (%gl:uniform-1iv tex-layer-loc layer-count layer-array))
-      (dolist-enum (ix layer-pair layers)
-        (gl:uniformi draw-id-loc ix)
-        (let ((draw-count (cdr layer-pair)))
-          (gl:draw-arrays :triangles draw-start draw-count)
-          (incf draw-start draw-count)))))
+      (if (and (gl-config-multi-draw-indirect-p gl-config)
+               (gl-config-base-instance-p gl-config))
+          (cffi:with-foreign-object
+              (cmds '(:struct sgl:draw-arrays-indirect-command) layer-count)
+            (dolist-enum (ix layer-pair layers)
+              (let ((draw-count (cdr layer-pair))
+                    (cmd (cffi:mem-aptr
+                          cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
+                (sgl:set-draw-arrays-command cmd draw-count :first draw-start
+                                             :base-instance ix)
+                (incf draw-start draw-count)))
+            (let ((cmd-buffer (first (gl:gen-buffers 1))))
+              (gl:bind-buffer :draw-indirect-buffer cmd-buffer)
+              (%gl:buffer-data :draw-indirect-buffer (* 16 layer-count) cmds :static-draw)
+              (%gl:multi-draw-arrays-indirect :triangles (cffi:null-pointer) layer-count 0)
+              (gl:bind-buffer :draw-indirect-buffer 0)
+              (gl:delete-buffers (list cmd-buffer))))
+          (cffi:with-foreign-objects ((firsts :int layer-count)
+                                      (counts :int layer-count))
+            (dolist-enum (ix layer-pair layers)
+              (let ((draw-count (cdr layer-pair)))
+                (setf (cffi:mem-aref firsts :int ix) draw-start
+                      (cffi:mem-aref counts :int ix) draw-count)
+                (incf draw-start draw-count)))
+            (%gl:multi-draw-arrays :triangles firsts counts layer-count)))))
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface batch)
@@ -201,15 +247,15 @@
         (gl:active-texture :texture0)
         (bind-image map-textures)
         (dovector (batch batches)
-          (draw-batch batch)
+          (draw-batch batch (render-system-gl-config render-system))
           (free-batch batch))))
       (setf (fill-pointer batches) 0)))
 
 (defun add-new-batch (byte-size)
-  (declare (special *batches*))
-  (declare (optimize (speed 3) (space 3)))
+  (declare (special *batches* *rs*)
+           (optimize (speed 3) (space 3)))
   (when-let ((current-batch (get-current-batch)))
-    (finish-batch current-batch))
+    (finish-batch current-batch (render-system-gl-config *rs*)))
   (let ((batch (init-batch byte-size)))
     (vector-push-extend batch *batches*)
     batch))

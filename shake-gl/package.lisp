@@ -19,11 +19,13 @@
 (defpackage #:shake-gl
   (:nicknames #:sgl)
   (:use #:cl #:alexandria)
-  (:export #:clear-buffer-fv
+  (:export #:buffer-data
+           #:clear-buffer-fv
+           #:draw-arrays-indirect-command
            #:load-shader
-           #:with-gl-array
-           #:with-uniform-locations
-           #:uniform-matrix-4f
-           #:buffer-data
            #:map-buffer
-           #:with-mapped-buffer))
+           #:set-draw-arrays-command
+           #:uniform-matrix-4f
+           #:with-gl-array
+           #:with-mapped-buffer
+           #:with-uniform-locations))
