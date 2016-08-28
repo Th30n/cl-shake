@@ -82,14 +82,15 @@ and rotation as a quaternion."
 (define-extract-frustum-plane near v+ 2)
 (define-extract-frustum-plane far v- 2)
 
-(defun intersect-frustum-2d (frustum-planes bounds)
-  "Intersect the frustum with axis aligned bounding rectangle. Returns
-  NIL if bounds are outside, :INTERSECT if they intersect and :INSIDE if
-  bounds are completely inside the frustum."
+(defun intersect-frustum-2d (frustum-planes bounds bound-y)
+  "Intersect the frustum with axis aligned bounding rectangle. Returns NIL if
+  bounds are outside, :INTERSECT if they intersect and :INSIDE if bounds are
+  completely inside the frustum. BOUND-Y is used to lift the bounds from 2D
+  into 3D."
   (declare (type (cons (vec 2) (vec 2)) bounds)
            (optimize (speed 3) (space 3) (safety 0) (debug 0)))
   (destructuring-bind (mins . maxs) bounds
-    (declare (type (vec 2) mins maxs))
+    (declare (type (vec 2) mins maxs) (type double-float bound-y))
     (flet ((intersect-plane (plane)
              "Intersect a plane with AABB. Based on the algorithm from
             Real-Time Rendering 3rd edition, 16.10.1 AABB"
@@ -97,9 +98,11 @@ and rotation as a quaternion."
                (let* ((center (the (vec 2) (vscale 0.5d0 (v+ mins maxs))))
                       (h (the (vec 2) (vscale 0.5d0 (v- maxs mins))))
                       (s (the double-float
-                              (+ (the double-float (vdot (v2->v3 center) normal))
+                              (+ (the double-float
+                                      (vdot (v2->v3 center bound-y) normal))
                                  dist)))
                       (e (+ (* (vx h) (abs (vx normal)))
+                            (* bound-y (abs (vy normal)))
                             ;; Note 2D vy iz vz in 3D.
                             (* (vy h) (abs (vz normal))))))
                  (declare (dynamic-extent center h s e)
@@ -506,6 +509,7 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun collect-visible-surfaces (camera bsp)
   (with-struct (camera- position) camera
     (let ((pos-2d (v (vx position) (vz position)))
+          (bound-y (vy position))
           (frustum (mapcar (rcurry #'funcall camera)
                            (list #'left-frustum-plane #'right-frustum-plane
                                  #'near-frustum-plane #'far-frustum-plane))))
@@ -513,14 +517,16 @@ DRAW and DELETE for drawing and deleting respectively."
                  (if (sbsp:leaf-p node)
                      (when (or (not test-frustum-p)
                                (intersect-frustum-2d frustum
-                                                     (sbsp:leaf-bounds node)))
+                                                     (sbsp:leaf-bounds node)
+                                                     bound-y))
                        (sbsp:leaf-surfaces node))
                      ;; split node
                      (let ((front (sbsp:node-front node))
                            (back (sbsp:node-back node)))
                        (when-let ((intersect (or (not test-frustum-p)
                                                  (intersect-frustum-2d
-                                                  frustum (sbsp:node-bounds node)))))
+                                                  frustum (sbsp:node-bounds node)
+                                                  bound-y))))
                          ;; Frustum testing is no longer needed if the bounds
                          ;; are completely inside.
                          (let ((test-p (and test-frustum-p
@@ -548,7 +554,8 @@ DRAW and DELETE for drawing and deleting respectively."
                  (if (sbsp:leaf-p node)
                      (when (or (not test-frustum-p)
                                (intersect-frustum-2d frustum
-                                                     (sbsp:leaf-bounds node)))
+                                                     (sbsp:leaf-bounds node)
+                                                     (vy position)))
                        (dolist (surf (sbsp:leaf-surfaces node))
                          (srend:render-surface surf)))
                      ;; split node
@@ -556,7 +563,8 @@ DRAW and DELETE for drawing and deleting respectively."
                            (back (sbsp:node-back node)))
                        (when-let ((intersect (or (not test-frustum-p)
                                                  (intersect-frustum-2d
-                                                  frustum (sbsp:node-bounds node)))))
+                                                  frustum (sbsp:node-bounds node)
+                                                  (vy position)))))
                          ;; Frustum testing is no longer needed if the bounds
                          ;; are completely inside.
                          (let ((test-p (and test-frustum-p

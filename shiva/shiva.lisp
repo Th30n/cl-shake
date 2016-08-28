@@ -245,10 +245,10 @@
   (declare (type (vec 3) v))
   (v (vx v) (vz v)))
 
-(defun v2->v3 (v)
+(defun v2->v3 (v &optional (y 0d0))
   "Convert VEC 2 to VEC 3 by adding the y axis, set to 0."
   (declare (type (vec 2) v))
-  (v (vx v) 0d0 (vy v)))
+  (v (vx v) y (vy v)))
 
 (deftype mat (n &optional m)
   `(simple-array double-float (,n ,(if (null m) n m))))
