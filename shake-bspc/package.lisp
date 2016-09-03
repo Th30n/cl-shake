@@ -31,12 +31,22 @@
            #:read-linedef
            #:bounds-of-linedefs
            #:dist-line-point
+           ;; sector definition
+           #:sector
+           #:sector-p
+           #:make-sector
+           #:sector-ceiling-height
+           #:sector-ceiling-texinfo
+           #:sector-floor-height
+           #:sector-floor-texinfo
            ;; side definition
            #:sidedef
            #:sidedef-p
            #:make-sidedef
            #:copy-sidedef
            #:sidedef-color
+           #:sidedef-front-sector
+           #:sidedef-back-sector
            #:sidedef-lineseg
            #:sidedef-texinfo
            #:write-sidedef
@@ -108,6 +118,7 @@
            #:back-to-front)
   (:import-from #:alexandria
                 #:compose
+                #:curry
                 #:maxf
                 #:minf))
 
@@ -117,6 +128,7 @@
   (:import-from #:alexandria
                 #:appendf
                 #:compose
+                #:curry
                 #:if-let
                 #:map-product
                 #:nconcf

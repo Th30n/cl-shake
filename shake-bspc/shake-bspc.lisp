@@ -92,13 +92,13 @@
     (format stream " ~S" (aref vec i)))
   (format stream ")"))
 
-(defun read-vec-from-list (list)
-  (destructuring-bind (type-name . args) list
+(defun read-vec-form (form)
+  (destructuring-bind (type-name . args) form
     (declare (ignore type-name))
     (apply #'v args)))
 
 (defun read-vec (stream)
-  (read-vec-from-list (read stream)))
+  (read-vec-form (read stream)))
 
 (defun write-texinfo (texinfo stream)
   (with-struct (texinfo- offset name draw-mode) texinfo
@@ -106,19 +106,66 @@
     (write-vec offset stream)
     (format stream " ~S ~S)" name draw-mode)))
 
-(defun read-texinfo-from-list (list)
-  (destructuring-bind (type-name . args) list
+(defun read-texinfo-form (form)
+  (destructuring-bind (type-name . args) form
     (declare (ignore type-name))
     (destructuring-bind (offset name draw-mode) args
-      (make-texinfo :offset (read-vec-from-list offset)
+      (make-texinfo :offset (read-vec-form offset)
                     :name name :draw-mode draw-mode))))
 
 (defun read-texinfo (stream)
-  (read-texinfo-from-list (read stream)))
+  (read-texinfo-form (read stream)))
+
+(defstruct sector
+  "A sector surrounded by lines. Stores information about floor and ceiling."
+  (lines nil :type list)
+  (floor-height 0d0 :type double-float)
+  (floor-texinfo nil :type (or null texinfo))
+  (ceiling-height 1d0 :type double-float)
+  (ceiling-texinfo nil :type (or null texinfo))
+  (ambient-light (v 0 0 0) :type (vec 3)))
+
+(defun write-sector (sector stream)
+  (with-struct (sector- floor-height floor-texinfo ceiling-height
+                        ceiling-texinfo ambient-light) sector
+    (format stream "(sector ~S " floor-height)
+    (if floor-texinfo
+        (write-texinfo floor-texinfo stream)
+        (prin1 floor-texinfo stream))
+    (format stream " ~S " ceiling-height)
+    (if ceiling-texinfo
+        (write-texinfo ceiling-texinfo stream)
+        (prin1 ceiling-texinfo stream))
+    (format stream " ")
+    (write-vec ambient-light stream)
+    (format stream ")")))
+
+(defun read-sector-form (form)
+  (destructuring-bind (type-name . args) form
+    (declare (ignore type-name))
+    (destructuring-bind (floor-height floor-texinfo
+                                      ceiling-height ceiling-texinfo
+                                      ambient-light) args
+      (make-sector :floor-height floor-height
+                   :floor-texinfo (when floor-texinfo
+                                    (read-texinfo-form floor-texinfo))
+                   :ceiling-height ceiling-height
+                   :ceiling-texinfo (when ceiling-texinfo
+                                      (read-texinfo-form ceiling-texinfo))
+                   :ambient-light (read-vec-form ambient-light)))))
+
+(defun read-sector (stream)
+  (read-sector-form (read stream)))
+
+(defstruct subsector
+  "A sub sector generated via BSP. Stores lines which surround it."
+  (lines nil :type list))
 
 (defstruct sidedef
   "A side definition for a line segment."
   (lineseg nil :type lineseg)
+  (front-sector nil :type (or null sector))
+  (back-sector nil :type (or null sector))
   (color (v 1 0 1) :type (vec 3))
   (texinfo nil))
 
@@ -130,7 +177,7 @@
                   :color color
                   :texinfo (if (or (eq :caulk texinfo) (null texinfo))
                                texinfo
-                               (read-texinfo-from-list texinfo)))))
+                               (read-texinfo-form texinfo)))))
 
 (defun write-sidedef (sidedef stream)
   (with-struct (sidedef- lineseg color texinfo) sidedef
@@ -357,6 +404,9 @@
             ;; We've selected all the segments and they form a convex hull.
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
+              (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
+                (assert (every (curry #'equalp (car front-sectors))
+                               (cdr front-sectors))))
               (make-leaf :bounds bounds :surfaces rest))
             ;; Split the remaining into front and back.
             (let ((splitter (lineseg-orig-line (sidedef-lineseg splitter-surf))))

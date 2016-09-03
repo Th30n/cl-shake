@@ -112,6 +112,22 @@
     (make-brush :surfaces (mapcar #'translate-surf (brush-surfaces brush))
                 :contents (brush-contents brush))))
 
+(defun brush-lower-p (b1 b2)
+  "Returns BRUSH B1 if its floor height is lower of B2. If brush B2 has no
+  floor, it is always higher than B1 unless B1 also has no floor."
+  (flet ((brush-sectors (brush)
+           (mapcar #'sidedef-back-sector (brush-surfaces brush))))
+    (let* ((sectors1 (brush-sectors b1))
+           (s1 (first sectors1))
+           (sectors2 (brush-sectors b2))
+           (s2 (first sectors2)))
+      (dolist (sectors (list sectors1 sectors2))
+        (assert (every (curry #'equalp (car sectors)) (cdr sectors))))
+      (when (or (and (not s2) s1)
+                (and s1 s2 (double> (sector-floor-height s2)
+                                    (sector-floor-height s1))))
+        b1))))
+
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
   ready for binary space partitioning."
@@ -120,7 +136,8 @@
       (let ((outside (brush-surfaces b1))
             inside)
         (dolist (b2 brushes)
-          (unless (eq b1 b2)
+          (unless (or (eq b1 b2)
+                      (brush-lower-p b2 b1))
             (shiftf inside outside nil)
             ;; clip brush b1 against b2
             (dolist (split-surf (brush-surfaces b2))
