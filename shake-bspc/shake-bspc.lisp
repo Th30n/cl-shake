@@ -100,21 +100,72 @@
 (defun read-vec (stream)
   (read-vec-form (read stream)))
 
-(defun write-texinfo (texinfo stream)
-  (with-struct (texinfo- offset name draw-mode) texinfo
-    (format stream "(texinfo ")
-    (write-vec offset stream)
-    (format stream " ~S ~S)" name draw-mode)))
+(defmacro define-disk-struct (name &rest slot-descriptions)
+  (let* ((name name)
+         (slot-descriptions (mapcar #'alexandria:ensure-list slot-descriptions))
+         (slot-names (mapcar #'first slot-descriptions)))
+    (labels ((nullablep (slot-type)
+               (and (atom slot-type)
+                    (alexandria:starts-with #\? (string slot-type))))
+             (write-nullable-slot (slot-name slot-type)
+               `(if ,slot-name
+                    ,(write-slot (list slot-name
+                                       (subseq (string slot-type) 1)))
+                    (format stream " ~S" ,slot-name)))
+             (write-slot (desc)
+               (destructuring-bind (slot-name slot-type) desc
+                 (cond
+                   ((nullablep slot-type)
+                    (write-nullable-slot slot-name slot-type))
+                   ((and (atom slot-type)
+                         (not (member slot-type '(string double-float))))
+                    `(progn
+                       (format stream " ")
+                       ;; This will not work if write-slot-type is not imported.
+                       (,(alexandria:symbolicate 'write- slot-type) ,slot-name stream)))
+                   (t
+                    `(format stream " ~S" ,slot-name)))))
+             (read-nullable-slot (slot-name slot-type)
+               `(when ,slot-name
+                  ,(read-slot-form (list slot-name
+                                         (subseq (string slot-type) 1)))))
+             (read-slot-form (desc)
+               (destructuring-bind (slot-name slot-type) desc
+                 (cond
+                   ((nullablep slot-type)
+                    (read-nullable-slot slot-name slot-type))
+                   ((and (atom slot-type)
+                         (not (member slot-type '(string double-float))))
+                    ;; This will not work if read-slot-type is not imported.
+                    `(,(alexandria:symbolicate 'read- slot-type '-form) ,slot-name))
+                   (t
+                    slot-name)))))
+      `(progn
+         (defun ,(alexandria:symbolicate 'write- name) (obj stream)
+           (with-struct (,(alexandria:symbolicate name '-) ,@slot-names) obj
+             (format stream ,(format nil "(~S" name))
+             ,@(mapcar #'write-slot slot-descriptions))
+           (format stream ")"))
 
-(defun read-texinfo-form (form)
-  (destructuring-bind (type-name . args) form
-    (declare (ignore type-name))
-    (destructuring-bind (offset name draw-mode) args
-      (make-texinfo :offset (read-vec-form offset)
-                    :name name :draw-mode draw-mode))))
+         (defun ,(alexandria:symbolicate 'read- name '-form) (form)
+           (destructuring-bind (type-name . args) form
+             (declare (ignore type-name))
+             (destructuring-bind (,@slot-names) args
+               (,(alexandria:symbolicate 'make- name)
+                 ,@(mapcan (lambda (desc)
+                             (list (alexandria:make-keyword (car desc))
+                                   (read-slot-form desc)))
+                           slot-descriptions)))))
 
-(defun read-texinfo (stream)
-  (read-texinfo-form (read stream)))
+         (defun ,(alexandria:symbolicate 'read- name) (stream)
+           (with-standard-io-syntax
+             (let (*read-eval*)
+               (,(alexandria:symbolicate 'read- name '-form) (read stream)))))))))
+
+(define-disk-struct texinfo
+  (offset vec)
+  (name string)
+  (draw-mode (:tile :scale-to-fit)))
 
 (defstruct sector
   "A sector surrounded by lines. Stores information about floor and ceiling."
@@ -125,37 +176,12 @@
   (ceiling-texinfo nil :type (or null texinfo))
   (ambient-light (v 0 0 0) :type (vec 3)))
 
-(defun write-sector (sector stream)
-  (with-struct (sector- floor-height floor-texinfo ceiling-height
-                        ceiling-texinfo ambient-light) sector
-    (format stream "(sector ~S " floor-height)
-    (if floor-texinfo
-        (write-texinfo floor-texinfo stream)
-        (prin1 floor-texinfo stream))
-    (format stream " ~S " ceiling-height)
-    (if ceiling-texinfo
-        (write-texinfo ceiling-texinfo stream)
-        (prin1 ceiling-texinfo stream))
-    (format stream " ")
-    (write-vec ambient-light stream)
-    (format stream ")")))
-
-(defun read-sector-form (form)
-  (destructuring-bind (type-name . args) form
-    (declare (ignore type-name))
-    (destructuring-bind (floor-height floor-texinfo
-                                      ceiling-height ceiling-texinfo
-                                      ambient-light) args
-      (make-sector :floor-height floor-height
-                   :floor-texinfo (when floor-texinfo
-                                    (read-texinfo-form floor-texinfo))
-                   :ceiling-height ceiling-height
-                   :ceiling-texinfo (when ceiling-texinfo
-                                      (read-texinfo-form ceiling-texinfo))
-                   :ambient-light (read-vec-form ambient-light)))))
-
-(defun read-sector (stream)
-  (read-sector-form (read stream)))
+(define-disk-struct sector
+  (floor-height double-float)
+  (floor-texinfo ?texinfo)
+  (ceiling-height double-float)
+  (ceiling-texinfo ?texinfo)
+  (ambient-light vec))
 
 (defstruct subsector
   "A sub sector generated via BSP. Stores lines which surround it."
