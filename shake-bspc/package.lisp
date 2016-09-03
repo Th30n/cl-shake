@@ -19,7 +19,8 @@
 (defpackage #:shake-bspc
   (:nicknames #:shake-bsp #:sbsp)
   (:use #:cl #:shiva #:shake-utils)
-  (:export #:linedef
+  (:export #:define-disk-struct ;; this should move to serialization
+           #:linedef
            #:make-linedef
            #:make-linedef-loop
            #:linedef-start

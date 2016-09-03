@@ -101,9 +101,11 @@
   (read-vec-form (read stream)))
 
 (defmacro define-disk-struct (name &rest slot-descriptions)
-  (let* ((name name)
+  (let* ((inhibit-read-p (member :inhibit-read (alexandria:ensure-list name)))
+         (name (car (alexandria:ensure-list name)))
          (slot-descriptions (mapcar #'alexandria:ensure-list slot-descriptions))
-         (slot-names (mapcar #'first slot-descriptions)))
+         (slot-names (mapcar #'first slot-descriptions))
+         (base-types '(string float64)))
     (labels ((nullablep (slot-type)
                (and (atom slot-type)
                     (alexandria:starts-with #\? (string slot-type))))
@@ -118,7 +120,7 @@
                    ((nullablep slot-type)
                     (write-nullable-slot slot-name slot-type))
                    ((and (atom slot-type)
-                         (not (member slot-type '(string double-float))))
+                         (not (member slot-type base-types)))
                     `(progn
                        (format stream " ")
                        ;; This will not work if write-slot-type is not imported.
@@ -135,7 +137,7 @@
                    ((nullablep slot-type)
                     (read-nullable-slot slot-name slot-type))
                    ((and (atom slot-type)
-                         (not (member slot-type '(string double-float))))
+                         (not (member slot-type base-types)))
                     ;; This will not work if read-slot-type is not imported.
                     `(,(alexandria:symbolicate 'read- slot-type '-form) ,slot-name))
                    (t
@@ -145,27 +147,27 @@
            (with-struct (,(alexandria:symbolicate name '-) ,@slot-names) obj
              (format stream ,(format nil "(~S" name))
              ,@(mapcar #'write-slot slot-descriptions))
-           (format stream ")"))
+           (format stream ")~%"))
+         ,@(unless inhibit-read-p
+                   `((defun ,(alexandria:symbolicate 'read- name '-form) (form)
+                       (destructuring-bind (type-name . args) form
+                         (declare (ignore type-name))
+                         (destructuring-bind (,@slot-names) args
+                           (,(alexandria:symbolicate 'make- name)
+                             ,@(mapcan (lambda (desc)
+                                         (list (alexandria:make-keyword (car desc))
+                                               (read-slot-form desc)))
+                                       slot-descriptions)))))
 
-         (defun ,(alexandria:symbolicate 'read- name '-form) (form)
-           (destructuring-bind (type-name . args) form
-             (declare (ignore type-name))
-             (destructuring-bind (,@slot-names) args
-               (,(alexandria:symbolicate 'make- name)
-                 ,@(mapcan (lambda (desc)
-                             (list (alexandria:make-keyword (car desc))
-                                   (read-slot-form desc)))
-                           slot-descriptions)))))
-
-         (defun ,(alexandria:symbolicate 'read- name) (stream)
-           (with-standard-io-syntax
-             (let (*read-eval*)
-               (,(alexandria:symbolicate 'read- name '-form) (read stream)))))))))
+                     (defun ,(alexandria:symbolicate 'read- name) (stream)
+                       (with-standard-io-syntax
+                         (let (*read-eval*)
+                           (,(alexandria:symbolicate 'read- name '-form) (read stream)))))))))))
 
 (define-disk-struct texinfo
   (offset vec)
   (name string)
-  (draw-mode (:tile :scale-to-fit)))
+  (draw-mode (enum :tile :scale-to-fit)))
 
 (defstruct sector
   "A sector surrounded by lines. Stores information about floor and ceiling."
@@ -177,9 +179,9 @@
   (ambient-light (v 0 0 0) :type (vec 3)))
 
 (define-disk-struct sector
-  (floor-height double-float)
+  (floor-height float64)
   (floor-texinfo ?texinfo)
-  (ceiling-height double-float)
+  (ceiling-height float64)
   (ceiling-texinfo ?texinfo)
   (ambient-light vec))
 
@@ -195,24 +197,12 @@
   (color (v 1 0 1) :type (vec 3))
   (texinfo nil))
 
-(defun read-sidedef (stream)
-  (let ((lineseg (read-lineseg stream))
-        (color (v (read stream) (read stream) (read stream)))
-        (texinfo (read stream)))
-    (make-sidedef :lineseg lineseg
-                  :color color
-                  :texinfo (if (or (eq :caulk texinfo) (null texinfo))
-                               texinfo
-                               (read-texinfo-form texinfo)))))
-
-(defun write-sidedef (sidedef stream)
-  (with-struct (sidedef- lineseg color texinfo) sidedef
-    (write-lineseg lineseg stream)
-    (format stream "~S ~S ~S~%" (vx color) (vy color) (vz color))
-    (cond
-      ((or (eq :caulk texinfo) (null texinfo)) (format stream "~S~%" texinfo))
-      (t (write-texinfo texinfo stream)
-         (format stream "~%")))))
+(define-disk-struct sidedef
+  (lineseg lineseg)
+  (front-sector ?sector)
+  (back-sector ?sector)
+  (color vec)
+  (texinfo ?texinfo))
 
 (defun linedef->sidedef (line)
   (make-sidedef :lineseg (linedef->lineseg line)))
@@ -453,26 +443,14 @@
   (declare (type linedef linedef))
   (make-lineseg :orig-line linedef))
 
-(defun write-linedef (linedef stream)
-  (with-struct (linedef- start end) linedef
-    (format stream "~S ~S ~S ~S~%"
-            (vx start) (vy start) (vx end) (vy end))))
+(define-disk-struct linedef
+  (start vec)
+  (end vec))
 
-(defun read-linedef (stream)
-  (let ((start (v (read stream) (read stream)))
-        (end (v (read stream) (read stream))))
-    (make-linedef :start start :end end)))
-
-(defun write-lineseg (lineseg stream)
-  (with-struct (lineseg- orig-line t-start t-end) lineseg
-    (write-linedef orig-line stream)
-    (format stream "~S ~S~%" t-start t-end)))
-
-(defun read-lineseg (stream)
-  (let ((linedef (read-linedef stream))
-        (t-start (read stream))
-        (t-end (read stream)))
-    (make-lineseg :orig-line linedef :t-start t-start :t-end t-end)))
+(define-disk-struct lineseg
+  (orig-line linedef)
+  (t-start float64)
+  (t-end float64))
 
 (defun bsp-trav (bsp node-fun &optional (base #'identity))
   "Recurse the given BSP node and apply NODE-FUN to results of traversing
