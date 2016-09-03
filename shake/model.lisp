@@ -32,10 +32,20 @@
 
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
-    (let ((start-3d (v (vx start) 1 (vy start)))
-          (end-3d (v (vx end) 1 (vy end))))
-      (list start-3d end-3d (v- start-3d (v 0 1 0))
-            (v- start-3d (v 0 1 0)) end-3d (v- end-3d (v 0 1 0))))))
+    (let* ((floor-bottom (if-let ((front-sector
+                                   (sbsp:sidedef-front-sector sidedef)))
+                           (sbsp:sector-floor-height front-sector)
+                           0))
+           (floor-top (if-let ((back-sector
+                                (sbsp:sidedef-back-sector sidedef)))
+                        (max floor-bottom (sbsp:sector-floor-height back-sector))
+                        1))
+           (start-3d-bot (v2->v3 start floor-bottom))
+           (end-3d-bot (v2->v3 end floor-bottom))
+           (start-3d-top (v2->v3 start floor-top))
+           (end-3d-top (v2->v3 end floor-top)))
+      (list start-3d-top end-3d-top start-3d-bot
+            start-3d-bot end-3d-top end-3d-bot))))
 
 (defun make-texcoords (sidedef)
   (let ((texinfo (sbsp:sidedef-texinfo sidedef)))
