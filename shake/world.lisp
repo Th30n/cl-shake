@@ -26,15 +26,46 @@
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
-(defun hull-point-contents (hull point)
+(defun hull-point-contents (hull point &optional (parent nil))
   "Traverse the HULL to the leaf where POINT is located and return
-  LEAF-CONTENTS. Splitting line is offset by given RADIUS."
+  LEAF-CONTENTS. Secondary value is a parent NODE."
   (declare (type (vec 2) point))
   (if (sbsp:leaf-p hull)
-      (sbsp:leaf-contents hull)
+      (values (sbsp:leaf-contents hull) parent hull)
       (ecase (sbsp:determine-side (sbsp:node-line hull) point)
-        ((or :front :on-line) (hull-point-contents (sbsp:node-front hull) point))
-        (:back (hull-point-contents (sbsp:node-back hull) point)))))
+        ((or :front :on-line)
+         (hull-point-contents (sbsp:node-front hull) point hull))
+        (:back
+         (hull-point-contents (sbsp:node-back hull) point hull)))))
+
+(defun climb-solid-p (hull-node point)
+  "Return height difference if possible to climb the splitting surface on
+  HULL-NODE."
+  (let ((sector (sbsp:sidedef-back-sector (sbsp:node-surface hull-node))))
+    (when sector
+      (let ((height-diff (- (sbsp:sector-floor-height sector)
+                            (- (vy point) 0.5d0))))
+        (unless (double> height-diff 0.2d0)
+          height-diff)))))
+
+(defun climb-empty-p (hull-leaf point)
+  (let* ((front-sector (sbsp:sidedef-front-sector
+                        (first (sbsp:leaf-surfaces hull-leaf))))
+         (height-diff (- (if front-sector
+                             (sbsp:sector-floor-height front-sector)
+                             0d0)
+                         (- (vy point) 0.5d0))))
+    (unless (double> height-diff 0.2d0)
+      height-diff)))
+
+(defun crossp (hull-node point hull-parent)
+  "Return height difference after crossing the HULL-NODE. If unable to cross,
+  returns NIL"
+  (multiple-value-bind (contents parent leaf)
+      (hull-point-contents hull-node (v3->v2 point) hull-parent)
+    (if (eq contents :contents-solid)
+        (climb-solid-p parent point)
+        (climb-empty-p leaf point))))
 
 (defparameter *dist-epsilon* 1d-10)
 
@@ -77,26 +108,26 @@
                               p1f midf)
       (if hit-p
           ;; Collision in front part.
-          (progn
-            (values pre-trace hit-p))
+          (values pre-trace hit-p)
           ;; Check the other part.
           (let ((other-side (if (minusp t1)
                                 (sbsp:node-front node)
                                 (sbsp:node-back node))))
-            (if (not (eq (hull-point-contents other-side (v3->v2 mid))
-                         :contents-solid))
-                ;; Continue through the other part.
-                (recursive-hull-check hull mid p2 other-side midf p2f)
-                ;; Other side is solid, this is the impact point.
-                (let ((normal (sbsp:linedef-normal (sbsp:node-line node))))
-                  (when (minusp t1)
-                    (setf normal (v- normal)))
-                  (multiple-value-bind (adj-midf adj-mid)
-                      (adjust-midf hull p1 p2 p1f p2f mid midf frac)
-                    (values
-                     (make-mtrace :fraction adj-midf :endpos adj-mid
-                                  :normal (v2->v3 normal))
-                     t)))))))))
+            (if-let ((height-diff (crossp other-side mid node)))
+              ;; Continue through the other part.
+              (recursive-hull-check hull (v+ mid (v 0 height-diff 0))
+                                    (v+ p2 (v 0 height-diff 0))
+                                    other-side midf p2f)
+              ;; Other side is solid, this is the impact point.
+              (let ((normal (sbsp:linedef-normal (sbsp:node-line node))))
+                (when (minusp t1)
+                  (setf normal (v- normal)))
+                (multiple-value-bind (adj-midf adj-mid)
+                    (adjust-midf hull p1 p2 p1f p2f mid midf frac)
+                  (values
+                   (make-mtrace :fraction adj-midf :endpos adj-mid
+                                :normal (v2->v3 normal))
+                   t)))))))))
 
 (defun recursive-hull-check (hull p1 p2 &optional (node nil) (p1f 0d0) (p2f 1d0))
   "Checks the HULL for the nearest collision on the way from P1 to P2. Returns

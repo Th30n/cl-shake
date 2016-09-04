@@ -73,10 +73,11 @@
            ;; bsp nodes
            #:node
            #:node-p
-           #:node-bounds
-           #:node-line
-           #:node-front
            #:node-back
+           #:node-bounds
+           #:node-front
+           #:node-line
+           #:node-surface
            #:write-bsp
            #:read-bsp
            #:leaf

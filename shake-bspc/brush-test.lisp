@@ -108,7 +108,10 @@
                                                 :end (v -0.5 -1))
                                   (make-linedef :start (v -0.5 0)
                                                 :end (v -1 0)))
-                            (brush-lines wall-brush)))))
+                            (make-linedef-loop
+                             (v -0.5 1) (v -0.5 0) (v -0.5 -1) (v -0.5 -2)
+                             (v 2.5 -2) (v 2.5 -1) (v 2.5 1) (v 0 1))))))
+                            ;; (brush-lines wall-brush)))))
     (is (mapcar #'sidedef-lineseg
                 (prepare-brushes-for-bsp (list step-brush wall-brush)))
         expected :test #'lineseg-set-equal)))

@@ -223,6 +223,7 @@
   slots."
   (bounds nil :type (cons (vec 2) (vec 2)))
   (line nil :type linedef)
+  (surface nil :type sidedef)
   (front nil :type (or node leaf))
   (back nil :type (or node leaf)))
 
@@ -433,6 +434,8 @@
                       (divide-bounds bounds splitter)
                     (make-node :bounds bounds
                                :line splitter
+                               ;; XXX: Other surfaces on splitter?
+                               :surface splitter-surf
                                ;; Add the splitter itself to front.
                                :front (build-bsp (cons splitter-surf front)
                                                  used-splitters front-bounds)
@@ -493,6 +496,7 @@
              (write-bounds (node-bounds node))
              (format stream "~%")
              (write-linedef (node-line node) stream)
+             (write-sidedef (node-surface node) stream)
              (funcall front)
              (funcall back))
            (lambda (leaf)
@@ -508,9 +512,11 @@
     (ecase node-type
       (:node (let ((bounds (cons (read-vec stream) (read-vec stream)))
                    (line (read-linedef stream))
+                   (sidedef (read-sidedef stream))
                    (front (read-bsp stream))
                    (back (read-bsp stream)))
-               (make-node :bounds bounds :line line :front front :back back)))
+               (make-node :bounds bounds :line line :surface sidedef
+                          :front front :back back)))
       (:leaf (let* ((bounds (cons (read-vec stream) (read-vec stream)))
                     (contents (read stream))
                     (num-surfs (read stream))

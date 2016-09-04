@@ -131,28 +131,46 @@
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
   ready for binary space partitioning."
-  (let (segs)
+  (let (surfs)
     (dolist (b1 brushes)
       (let ((outside (brush-surfaces b1))
             inside)
         (dolist (b2 brushes)
-          (unless (or (eq b1 b2)
-                      (brush-lower-p b2 b1))
+          (unless (eq b1 b2)
+              ;; (or (eq b1 b2)
+              ;;     (brush-lower-p b2 b1))
             (shiftf inside outside nil)
-            ;; clip brush b1 against b2
+            ;; Clip brush b1 against b2.
             (dolist (split-surf (brush-surfaces b2))
               (let ((split-line (lineseg-orig-line (sidedef-lineseg split-surf))))
                 (multiple-value-bind (new-outside new-inside)
                     (sbsp:partition-surfaces split-line inside)
                   (unionf outside new-outside :test #'equalp)
-                  (setf inside new-inside))))))
-        (appendf segs outside)))
-    segs))
+                  (setf inside new-inside))))
+            ;; Keep the inside surfaces if we can't continue in another brush.
+            (when (brush-lower-p b2 b1)
+              (unionf outside
+                      (mapcar (lambda (surf)
+                                (let ((front-sector (sidedef-front-sector surf))
+                                      (back-sector (sidedef-back-sector
+                                                    (first (brush-surfaces b2)))))
+                                  (when (or (not front-sector)
+                                            (double> (sector-floor-height
+                                                      back-sector)
+                                                     (sector-floor-height
+                                                      front-sector)))
+                                    (setf (sidedef-front-sector surf)
+                                          back-sector)))
+                                surf)
+                              inside)
+                      :test #'equalp))))
+        (appendf surfs outside)))
+    surfs))
 
 (defun construct-convex-hull (points)
   "Create a convex hull of given POINTS. Gift wrapping algorithm is used,
   which is O(nh) where n is the number of points and h the resulting convex
-  hull points."
+  hull points. Points are returned in counter clockwise order."
   (let ((min-point (reduce (lambda (a b)
                              (if (double= (vx a) (vx b))
                                  (if (< (vy a) (vy b)) a b)
@@ -177,14 +195,19 @@
   "Expand the given BRUSH by the given size of the SQUARE. This will perform a
   Minkowski sum of the brush polygon and the square polygon."
   (let* ((half-size (* 0.5d0 (coerce square 'double-float)))
-         (hull-size (list half-size (- half-size))))
-    (flet ((add-square (point)
-             (cons point (map-product (lambda (x y) (v+ point (v x y)))
-                                      hull-size hull-size)))
-           (brush-from-points (points)
-             (make-brush :surfaces (mapcar #'linedef->sidedef
-                                           (apply #'make-linedef-loop points))
-                         :contents (brush-contents brush))))
+         (hull-size (list half-size (- half-size)))
+         (back-sector (sidedef-back-sector (first (brush-surfaces brush)))))
+    (labels ((add-square (point)
+               (cons point (map-product (lambda (x y) (v+ point (v x y)))
+                                        hull-size hull-size)))
+             (set-back-sectors (surfaces)
+               (dolist (surf surfaces surfaces)
+                 (setf (sidedef-back-sector surf) back-sector)))
+             (brush-from-points (points)
+               (make-brush :surfaces (set-back-sectors
+                                      (mapcar #'linedef->sidedef
+                                              (apply #'make-linedef-loop points)))
+                           :contents (brush-contents brush))))
       (let ((hull-points (mapcan (compose #'add-square #'linedef-start)
                                  (brush-lines brush))))
         (brush-from-points (construct-convex-hull hull-points))))))
