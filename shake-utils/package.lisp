@@ -23,6 +23,8 @@
            #:doproduct
            #:dovector
            #:group-by
+           #:in
+           #:inq
            #:length>=
            #:notf
            #:repeat

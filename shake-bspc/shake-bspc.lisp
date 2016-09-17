@@ -104,9 +104,10 @@
   (let* ((inhibit-read-p (member :inhibit-read (alexandria:ensure-list name)))
          (name (car (alexandria:ensure-list name)))
          (slot-descriptions (mapcar #'alexandria:ensure-list slot-descriptions))
-         (slot-names (mapcar #'first slot-descriptions))
-         (base-types '(string float64)))
-    (labels ((nullablep (slot-type)
+         (slot-names (mapcar #'first slot-descriptions)))
+    (labels ((base-type-p (slot-type)
+               (inq slot-type string float64))
+             (nullablep (slot-type)
                (and (atom slot-type)
                     (alexandria:starts-with #\? (string slot-type))))
              (write-nullable-slot (slot-name slot-type)
@@ -120,7 +121,7 @@
                    ((nullablep slot-type)
                     (write-nullable-slot slot-name slot-type))
                    ((and (atom slot-type)
-                         (not (member slot-type base-types)))
+                         (not (base-type-p slot-type)))
                     `(progn
                        (format stream " ")
                        ;; This will not work if write-slot-type is not imported.
@@ -137,7 +138,7 @@
                    ((nullablep slot-type)
                     (read-nullable-slot slot-name slot-type))
                    ((and (atom slot-type)
-                         (not (member slot-type base-types)))
+                         (not (base-type-p slot-type)))
                     ;; This will not work if read-slot-type is not imported.
                     `(,(alexandria:symbolicate 'read- slot-type '-form) ,slot-name))
                    (t
@@ -278,8 +279,8 @@
   "Returns true if the point is no the inner side of given linesegs which form
   a convex hull."
   (flet ((point-inside-p (seg)
-           (let ((side (determine-side (lineseg-orig-line seg) point)))
-             (or (eq side :back) (eq side :on-line)))))
+           (in (determine-side (lineseg-orig-line seg) point)
+               :back :on-line)))
     (every #'point-inside-p linesegs)))
 
 (defun convex-hull-p (linesegs)

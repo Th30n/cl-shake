@@ -58,6 +58,16 @@
          (let ((,var (aref ,gvector ,i)))
            ,@body)))))
 
+(defmacro in (obj &rest choices)
+  "Test whether the OBJ is EQL to any of the given CHOICES."
+  (let ((insym (gensym)))
+    `(let ((,insym ,obj))
+       (or ,@(mapcar (lambda (c) `(eql ,insym ,c)) choices)))))
+
+(defmacro inq (obj &rest choices)
+  "Like IN, but choices are quoted."
+  `(in ,obj ,@(mapcar (lambda (c) `',c) choices)))
+
 (defmacro zap (fn place &rest args)
   "Set the PLACE to the result of applying the function FN to the current
   value of place and ARGS. For example:
