@@ -114,6 +114,7 @@
            #:partition-surfaces
            #:convex-hull-p
            #:point-in-hull-p
+           #:triangulate
            #:determine-side
            #:bsp-trav
            #:bsp-rec

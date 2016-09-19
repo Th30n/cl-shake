@@ -301,6 +301,20 @@
                       (return-from test nil)))))))
       picked-side)))
 
+(defun triangulate (linesegs)
+  "Takes a convex polygon described with LINESEGS and returns a list of
+  triangles, represented as linesegs."
+  (assert (length>= 3 linesegs))
+  (assert (convex-hull-p linesegs))
+  (let ((start (lineseg-start (first linesegs)))
+        (end (lineseg-end (first linesegs)))
+        (points (mapcar #'lineseg-start (cddr linesegs)))
+        triangles)
+    (dolist (point points triangles)
+      (push (mapcar #'linedef->lineseg (make-linedef-loop start end point))
+            triangles)
+      (setf end point))))
+
 (defun choose-splitter (surfaces splitters)
   (declare (type list surfaces splitters))
   (let (rest splitter-surf)
