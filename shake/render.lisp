@@ -81,6 +81,21 @@
               (progn ,@body)
            (shutdown-render-system ,render-system))))))
 
+;; Currently active RENDER-SYSTEM.
+(defvar *rs*)
+;; BATCHES of the currently active RENDER-SYSTEM (*RS*).
+(defvar *batches*)
+
+(defmacro with-draw-frame ((render-system) &body body)
+  "Establishes the environment where SHAKE.RENDER package functions can be
+  used."
+  (with-gensyms (body-result)
+    `(let ((*batches* (init-draw-frame ,render-system))
+           (*rs* ,render-system))
+       (let ((,body-result (multiple-value-list (progn ,@body))))
+         (finish-draw-frame ,render-system)
+         (values-list ,body-result)))))
+
 (defun print-memory-usage (render-system)
   "Print the estimate of used memory in GL."
   (with-struct (image-manager- images)
@@ -204,19 +219,18 @@
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface batch)
-  (declare (special *rs*))
-  (flet ((fill-buffer (byte-offset data)
+  (flet ((fill-buffer (byte-offset data size)
            (gl:bind-buffer :array-buffer (batch-buffer batch))
-           (gl:buffer-sub-data :array-buffer (cdr data)
+           (gl:buffer-sub-data :array-buffer data
                                :buffer-offset byte-offset
-                               :size (car data))
+                               :size size)
            (gl:bind-buffer :array-buffer 0)
-           (car data)))
+           size))
     (with-struct (batch- offset) batch
-      (let ((gl-data (smdl::surface-gl-data surface))
-            (draw-count (list-length (smdl:surface-faces surface)))
-            (tex-name (when-let ((texinfo (sbsp:sidedef-texinfo surface)))
-                                (string-downcase (sbsp:texinfo-name texinfo)))))
+      (let ((gl-data (smdl::surf-triangles-verts surface))
+            (byte-size (smdl::surf-triangles-verts-byte-size surface))
+            (draw-count (smdl::surf-triangles-num-verts surface))
+            (tex-name (smdl::surf-triangles-tex-name surface)))
         (with-struct (render-system- image-manager) *rs*
           (let ((layer (if-let ((image (get-image image-manager tex-name)))
                          (progn
@@ -226,7 +240,7 @@
                          -1)))
             (push (cons layer draw-count) (batch-layers batch))))
         (incf (batch-offset batch)
-              (the fixnum (fill-buffer offset gl-data)))
+              (the fixnum (fill-buffer offset gl-data byte-size)))
         (incf (batch-draw-count batch) draw-count)
         (incf (batch-objects batch))))))
 
@@ -252,8 +266,7 @@
     (setf (fill-pointer batches) 0)))
 
 (defun add-new-batch (byte-size)
-  (declare (special *batches* *rs*)
-           (optimize (speed 3) (space 3)))
+  (declare (optimize (speed 3) (space 3)))
   (when-let ((current-batch (get-current-batch)))
     (finish-batch current-batch (render-system-gl-config *rs*)))
   (let ((batch (init-batch byte-size)))
@@ -261,21 +274,18 @@
     batch))
 
 (defun get-current-batch ()
-  (declare (special *batches*)
-           (optimize (speed 3) (space 3)))
+  (declare (optimize (speed 3) (space 3)))
   (when (length>= 1 *batches*)
     (aref (the (vector batch) *batches*)
           (1- (length (the (vector batch) *batches*))))))
 
 (defun render-surface (surface)
-  (declare (special *rs*))
+  (declare (type smdl::surf-triangles surface))
   (with-struct (render-system- image-manager) *rs*
     (let ((current-batch (get-current-batch))
-          (surface-space (car (smdl:surface-gl-data surface)))
+          (surface-space (smdl::surf-triangles-verts-byte-size surface))
           (surface-image
-           (when-let* ((texinfo (sbsp:sidedef-texinfo surface))
-                       (tex-name
-                        (string-downcase (sbsp:texinfo-name texinfo))))
+           (when-let ((tex-name (smdl::surf-triangles-tex-name surface)))
              (get-image image-manager tex-name))))
       (declare (type fixnum surface-space))
       (labels ((tex-match-p (batch)
@@ -294,14 +304,3 @@
                    ;; Each batch contains 100kB of vertex data.
                    (add-new-batch (max surface-space (* 100 1024))))))
           (add-surface-vertex-data surface batch))))))
-
-(defmacro with-draw-frame ((render-system) &body body)
-  "Establishes the environment where SHAKE.RENDER package functions can be
-  used."
-  (with-gensyms (body-result)
-    `(let ((*batches* (init-draw-frame ,render-system))
-           (*rs* ,render-system))
-       (declare (special *batches* *rs*))
-       (let ((,body-result (multiple-value-list (progn ,@body))))
-         (finish-draw-frame ,render-system)
-         (values-list ,body-result)))))

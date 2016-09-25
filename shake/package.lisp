@@ -39,11 +39,9 @@
            #:model-nodes
            #:model-hull
            #:model-things
+           #:mleaf-floor-geometry
            #:surface
-           #:surface-color
-           #:surface-faces
-           #:surface-texcoords
-           #:surface-gl-data)
+           #:surface-geometry)
   (:import-from #:sbsp
                 #:lineseg-start
                 #:lineseg-end

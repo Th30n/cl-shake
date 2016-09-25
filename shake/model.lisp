@@ -16,11 +16,25 @@
 
 (in-package #:shake.model)
 
+(defstruct surf-triangles
+  "Stores surface triangles ready for rendering.
+  VERTS is a foreign array of vertex data, ready for sending to GPU.
+  TEX-NAME is the name of texture image used, can be NIL."
+  (num-verts 0 :type fixnum)
+  (verts-byte-size 0 :type fixnum)
+  verts
+  (tex-name nil :type (or null string)))
+
+(defun free-surf-triangles (surf-triangles)
+  (gl:free-gl-array (surf-triangles-verts surf-triangles)))
+
 (defstruct (surface (:include sbsp:sidedef))
   "Extended SIDEDEF which contains 3D faces for rendering."
-  faces
-  texcoords
-  gl-data)
+  geometry)
+
+(defstruct (mleaf (:include sbsp:leaf))
+  "In memory, model leaf node of model BSP."
+  floor-geometry)
 
 (defstruct model
   "A 3D model. The NODES slot contains bsp nodes for rendering. The HULL slot
@@ -69,44 +83,92 @@
                   (list (v u-start 0) (v u-end 0) (v u-start 1)
                         (v u-start 1) (v u-end 0) (v u-end 1))))))))
 
+(defun make-gl-array (data)
+  (let ((arr (gl:alloc-gl-array
+              :float (reduce #'+ (mapcar #'array-total-size data))))
+        (offset 0))
+    (dolist (vec data)
+      (dotimes (i (array-total-size vec))
+        (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
+        (incf offset)))
+    (cons (coerce (gl:gl-array-byte-size arr) 'fixnum)
+          arr)))
 
-(defun load-gl-data (surface)
-  (with-struct (surface- faces texcoords color lineseg) surface
-    (let ((data
-           (loop for pos in faces
-              and color in (make-list 6 :initial-element color)
-              and normal in (make-list 6 :initial-element
-                                       (v2->v3 (sbsp:lineseg-normal lineseg)))
-              and uv in (if texcoords texcoords
-                            (make-list 6 :initial-element (v 0 0)))
-              append (list pos color normal uv))))
-      (flet ((make-gl-array (data)
-               (let ((arr (gl:alloc-gl-array
-                           :float (reduce #'+ (mapcar #'array-total-size data))))
-                     (offset 0))
-                 (dolist (vec data)
-                   (dotimes (i (array-total-size vec))
-                     (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
-                     (incf offset)))
-                 (cons (coerce (gl:gl-array-byte-size arr) 'fixnum)
-                       arr))))
-        (setf (surface-gl-data surface) (make-gl-array data)))))
-  surface)
+(defun sidedef->surf-triangles (sidedef)
+  (let ((positions (make-triangles sidedef))
+        (tex-name (when-let ((texinfo (sbsp:sidedef-texinfo sidedef)))
+                    (string-downcase (sbsp:texinfo-name texinfo)))))
+    (destructuring-bind (byte-size . verts)
+        (make-gl-array
+         (loop for pos in positions
+            and color = (sbsp:sidedef-color sidedef)
+            and normal = (v2->v3 (sbsp:lineseg-normal
+                                  (sbsp:sidedef-lineseg sidedef)))
+            and uv in (if-let ((texcoords (make-texcoords sidedef)))
+                        texcoords
+                        (make-list 6 :initial-element (v 0 0)))
+            append (list pos color normal uv)))
+      (make-surf-triangles :num-verts (list-length positions)
+                           :verts-byte-size byte-size
+                           :verts verts
+                           :tex-name tex-name))))
+
+(defun polygon->surf-triangles (polygon height)
+  (let* ((triangles (sbsp:triangulate (mapcar #'sbsp:linedef->lineseg polygon)))
+         (positions (mapcar #'sbsp:lineseg-start (apply #'append triangles))))
+    (destructuring-bind (byte-size . verts)
+        (make-gl-array
+         (loop for pos in positions
+            and color = (v 1 0 0)
+            and normal = (v 0 1 0)
+            and uv = (v 0 0)
+            append (list (v2->v3 pos height) color normal uv)))
+      (make-surf-triangles :num-verts (list-length positions)
+                           :verts-byte-size byte-size
+                           :verts verts))))
 
 (defun sidedef->surface (sidedef)
-  (load-gl-data
-   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
-                 :color (sbsp:sidedef-color sidedef)
-                 :texinfo (sbsp:sidedef-texinfo sidedef)
-                 :faces (make-triangles sidedef)
-                 :texcoords (make-texcoords sidedef))))
+  (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
+                :front-sector (sbsp:sidedef-front-sector sidedef)
+                :color (sbsp:sidedef-color sidedef)
+                :texinfo (sbsp:sidedef-texinfo sidedef)
+                :geometry (sidedef->surf-triangles sidedef)))
+
+(defun leaf->mleaf (leaf)
+  (let* ((floor-sector (first (mapcar (lambda (surf)
+                                        (sbsp:sidedef-front-sector surf))
+                                      (sbsp:leaf-surfaces leaf))))
+         (floor-height (if floor-sector
+                           (sbsp:sector-floor-height floor-sector)
+                           0))
+         (sector-points (remove-duplicates
+                         (mapcan (lambda (surf)
+                                   (let ((line (sbsp:sidedef-lineseg surf)))
+                                     (list (sbsp:lineseg-start line)
+                                           (sbsp:lineseg-end line))))
+                                 (sbsp:leaf-surfaces leaf))
+                         :test #'v=))
+         (ccw-points (when (length>= 3 sector-points)
+                       (sbrush::construct-convex-hull sector-points)))
+         (sector-poly (when (length>= 3 ccw-points)
+                        (apply #'sbsp:make-linedef-loop ccw-points))))
+    (make-mleaf :bounds (sbsp:leaf-bounds leaf)
+                :surfaces (sbsp:leaf-surfaces leaf)
+                :contents (sbsp:leaf-contents leaf)
+                :floor-geometry (when (and floor-sector sector-poly)
+                                  (polygon->surf-triangles sector-poly
+                                                           floor-height)))))
 
 (defun nadapt-nodes (bsp)
-  (sbsp:bsp-trav bsp (constantly nil)
-                 (lambda (leaf)
-                   (zap (curry #'mapcar #'sidedef->surface)
-                        (sbsp:leaf-surfaces leaf))))
-  bsp)
+  (sbsp:bsp-rec bsp
+                (lambda (node front back)
+                  (setf (sbsp:node-front node) (funcall front)
+                        (sbsp:node-back node) (funcall back))
+                  node)
+                (lambda (leaf)
+                  (zap (curry #'mapcar #'sidedef->surface)
+                       (sbsp:leaf-surfaces leaf))
+                  (leaf->mleaf leaf))))
 
 (defun bspfile->model (bspfile)
   (make-model :hull (sbsp:bspfile-clip-nodes bspfile)
@@ -121,5 +183,8 @@
   (with-struct (model- nodes) model
     (sbsp:bsp-trav nodes (constantly nil)
                    (lambda (leaf)
-                     (dolist (surf (sbsp:leaf-surfaces leaf))
-                       (gl:free-gl-array (cdr (surface-gl-data surf))))))))
+                     (with-struct (mleaf- surfaces floor-geometry) leaf
+                       (when floor-geometry
+                         (free-surf-triangles floor-geometry))
+                       (dolist (surf surfaces)
+                         (free-surf-triangles (surface-geometry surf))))))))

@@ -556,8 +556,10 @@ DRAW and DELETE for drawing and deleting respectively."
                                (intersect-frustum-2d frustum
                                                      (sbsp:leaf-bounds node)
                                                      (vy position)))
+                       (when-let ((floor (smdl:mleaf-floor-geometry node)))
+                         (srend::render-surface floor))
                        (dolist (surf (sbsp:leaf-surfaces node))
-                         (srend:render-surface surf)))
+                         (srend:render-surface (smdl:surface-geometry surf))))
                      ;; split node
                      (let ((front (sbsp:node-front node))
                            (back (sbsp:node-back node)))
