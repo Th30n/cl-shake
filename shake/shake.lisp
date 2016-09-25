@@ -452,8 +452,8 @@ DRAW and DELETE for drawing and deleting respectively."
          (declare (special *win-width* *win-height*))
          (sdl2:with-window (,win :title "shake" :w *win-width* :h *win-height*
                                  :flags '(:shown :opengl))
-           (sdl2:set-relative-mouse-mode 1)
            (srend:with-render-system (,render-system ,win)
+             (sdl2:set-relative-mouse-mode 1)
              (srend:print-gl-info (srend:render-system-gl-config ,render-system))
              ,@body))))))
 
@@ -500,7 +500,9 @@ DRAW and DELETE for drawing and deleting respectively."
                        (clear-buffer-fv :color 0 0 0 0)
                        (render render-system camera)
                        (draw-timer-stats frame-timer)
-                       (sdl2:gl-swap-window win))))))))))
+                       ;; TODO: Move swap to srend::finish-draw-frame.
+                       (sdl2:gl-swap-window
+                        (srend::render-system-window render-system)))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window

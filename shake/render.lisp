@@ -58,13 +58,20 @@
 
 (defstruct render-system
   "Rendering related global variables and constants."
+  (width nil :type fixnum)
+  (height nil :type fixnum)
+  window
   (gl-config nil :type gl-config :read-only t)
   batches
   (image-manager nil :type image-manager))
 
-(defun init-render-system ()
-  (make-render-system :gl-config (init-gl-config)
-                      :image-manager (init-image-manager)))
+(defun init-render-system (window)
+  (multiple-value-bind (width height) (sdl2:get-window-size window)
+    (make-render-system :gl-config (init-gl-config)
+                        :image-manager (init-image-manager)
+                        :window window
+                        :width width
+                        :height height)))
 
 (defun shutdown-render-system (render-system)
   (shutdown-image-manager (render-system-image-manager render-system)))
@@ -76,7 +83,7 @@
            (sdl2:gl-set-swap-interval 0)
          (error () ;; sdl2 doesn't export sdl-error
            (format t "Setting swap interval not supported~%")))
-       (let ((,render-system (init-render-system)))
+       (let ((,render-system (init-render-system ,window)))
          (unwind-protect
               (progn ,@body)
            (shutdown-render-system ,render-system))))))
