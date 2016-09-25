@@ -25,6 +25,7 @@
   :serial t
   :components ((:file "package")
                (:file "data")
+               (:file "render-progs")
                (:file "model")
                (:file "world")
                (:file "image")

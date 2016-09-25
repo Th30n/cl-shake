@@ -397,7 +397,7 @@ DRAW and DELETE for drawing and deleting respectively."
         (unless (and (zerop x-turn) (zerop y-turn))
           (nrotate-camera x-turn y-turn camera))))))
 
-(defun load-main-resources ()
+(defun load-main-resources (render-system)
   (add-res "vertex-array" #'gl:gen-vertex-array
            (lambda (va) (gl:delete-vertex-arrays (list va))))
   (add-res "point-renderer" #'make-point-renderer #'renderer-delete)
@@ -407,11 +407,8 @@ DRAW and DELETE for drawing and deleting respectively."
                           (data-path "shaders/text.frag")
                           (data-path "shaders/billboard.geom")))
            #'gl:delete-program)
-  (add-res "shader-prog"
-           (lambda ()
-             (load-shader (data-path "shaders/pass.vert")
-                          (data-path "shaders/color.frag")))
-           #'gl:delete-program)
+  (shake.render-progs:get-program
+   (srend:render-system-prog-manager render-system) "pass" "color")
   (add-res "font"
            (lambda ()
              (load-font (data-path "share/font-16.bmp") 16 #\Space))
@@ -460,7 +457,7 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun main ()
   (with-init (render-system win)
     (with-resources "main"
-      (load-main-resources)
+      (load-main-resources render-system)
       (let* ((proj (make-perspective (* deg->rad 60d0)
                                      (/ *win-width* *win-height*)
                                      0.1d0 100d0))
@@ -592,13 +589,15 @@ DRAW and DELETE for drawing and deleting respectively."
 (defun render (render-system camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
-  (res-let (shader-prog world-model)
-    (gl:use-program shader-prog)
-    (uniform-mvp shader-prog
-                 (m* (camera-projection-matrix camera)
-                     (camera-view-transform camera)))
-    (srend:with-draw-frame (render-system)
-      (render-world camera world-model))))
+  (res-let (world-model)
+    (let* ((progs (srend:render-system-prog-manager render-system))
+           (shader-prog (shake.render-progs:get-program progs "pass" "color")))
+      (shake.render-progs:bind-shader progs shader-prog)
+      (uniform-mvp shader-prog
+                   (m* (camera-projection-matrix camera)
+                       (camera-view-transform camera)))
+      (srend:with-draw-frame (render-system)
+        (render-world camera world-model)))))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp

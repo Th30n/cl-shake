@@ -50,9 +50,19 @@
                 #:lineseg-t-end
                 #:linedef-end))
 
+(defpackage #:shake.render-progs
+  (:use #:cl #:alexandria #:shake-utils)
+  (:export #:prog-manager
+           #:init-prog-manager
+           #:shutdown-prog-manager
+           #:get-program
+           #:bind-shader
+           #:unbind-shader
+           #:reload-shaders))
+
 (defpackage #:shake.render
   (:nicknames #:srend)
-  (:use #:cl #:alexandria #:shiva #:shake-utils)
+  (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.render-progs)
   (:export #:load-map-images
            #:gl-config
            #:print-gl-info
@@ -60,6 +70,7 @@
            #:render-surface
            #:render-system
            #:render-system-gl-config
+           #:render-system-prog-manager
            #:with-render-system
            #:with-draw-frame))
 

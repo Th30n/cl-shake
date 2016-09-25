@@ -63,18 +63,22 @@
   window
   (gl-config nil :type gl-config :read-only t)
   batches
-  (image-manager nil :type image-manager))
+  (image-manager nil :type image-manager)
+  (prog-manager nil :type prog-manager))
 
 (defun init-render-system (window)
   (multiple-value-bind (width height) (sdl2:get-window-size window)
     (make-render-system :gl-config (init-gl-config)
                         :image-manager (init-image-manager)
+                        :prog-manager (init-prog-manager)
                         :window window
                         :width width
                         :height height)))
 
 (defun shutdown-render-system (render-system)
-  (shutdown-image-manager (render-system-image-manager render-system)))
+  (with-struct (render-system- image-manager prog-manager) render-system
+    (shutdown-image-manager image-manager)
+    (shutdown-prog-manager prog-manager)))
 
 (defmacro with-render-system ((render-system window) &body body)
   (with-gensyms (context)
@@ -181,7 +185,7 @@
   (gl:bind-vertex-array 0)
   (setf (batch-ready-p batch) t))
 
-(defun draw-batch (batch gl-config)
+(defun draw-batch (batch shader-prog gl-config)
   (assert (not (batch-free-p batch)))
   (unless (batch-ready-p batch)
     (finish-batch batch gl-config))
@@ -189,8 +193,7 @@
   (let ((layers (reverse (batch-layers batch)))
         (layer-count (list-length (batch-layers batch)))
         (draw-start 0))
-    (sgl:with-uniform-locations (sdata:res "shader-prog")
-        (tex-layer)
+    (sgl:with-uniform-locations shader-prog (tex-layer)
       (cffi:with-foreign-object (layer-array :int layer-count)
         (dolist-enum (ix layer-pair layers)
           (let ((layer (car layer-pair)))
@@ -260,16 +263,17 @@
 
 (defun finish-draw-frame (render-system)
   (declare (optimize (speed 3) (space 3)))
-  (with-struct (render-system- batches) render-system
+  (with-struct (render-system- batches prog-manager) render-system
     (declare (type (vector batch) batches))
-    (sgl:with-uniform-locations (sdata:res "shader-prog") (tex-albedo)
-      (gl:uniformi tex-albedo-loc 0)
-      (gl:active-texture :texture0)
-      (dovector (batch batches)
-        (when (batch-texture batch)
-          (bind-image (batch-texture batch)))
-        (draw-batch batch (render-system-gl-config render-system))
-        (free-batch batch)))
+    (let ((shader-prog (get-program prog-manager "pass" "color")))
+      (sgl:with-uniform-locations shader-prog (tex-albedo)
+        (gl:uniformi tex-albedo-loc 0)
+        (gl:active-texture :texture0)
+        (dovector (batch batches)
+          (when (batch-texture batch)
+            (bind-image (batch-texture batch)))
+          (draw-batch batch shader-prog (render-system-gl-config render-system))
+          (free-batch batch))))
     (setf (fill-pointer batches) 0)))
 
 (defun add-new-batch (byte-size)
