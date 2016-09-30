@@ -65,12 +65,11 @@
          (cons ".frag" (prog-manager-fragment-shaders prog-manager)))
         (:geometry-shader
          (cons ".geom" (prog-manager-geometry-shaders prog-manager))))
-    (if-let ((shader (find-shader shaders name)))
-      shader
-      (let* ((source (sdata:with-data-file (file (shader-path name ext))
-                       (read-stream-content-into-string file)))
-             (gl-shader (sgl::compile-shader source shader-type)))
-        (add-shader shaders name gl-shader)))))
+    (or (find-shader shaders name)
+        (let* ((source (sdata:with-data-file (file (shader-path name ext))
+                         (read-stream-content-into-string file)))
+               (gl-shader (sgl::compile-shader source shader-type)))
+          (add-shader shaders name gl-shader)))))
 
 (defun get-vertex-shader (prog-manager name)
   (get-shader prog-manager name :vertex-shader))
@@ -91,11 +90,10 @@
            nil))
 
 (defun get-program (prog-manager vs-name fs-name &optional gs-name)
-  (if-let ((program (find-program prog-manager vs-name fs-name gs-name)))
-    program
-    (let* ((vs (get-vertex-shader prog-manager vs-name))
-           (fs (get-fragment-shader prog-manager fs-name))
-           (gs (when gs-name (get-geometry-shader prog-manager gs-name)))
-           (gl-prog (apply #'sgl::link-program
-                           (cons vs (cons fs (when gs (list gs)))))))
-      (add-program prog-manager vs-name fs-name gs-name gl-prog))))
+  (or (find-program prog-manager vs-name fs-name gs-name)
+      (let* ((vs (get-vertex-shader prog-manager vs-name))
+             (fs (get-fragment-shader prog-manager fs-name))
+             (gs (when gs-name (get-geometry-shader prog-manager gs-name)))
+             (gl-prog (apply #'sgl::link-program
+                             (cons vs (cons fs (when gs (list gs)))))))
+        (add-program prog-manager vs-name fs-name gs-name gl-prog))))

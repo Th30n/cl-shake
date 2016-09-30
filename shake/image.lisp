@@ -144,39 +144,37 @@
         (return image)))))
 
 (defun get-or-create-image-array (image-manager name opts)
-  (if-let ((image-array (find-image-array image-manager opts)))
-    image-array
-    (let ((image-array (make-image :name name :tex-type :texture-2d-array
-                                   :opts opts)))
-      (setf (image-gl-tex image-array) (first (gl:gen-textures 1)))
-      (bind-image image-array)
-      (with-struct (image-opts- width height depth) opts
-        (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height depth
-                         0 :bgr :unsigned-byte (cffi:null-pointer)))
-      (gl:tex-parameter :texture-2d-array :texture-min-filter
-                        :linear-mipmap-nearest)
-      (gl:tex-parameter :texture-2d-array :texture-mag-filter :linear)
-      (setf (gethash opts (image-manager-image-opts-map image-manager))
-            (list image-array))
-      (add-image image-manager image-array)
-      image-array)))
+  (or (find-image-array image-manager opts)
+      (let ((image-array (make-image :name name :tex-type :texture-2d-array
+                                     :opts opts)))
+        (setf (image-gl-tex image-array) (first (gl:gen-textures 1)))
+        (bind-image image-array)
+        (with-struct (image-opts- width height depth) opts
+          (gl:tex-image-3d :texture-2d-array 0 :srgb8 width height depth
+                           0 :bgr :unsigned-byte (cffi:null-pointer)))
+        (gl:tex-parameter :texture-2d-array :texture-min-filter
+                          :linear-mipmap-nearest)
+        (gl:tex-parameter :texture-2d-array :texture-mag-filter :linear)
+        (setf (gethash opts (image-manager-image-opts-map image-manager))
+              (list image-array))
+        (add-image image-manager image-array)
+        image-array)))
 
 (defun load-image-from-file (image-manager fname)
-  (if-let ((found-image (get-image image-manager fname)))
-    found-image
-    (let ((binary-image (read-image-from-file fname)))
-      (unwind-protect
-           (let* ((opts (make-image-opts
-                         :width (sdl2:surface-width binary-image)
-                         :height (sdl2:surface-height binary-image)
-                         :depth 10))
-                  (image-array (get-or-create-image-array image-manager fname
-                                                          opts)))
-             (push fname (image-files image-array))
-             (setf (gethash fname (image-manager-image-map image-manager))
-                   image-array)
-             (load-image-to-array fname binary-image image-array))
-        (sdl2:free-surface binary-image)))))
+  (or (get-image image-manager fname)
+      (let ((binary-image (read-image-from-file fname)))
+        (unwind-protect
+             (let* ((opts (make-image-opts
+                           :width (sdl2:surface-width binary-image)
+                           :height (sdl2:surface-height binary-image)
+                           :depth 10))
+                    (image-array (get-or-create-image-array image-manager fname
+                                                            opts)))
+               (push fname (image-files image-array))
+               (setf (gethash fname (image-manager-image-map image-manager))
+                     image-array)
+               (load-image-to-array fname binary-image image-array))
+          (sdl2:free-surface binary-image)))))
 
 (defun load-map-images (image-manager image-names)
   (dolist (name image-names)

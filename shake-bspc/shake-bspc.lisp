@@ -46,9 +46,9 @@
           (minf (aref mins i) x))))))
 
 (defun bounds-of-linedefs (lines)
-  (bounds-of-points (mapcan (lambda (line)
-                              (list (linedef-start line) (linedef-end line)))
-                            lines)))
+  (bounds-of-points (mappend (lambda (line)
+                               (list (linedef-start line) (linedef-end line)))
+                             lines)))
 
 (defstruct lineseg
   "Segment of a line. Each line starts as a full segment, but may be split
@@ -101,15 +101,15 @@
   (read-vec-form (read stream)))
 
 (defmacro define-disk-struct (name &rest slot-descriptions)
-  (let* ((inhibit-read-p (member :inhibit-read (alexandria:ensure-list name)))
-         (name (car (alexandria:ensure-list name)))
-         (slot-descriptions (mapcar #'alexandria:ensure-list slot-descriptions))
+  (let* ((inhibit-read-p (member :inhibit-read (ensure-list name)))
+         (name (car (ensure-list name)))
+         (slot-descriptions (mapcar #'ensure-list slot-descriptions))
          (slot-names (mapcar #'first slot-descriptions)))
     (labels ((base-type-p (slot-type)
                (inq slot-type string float64))
              (nullablep (slot-type)
                (and (atom slot-type)
-                    (alexandria:starts-with #\? (string slot-type))))
+                    (starts-with #\? (string slot-type))))
              (write-nullable-slot (slot-name slot-type)
                `(if ,slot-name
                     ,(write-slot (list slot-name
@@ -125,7 +125,7 @@
                     `(progn
                        (format stream " ")
                        ;; This will not work if write-slot-type is not imported.
-                       (,(alexandria:symbolicate 'write- slot-type) ,slot-name stream)))
+                       (,(symbolicate 'write- slot-type) ,slot-name stream)))
                    (t
                     `(format stream " ~S" ,slot-name)))))
              (read-nullable-slot (slot-name slot-type)
@@ -140,30 +140,30 @@
                    ((and (atom slot-type)
                          (not (base-type-p slot-type)))
                     ;; This will not work if read-slot-type is not imported.
-                    `(,(alexandria:symbolicate 'read- slot-type '-form) ,slot-name))
+                    `(,(symbolicate 'read- slot-type '-form) ,slot-name))
                    (t
                     slot-name)))))
       `(progn
-         (defun ,(alexandria:symbolicate 'write- name) (obj stream)
-           (with-struct (,(alexandria:symbolicate name '-) ,@slot-names) obj
+         (defun ,(symbolicate 'write- name) (obj stream)
+           (with-struct (,(symbolicate name '-) ,@slot-names) obj
              (format stream ,(format nil "(~S" name))
              ,@(mapcar #'write-slot slot-descriptions))
            (format stream ")~%"))
          ,@(unless inhibit-read-p
-                   `((defun ,(alexandria:symbolicate 'read- name '-form) (form)
-                       (destructuring-bind (type-name . args) form
-                         (declare (ignore type-name))
-                         (destructuring-bind (,@slot-names) args
-                           (,(alexandria:symbolicate 'make- name)
-                             ,@(mapcan (lambda (desc)
-                                         (list (alexandria:make-keyword (car desc))
-                                               (read-slot-form desc)))
-                                       slot-descriptions)))))
+             `((defun ,(symbolicate 'read- name '-form) (form)
+                 (destructuring-bind (type-name . args) form
+                   (declare (ignore type-name))
+                   (destructuring-bind (,@slot-names) args
+                     (,(symbolicate 'make- name)
+                       ,@(mappend (lambda (desc)
+                                    (list (make-keyword (car desc))
+                                          (read-slot-form desc)))
+                                  slot-descriptions)))))
 
-                     (defun ,(alexandria:symbolicate 'read- name) (stream)
-                       (with-standard-io-syntax
-                         (let (*read-eval*)
-                           (,(alexandria:symbolicate 'read- name '-form) (read stream)))))))))))
+               (defun ,(symbolicate 'read- name) (stream)
+                 (with-standard-io-syntax
+                   (let (*read-eval*)
+                     (,(symbolicate 'read- name '-form) (read stream)))))))))))
 
 (define-disk-struct texinfo
   (offset vec)

@@ -255,11 +255,10 @@
         (incf (batch-objects batch))))))
 
 (defun init-draw-frame (render-system)
-  (if-let ((batches (render-system-batches render-system)))
-    batches
-    (setf (render-system-batches render-system)
-          (make-array 10 :element-type 'batch
-                      :fill-pointer 0 :adjustable t))))
+  (or (render-system-batches render-system)
+      (setf (render-system-batches render-system)
+            (make-array 10 :element-type 'batch
+                        :fill-pointer 0 :adjustable t))))
 
 (defun finish-draw-frame (render-system)
   (declare (optimize (speed 3) (space 3)))

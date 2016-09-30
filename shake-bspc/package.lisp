@@ -122,8 +122,13 @@
   (:import-from #:alexandria
                 #:compose
                 #:curry
+                #:ensure-list
+                #:make-keyword
+                #:mappend
                 #:maxf
-                #:minf))
+                #:minf
+                #:starts-with
+                #:symbolicate))
 
 (defpackage #:shake-bspc.brush
   (:nicknames #:sbrush)
@@ -134,7 +139,7 @@
                 #:curry
                 #:if-let
                 #:map-product
-                #:nconcf
+                #:mappend
                 #:unionf)
   (:export #:brush
            #:brush-p

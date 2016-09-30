@@ -104,9 +104,8 @@
             and color = (sbsp:sidedef-color sidedef)
             and normal = (v2->v3 (sbsp:lineseg-normal
                                   (sbsp:sidedef-lineseg sidedef)))
-            and uv in (if-let ((texcoords (make-texcoords sidedef)))
-                        texcoords
-                        (make-list 6 :initial-element (v 0 0)))
+            and uv in (or (make-texcoords sidedef)
+                          (make-list 6 :initial-element (v 0 0)))
             append (list pos color normal uv)))
       (make-surf-triangles :num-verts (list-length positions)
                            :verts-byte-size byte-size
@@ -142,11 +141,11 @@
                            (sbsp:sector-floor-height floor-sector)
                            0))
          (sector-points (remove-duplicates
-                         (mapcan (lambda (surf)
-                                   (let ((line (sbsp:sidedef-lineseg surf)))
-                                     (list (sbsp:lineseg-start line)
-                                           (sbsp:lineseg-end line))))
-                                 (sbsp:leaf-surfaces leaf))
+                         (mappend (lambda (surf)
+                                    (let ((line (sbsp:sidedef-lineseg surf)))
+                                      (list (sbsp:lineseg-start line)
+                                            (sbsp:lineseg-end line))))
+                                  (sbsp:leaf-surfaces leaf))
                          :test #'v=))
          (ccw-points (when (length>= 3 sector-points)
                        (sbrush::construct-convex-hull sector-points)))

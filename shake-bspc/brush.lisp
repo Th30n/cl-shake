@@ -208,6 +208,6 @@
                                       (mapcar #'linedef->sidedef
                                               (apply #'make-linedef-loop points)))
                            :contents (brush-contents brush))))
-      (let ((hull-points (mapcan (compose #'add-square #'linedef-start)
-                                 (brush-lines brush))))
+      (let ((hull-points (mappend (compose #'add-square #'linedef-start)
+                                  (brush-lines brush))))
         (brush-from-points (construct-convex-hull hull-points))))))
