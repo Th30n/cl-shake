@@ -19,10 +19,13 @@
 (defpackage #:shake-utils
   (:nicknames #:shut #:sutils)
   (:use #:cl #:alexandria)
-  (:export #:dolist-enum
+  (:export #:aif
+           #:awhen
+           #:dolist-enum
            #:doproduct
            #:dovector
            #:group-by
+           #:it
            #:in
            #:inq
            #:length>=

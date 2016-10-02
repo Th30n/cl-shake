@@ -416,8 +416,8 @@ DRAW and DELETE for drawing and deleting respectively."
 
 (defun load-map-textures (render-system bsp)
   (labels ((texture-name (surf)
-             (when-let ((texinfo (sbsp:sidedef-texinfo surf)))
-               (string-downcase (sbsp:texinfo-name texinfo))))
+             (aif (sbsp:sidedef-texinfo surf)
+                  (string-downcase (sbsp:texinfo-name it))))
            (leaf-textures (leaf)
              (remove nil (mapcar #'texture-name (sbsp:leaf-surfaces leaf)))))
     (let* ((textures (remove-duplicates (sbsp:bsp-trav bsp #'append
@@ -562,8 +562,8 @@ DRAW and DELETE for drawing and deleting respectively."
                                (intersect-frustum-2d frustum
                                                      (sbsp:leaf-bounds node)
                                                      (vy position)))
-                       (when-let ((floor (smdl:mleaf-floor-geometry node)))
-                         (srend::render-surface floor))
+                       (aif (smdl:mleaf-floor-geometry node)
+                            (srend::render-surface it))
                        (dolist (surf (sbsp:leaf-surfaces node))
                          (srend:render-surface (smdl:surface-geometry surf))))
                      ;; split node

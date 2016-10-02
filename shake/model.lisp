@@ -46,14 +46,12 @@
 
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
-    (let* ((floor-bottom (if-let ((front-sector
-                                   (sbsp:sidedef-front-sector sidedef)))
-                           (sbsp:sector-floor-height front-sector)
-                           0))
-           (floor-top (if-let ((back-sector
-                                (sbsp:sidedef-back-sector sidedef)))
-                        (max floor-bottom (sbsp:sector-floor-height back-sector))
-                        1))
+    (let* ((floor-bottom (aif (sbsp:sidedef-front-sector sidedef)
+                              (sbsp:sector-floor-height it)
+                              0))
+           (floor-top (aif (sbsp:sidedef-back-sector sidedef)
+                           (max floor-bottom (sbsp:sector-floor-height it))
+                           1))
            (start-3d-bot (v2->v3 start floor-bottom))
            (end-3d-bot (v2->v3 end floor-bottom))
            (start-3d-top (v2->v3 start floor-top))
@@ -96,8 +94,8 @@
 
 (defun sidedef->surf-triangles (sidedef)
   (let ((positions (make-triangles sidedef))
-        (tex-name (when-let ((texinfo (sbsp:sidedef-texinfo sidedef)))
-                    (string-downcase (sbsp:texinfo-name texinfo)))))
+        (tex-name (aif (sbsp:sidedef-texinfo sidedef)
+                       (string-downcase (sbsp:texinfo-name it)))))
     (destructuring-bind (byte-size . verts)
         (make-gl-array
          (loop for pos in positions

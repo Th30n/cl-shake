@@ -34,6 +34,26 @@
                      fields)
          ,@body))))
 
+(defmacro aif (test then &optional else)
+  "Anaphoric IF from On Lisp by Paul Graham. Behaves like regular IF, but the
+  TEST result is bound to IT symbol.
+
+  For example:
+  (aif (long-computation)
+       (foo it))"
+  `(let ((it ,test))
+     (if it ,then ,else)))
+
+(defmacro awhen (test &body forms)
+  "Anaphoric WHEN from On Lisp by Paul Graham. Behaves like regular WHEN, but
+  the TEST result is bound to IT symbol.
+
+  For example:
+  (awhen (long-computation)
+    (foo it)
+    (bar it))"
+  `(aif ,test (progn ,@forms)))
+
 (defmacro doproduct (((var-a list-a) (var-b list-b) &optional result) &body body)
   "Iterate over a Cartesian product of LIST-A and LIST-B."
   `(dolist (,var-a ,list-a ,result)

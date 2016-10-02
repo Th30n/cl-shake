@@ -277,8 +277,8 @@
 
 (defun add-new-batch (byte-size)
   (declare (optimize (speed 3) (space 3)))
-  (when-let ((current-batch (get-current-batch)))
-    (finish-batch current-batch (render-system-gl-config *rs*)))
+  (aif (get-current-batch)
+       (finish-batch it (render-system-gl-config *rs*)))
   (let ((batch (init-batch byte-size)))
     (vector-push-extend batch *batches*)
     batch))
@@ -295,8 +295,8 @@
     (let ((current-batch (get-current-batch))
           (surface-space (smdl::surf-triangles-verts-byte-size surface))
           (surface-image
-           (when-let ((tex-name (smdl::surf-triangles-tex-name surface)))
-             (get-image image-manager tex-name))))
+           (aif (smdl::surf-triangles-tex-name surface)
+                (get-image image-manager it))))
       (declare (type fixnum surface-space))
       (labels ((tex-match-p (batch)
                  (with-struct (batch- texture) batch
