@@ -21,6 +21,7 @@
   (:use #:cl #:alexandria)
   (:export #:aif
            #:awhen
+           #:bracket
            #:dolist-enum
            #:doproduct
            #:dovector

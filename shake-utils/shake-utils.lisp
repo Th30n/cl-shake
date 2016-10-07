@@ -54,6 +54,14 @@
     (bar it))"
   `(aif ,test (progn ,@forms)))
 
+(defmacro bracket ((var acquire release) &body body)
+  "Gets a resource via ACQUIRE form and binds it to VAR. Before returning,
+  frees the resource by calling RELEASE function on the resource."
+  `(let ((,var ,acquire))
+     (declare (dynamic-extent ,var))
+     (unwind-protect (progn ,@body)
+       (,release ,var))))
+
 (defmacro doproduct (((var-a list-a) (var-b list-b) &optional result) &body body)
   "Iterate over a Cartesian product of LIST-A and LIST-B."
   `(dolist (,var-a ,list-a ,result)
@@ -104,11 +112,11 @@
   "Invert the values of places pointed to by ARGS."
   `(setf ,@(mappend (lambda (a) `(,a (not ,a))) args)))
 
-(defun length>= (n sequence) (>= (length sequence) n))
-
 (defmacro repeat (n &body body)
   "Evaluate N times the given BODY and collect the results into a list."
   `(loop repeat ,n collecting (progn ,@body)))
+
+(defun length>= (n sequence) (>= (length sequence) n))
 
 (defun group-by (test list)
   "Groups the LIST elements into sublists containing only elements that are
