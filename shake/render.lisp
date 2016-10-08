@@ -87,10 +87,9 @@
            (sdl2:gl-set-swap-interval 0)
          (error () ;; sdl2 doesn't export sdl-error
            (format t "Setting swap interval not supported~%")))
-       (let ((,render-system (init-render-system ,window)))
-         (unwind-protect
-              (progn ,@body)
-           (shutdown-render-system ,render-system))))))
+       (bracket (,render-system (init-render-system ,window)
+                                shutdown-render-system)
+         ,@body))))
 
 ;; Currently active RENDER-SYSTEM.
 (defvar *rs*)
@@ -100,12 +99,10 @@
 (defmacro with-draw-frame ((render-system) &body body)
   "Establishes the environment where SHAKE.RENDER package functions can be
   used."
-  (with-gensyms (body-result)
-    `(let ((*batches* (init-draw-frame ,render-system))
-           (*rs* ,render-system))
-       (let ((,body-result (multiple-value-list (progn ,@body))))
-         (finish-draw-frame ,render-system)
-         (values-list ,body-result)))))
+  `(let ((*batches* (init-draw-frame ,render-system))
+         (*rs* ,render-system))
+     (multiple-value-prog1 (progn ,@body)
+       (finish-draw-frame ,render-system))))
 
 (defun print-memory-usage (render-system)
   "Print the estimate of used memory in GL."
