@@ -22,6 +22,7 @@
   (:export #:aif
            #:awhen
            #:bracket
+           #:dlambda
            #:dolist-enum
            #:doproduct
            #:dovector

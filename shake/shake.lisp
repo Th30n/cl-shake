@@ -203,24 +203,24 @@ object as the primary value. Second and third value are image width and height."
     (values tex width height)))
 
 (defun make-point-renderer ()
-  "Creates a function which draws a single point. The function takes symbols
-DRAW and DELETE for drawing and deleting respectively."
+  "Creates a function which draws a single point. The function takes keywords
+  :DRAW and :DELETE for drawing and deleting respectively."
   (let ((vao (gl:gen-vertex-array))
         deleted)
     (gl:bind-vertex-array vao)
     (gl:vertex-attrib 0 0 0 0)
     (gl:bind-vertex-array 0)
-    (lambda (action)
-      (if (not deleted)
-          (ecase action
-            (draw (gl:bind-vertex-array vao)
-                  (gl:draw-arrays :points 0 1))
-            (delete (gl:delete-vertex-arrays (list vao))
-                    (setf deleted t)))
-          (error "Trying to render with deleted point-renderer.")))))
+    (dlambda
+     (:draw () (if deleted
+                   (error "Trying to render with deleted point-renderer.")
+                   (progn (gl:bind-vertex-array vao)
+                          (gl:draw-arrays :points 0 1))))
+     (:delete () (unless deleted
+                   (gl:delete-vertex-arrays (list vao))
+                   (setf deleted t))))))
 
-(defun renderer-draw (renderer) (funcall renderer 'draw))
-(defun renderer-delete (renderer) (funcall renderer 'delete))
+(defun renderer-draw (renderer) (funcall renderer :draw))
+(defun renderer-delete (renderer) (funcall renderer :delete))
 
 (defstruct font
   (texture 0 :type fixnum)

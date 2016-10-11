@@ -62,6 +62,32 @@
      (unwind-protect (progn ,@body)
        (,release ,var))))
 
+(defmacro dlambda (&rest ds)
+  "A dispatching lambda macro from Let Over Lambda by Doug Hoyte. Takes DS
+  forms, each specified as (:DISPATCH-KEYWORD (LAMBDA-LIST) BODY).
+  For example:
+  (setf (symbol-function 'count-test)
+    (let ((count 0))
+      (dlambda
+        (:reset () (setf count 0))
+        (:inc (n) (incf count n))
+        (t () count))))
+  (count-test :inc 3) ;; returns 3
+  (count-test) ;; returns 3
+  (count-test :reset) ;; returns 0"
+  (with-gensyms (args)
+    `(lambda (&rest ,args)
+       (case (car ,args)
+         ,@(mapcar (lambda (d)
+                     `(,(if (eq t (car d))
+                            t
+                            (list (car d)))
+                        (apply (lambda ,@(cdr d))
+                               ,(if (eq t (car d))
+                                    args
+                                    `(cdr ,args)))))
+                   ds)))))
+
 (defmacro doproduct (((var-a list-a) (var-b list-b) &optional result) &body body)
   "Iterate over a Cartesian product of LIST-A and LIST-B."
   `(dolist (,var-a ,list-a ,result)
