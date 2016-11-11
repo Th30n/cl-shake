@@ -246,34 +246,39 @@ object as the primary value. Second and third value are image width and height."
       (multiple-value-bind (y x) (floor char-code chars-per-line)
         (cons (* x cell-size) (* y cell-size))))))
 
-(defun render-text (renderer text pos-x pos-y width height shader font)
-  (with-struct (font- texture cell-size) font
-    (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
-          (half-cell (* 0.5 cell-size)))
-      (gl:active-texture :texture0)
-      (gl:bind-texture :texture-2d texture)
-      (gl:use-program shader)
-      (with-uniform-locations shader (tex-font proj size cell mv char-pos)
-        (gl:uniformi tex-font-loc 0)
-        (uniform-matrix-4f proj-loc (list ortho))
-        (gl:uniformf size-loc half-cell)
-        (gl:uniformi cell-loc cell-size cell-size)
-        (loop for char across text and offset from half-cell by half-cell do
-             (destructuring-bind (x . y) (char->font-cell-pos char font)
-               (gl:uniformi char-pos-loc x y)
-               (uniform-matrix-4f mv-loc
-                                  (list (translation :x (+ offset pos-x)
-                                                     :y (+ pos-y half-cell))))
-               (renderer-draw renderer)))))))
+(defun render-text (renderer text pos-x pos-y width height font)
+  (declare (special *rs*))
+  (let ((progs (srend:render-system-prog-manager *rs*)))
+    (with-struct (font- texture cell-size) font
+      (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
+            (half-cell (* 0.5 cell-size))
+            (text-shader (shake.render-progs:get-program
+                          progs "billboard" "text" "billboard")))
+        (gl:active-texture :texture0)
+        (gl:bind-texture :texture-2d texture)
+        (shake.render-progs:bind-program progs text-shader)
+        ;; (gl:use-program shader)
+        (with-uniform-locations text-shader (tex-font proj size cell mv char-pos)
+          (gl:uniformi tex-font-loc 0)
+          (uniform-matrix-4f proj-loc (list ortho))
+          (gl:uniformf size-loc half-cell)
+          (gl:uniformi cell-loc cell-size cell-size)
+          (loop for char across text and offset from half-cell by half-cell do
+               (destructuring-bind (x . y) (char->font-cell-pos char font)
+                 (gl:uniformi char-pos-loc x y)
+                 (uniform-matrix-4f mv-loc
+                                    (list (translation :x (+ offset pos-x)
+                                                       :y (+ pos-y half-cell))))
+                 (renderer-draw renderer))))))))
 
 (defun draw-text (text x y)
   "Draw a single line of text on given window coordinates."
   (declare (special *win-width* *win-height*))
   (let ((pos-x (if (minusp x) (+ *win-width* x) x))
         (pos-y (if (minusp y) (+ *win-height* y) y)))
-    (res-let (point-renderer text-shader font)
+    (res-let (point-renderer font)
       (render-text point-renderer text pos-x pos-y *win-width* *win-height*
-                   text-shader font))))
+                   font))))
 
 (defun draw-timer-stats (timer &key (x -200) (y -20))
   (with-struct (timer- max avg) timer
@@ -400,14 +405,9 @@ object as the primary value. Second and third value are image width and height."
   (add-res "vertex-array" #'gl:gen-vertex-array
            (lambda (va) (gl:delete-vertex-arrays (list va))))
   (add-res "point-renderer" #'make-point-renderer #'renderer-delete)
-  (add-res "text-shader"
-           (lambda ()
-             (load-shader (data-path "shaders/billboard.vert")
-                          (data-path "shaders/text.frag")
-                          (data-path "shaders/billboard.geom")))
-           #'gl:delete-program)
-  (shake.render-progs:get-program
-   (srend:render-system-prog-manager render-system) "pass" "color")
+  (let ((progs (srend:render-system-prog-manager render-system)))
+    (shake.render-progs:get-program progs "billboard" "text" "billboard")
+    (shake.render-progs:get-program progs "pass" "color"))
   (add-res "font"
            (lambda ()
              (load-font (data-path "share/font-16.bmp") 16 #\Space))
@@ -495,7 +495,9 @@ object as the primary value. Second and third value are image width and height."
                      (unless minimized-p
                        (clear-buffer-fv :color 0 0 0 0)
                        (render render-system camera)
-                       (draw-timer-stats frame-timer)
+                       (let ((*rs* render-system))
+                         (declare (special *rs*))
+                         (draw-timer-stats frame-timer))
                        ;; TODO: Move swap to srend::finish-draw-frame.
                        (sdl2:gl-swap-window
                         (srend::render-system-window render-system)))))))))))
@@ -591,7 +593,7 @@ object as the primary value. Second and third value are image width and height."
   (res-let (world-model)
     (let* ((progs (srend:render-system-prog-manager render-system))
            (shader-prog (shake.render-progs:get-program progs "pass" "color")))
-      (shake.render-progs:bind-shader progs shader-prog)
+      (shake.render-progs:bind-program progs shader-prog)
       (uniform-mvp shader-prog
                    (m* (camera-projection-matrix camera)
                        (camera-view-transform camera)))

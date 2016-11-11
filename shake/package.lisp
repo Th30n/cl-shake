@@ -53,12 +53,13 @@
 (defpackage #:shake.render-progs
   (:use #:cl #:alexandria #:shake-utils)
   (:export #:prog-manager
+           #:with-prog-manager
            #:init-prog-manager
            #:shutdown-prog-manager
            #:get-program
-           #:bind-shader
-           #:unbind-shader
-           #:reload-shaders))
+           #:bind-program
+           #:unbind-program
+           #:reload-programs))
 
 (defpackage #:shake.render
   (:nicknames #:srend)

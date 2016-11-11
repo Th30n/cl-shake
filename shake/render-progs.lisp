@@ -23,38 +23,73 @@
   (vertex-shaders (make-hash-table))
   (fragment-shaders (make-hash-table))
   (geometry-shaders (make-hash-table))
-  (programs (make-hash-table :test #'equal)))
+  (programs (make-hash-table :test #'equal))
+  (bound-program 0 :type fixnum))
 
 (defun init-prog-manager ()
   (make-prog-manager))
 
 (defun shutdown-prog-manager (prog-manager)
-  (purge-all-shaders prog-manager))
+  (purge-all-programs prog-manager))
 
-(defun purge-all-shaders (prog-manager)
+(defmacro with-prog-manager (prog-manager &body body)
+  `(bracket (,prog-manager (init-prog-manager) shutdown-prog-manager)
+     ,@body))
+
+(defun bind-program (prog-manager shader-prog)
+  (unless (= shader-prog (prog-manager-bound-program prog-manager))
+    (gl:use-program shader-prog)
+    (setf (prog-manager-bound-program prog-manager) shader-prog)))
+
+(defun unbind-program (prog-manager)
+  (unless (zerop (prog-manager-bound-program prog-manager))
+    (gl:use-program 0)
+    (setf (prog-manager-bound-program prog-manager) 0)))
+
+(defun purge-all-programs (prog-manager)
+  (unbind-program prog-manager)
   (with-struct (prog-manager- vertex-shaders fragment-shaders geometry-shaders
                               programs) prog-manager
     (dolist (shaders (list vertex-shaders fragment-shaders geometry-shaders))
       (maphash-values #'gl:delete-shader shaders))
     (maphash-values #'gl:delete-program programs)))
 
-(defun bind-shader (prog-manager shader-prog)
-  (declare (ignore prog-manager))
-  (gl:use-program shader-prog))
-
-(defun unbind-shader (prog-manager)
-  (declare (ignore prog-manager))
-  (gl:use-program 0))
-
-(defun reload-shaders (prog-manager)
-  (declare (ignore prog-manager))
-  (error "TODO: Not implemented"))
-
 (defun find-shader (shaders name)
   (gethash name shaders nil))
 
 (defun add-shader (shaders name gl-shader)
   (setf (gethash name shaders) gl-shader))
+
+(defun load-shader (shader-type name)
+  )
+
+(defun find-program (prog-manager vs-name fs-name gs-name)
+  (gethash (list vs-name fs-name gs-name) (prog-manager-programs prog-manager)
+           nil))
+
+(defun add-program (prog-manager vs-name fs-name gs-name gl-prog)
+  (setf (gethash (list vs-name fs-name gs-name)
+                 (prog-manager-programs prog-manager))
+        gl-prog))
+
+(defun load-program (vs-name fs-name &optional gs-name)
+  )
+
+(defun reload-programs (prog-manager)
+  (purge-all-programs prog-manager)
+  (with-struct (prog-manager- vertex-shaders fragment-shaders geometry-shaders
+                              programs) prog-manager
+    (loop for shaders in (list vertex-shaders fragment-shaders geometry-shaders)
+       and shader-type in (:vertex-shader :fragment-shader :geometry-shader) do
+         (maphash-keys (lambda (name)
+                         (add-shader shaders name
+                                     (load-shader shader-type name)))
+                       shaders))
+    (maphash-keys (lambda (shader-names)
+                    (destructuring-bind (vs-name fs-name gs-name) shader-names
+                      (add-program prog-manager vs-name fs-name gs-name
+                                   (load-program vs-name fs-name gs-name))))
+                  programs)))
 
 (defun get-shader (prog-manager name shader-type)
   (destructuring-bind (ext . shaders)
@@ -79,15 +114,6 @@
 
 (defun get-geometry-shader (prog-manager name)
   (get-shader prog-manager name :geometry-shader))
-
-(defun add-program (prog-manager vs-name fs-name gs-name gl-prog)
-  (setf (gethash (list vs-name fs-name gs-name)
-                 (prog-manager-programs prog-manager))
-        gl-prog))
-
-(defun find-program (prog-manager vs-name fs-name gs-name)
-  (gethash (list vs-name fs-name gs-name) (prog-manager-programs prog-manager)
-           nil))
 
 (defun get-program (prog-manager vs-name fs-name &optional gs-name)
   (or (find-program prog-manager vs-name fs-name gs-name)
