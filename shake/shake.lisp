@@ -257,7 +257,6 @@ object as the primary value. Second and third value are image width and height."
         (gl:active-texture :texture0)
         (gl:bind-texture :texture-2d texture)
         (shake.render-progs:bind-program progs text-shader)
-        ;; (gl:use-program shader)
         (with-uniform-locations text-shader (tex-font proj size cell mv char-pos)
           (gl:uniformi tex-font-loc 0)
           (uniform-matrix-4f proj-loc (list ortho))
@@ -441,6 +440,7 @@ object as the primary value. Second and third value are image width and height."
   ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
   ;; executed inside that thread.
   `(sdl2:with-init (:everything)
+     (reset-game-keys)
      (with-data-dirs (get-base-dir)
        (set-gl-attrs)
        (let ((*win-width* 800)
