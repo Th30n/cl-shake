@@ -349,7 +349,7 @@ with ROWS."
   "Compare floating points using epsilon difference and fallback to relative
 epsilon. Doesn't handle infinities."
   (declare (type double-float a b epsilon rel-epsilon)
-           (optimize (speed 3) (space 3)))
+           (optimize (speed 3) (space 3) (safety 0)))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
     (declare (type double-float diff max)
@@ -357,12 +357,29 @@ epsilon. Doesn't handle infinities."
     (or (<= diff epsilon) ;; Needed when near zero.
         (<= diff (* max rel-epsilon)))))
 
-(defun double> (number &rest more-numbers)
-  (declare (optimize (speed 3) (space 3))
-           (dynamic-extent more-numbers))
-  (iter (for (a b) on (cons number more-numbers))
-        (never (and b (or (double= a b) (< (the double-float a)
-                                           (the double-float b)))))))
+(defmacro define-double-cmp (cmp-name test-sexp)
+  `(defun ,cmp-name (number &rest more-numbers)
+     (declare (optimize (speed 3) (space 3) (safety 0))
+              (dynamic-extent more-numbers))
+     (iter (for (a b) on (cons number more-numbers))
+           (always (or (not b)
+                       ,test-sexp)))))
+
+(define-double-cmp double>
+    (and (not (double= a b)) (> (the double-float a)
+                                (the double-float b))))
+
+(define-double-cmp double>=
+    (or (double= a b) (> (the double-float a)
+                         (the double-float b))))
+
+(define-double-cmp double<
+    (and (not (double= a b)) (< (the double-float a)
+                                (the double-float b))))
+
+(define-double-cmp double<=
+    (or (double= a b) (< (the double-float a)
+                         (the double-float b))))
 
 (defun v= (v1 v2 &key (test #'double=))
   "Perform a comparison of two vectors."
