@@ -58,14 +58,35 @@
     (unless (double> height-diff 0.2d0)
       height-diff)))
 
+;; TODO: Remove crossp and climbing, because it shouldn't be handler here.
 (defun crossp (hull-node point hull-parent)
   "Return height difference after crossing the HULL-NODE. If unable to cross,
   returns NIL"
   (multiple-value-bind (contents parent leaf)
       (hull-point-contents hull-node (v3->v2 point) hull-parent)
     (if (eq contents :contents-solid)
-        (climb-solid-p parent point)
+        (climb-solid-p parent point) ;; XXX: When is this needed?
         (climb-empty-p leaf point))))
+
+(defun hull-point-sector (hull-node point)
+  "Get the hull SECTOR which contains the POINT. Returns NIL if no sector
+  found, this is the case when the point is inside a solid leaf."
+  (multiple-value-bind (contents parent leaf)
+      ;; TODO: Make a hull-point-leaf function.
+      (hull-point-contents hull-node point)
+    (declare (ignore contents parent))
+    (aif (first (sbsp:leaf-surfaces leaf))
+         (sbsp:sidedef-front-sector it)
+         ;; TODO: Make sure all non solid leafs have a sector.
+         (assert (eq (sbsp:leaf-contents leaf) :contents-solid)))))
+
+(defun vert-fit-p (hull-node point half-height)
+  "Return T if the POINT can fit into a non-solid space."
+  (when-let* ((sector (hull-point-sector hull-node (v3->v2 point)))
+              (floor-height (sbsp:sector-floor-height sector))
+              (ceiling-height (sbsp:sector-floor-height sector)))
+    (double>= ceiling-height (+ (vy point) half-height)
+              (- (vy point) half-height) floor-height)))
 
 (defparameter *dist-epsilon* 1d-10)
 
