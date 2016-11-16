@@ -26,67 +26,36 @@
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
-(defun hull-point-contents (hull point &optional (parent nil))
+(defun hull-point-contents (hull point)
   "Traverse the HULL to the leaf where POINT is located and return
   LEAF-CONTENTS. Secondary value is a parent NODE."
   (declare (type (vec 2) point))
   (if (sbsp:leaf-p hull)
-      (values (sbsp:leaf-contents hull) parent hull)
+      (values (sbsp:leaf-contents hull) hull)
       (ecase (sbsp:determine-side (sbsp:node-line hull) point)
         ((or :front :on-line)
-         (hull-point-contents (sbsp:node-front hull) point hull))
+         (hull-point-contents (sbsp:node-front hull) point))
         (:back
-         (hull-point-contents (sbsp:node-back hull) point hull)))))
-
-(defun climb-solid-p (hull-node point)
-  "Return height difference if possible to climb the splitting surface on
-  HULL-NODE."
-  (let ((sector (sbsp:sidedef-back-sector (sbsp:node-surface hull-node))))
-    (when sector
-      (let ((height-diff (- (sbsp:sector-floor-height sector)
-                            (- (vy point) 0.5d0))))
-        (unless (double> height-diff 0.2d0)
-          height-diff)))))
-
-(defun climb-empty-p (hull-leaf point)
-  (let* ((front-sector (sbsp:sidedef-front-sector
-                        (first (sbsp:leaf-surfaces hull-leaf))))
-         (height-diff (- (if front-sector
-                             (sbsp:sector-floor-height front-sector)
-                             0d0)
-                         (- (vy point) 0.5d0))))
-    (unless (double> height-diff 0.2d0)
-      height-diff)))
-
-;; TODO: Remove crossp and climbing, because it shouldn't be handler here.
-(defun crossp (hull-node point hull-parent)
-  "Return height difference after crossing the HULL-NODE. If unable to cross,
-  returns NIL"
-  (multiple-value-bind (contents parent leaf)
-      (hull-point-contents hull-node (v3->v2 point) hull-parent)
-    (if (eq contents :contents-solid)
-        (climb-solid-p parent point) ;; XXX: When is this needed?
-        (climb-empty-p leaf point))))
+         (hull-point-contents (sbsp:node-back hull) point)))))
 
 (defun hull-point-sector (hull-node point)
   "Get the hull SECTOR which contains the POINT. Returns NIL if no sector
   found, this is the case when the point is inside a solid leaf."
-  (multiple-value-bind (contents parent leaf)
+  (multiple-value-bind (contents leaf)
       ;; TODO: Make a hull-point-leaf function.
       (hull-point-contents hull-node point)
-    (declare (ignore contents parent))
+    (declare (ignore contents))
     (aif (first (sbsp:leaf-surfaces leaf))
-         (sbsp:sidedef-front-sector it)
          ;; TODO: Make sure all non solid leafs have a sector.
+         (or (sbsp:sidedef-front-sector it) (sbsp:make-sector))
          (assert (eq (sbsp:leaf-contents leaf) :contents-solid)))))
 
-(defun vert-fit-p (hull-node point half-height)
-  "Return T if the POINT can fit into a non-solid space."
+(defun crossp (hull-node point height)
+  "Return T if the POINT can cross into a non-solid space."
   (when-let* ((sector (hull-point-sector hull-node (v3->v2 point)))
               (floor-height (sbsp:sector-floor-height sector))
-              (ceiling-height (sbsp:sector-floor-height sector)))
-    (double>= ceiling-height (+ (vy point) half-height)
-              (- (vy point) half-height) floor-height)))
+              (ceiling-height (sbsp:sector-ceiling-height sector)))
+    (double>= ceiling-height (+ (vy point) height) (vy point) floor-height)))
 
 (defparameter *dist-epsilon* 1d-10)
 
@@ -134,21 +103,19 @@
           (let ((other-side (if (minusp t1)
                                 (sbsp:node-front node)
                                 (sbsp:node-back node))))
-            (if-let ((height-diff (crossp other-side mid node)))
-              ;; Continue through the other part.
-              (recursive-hull-check hull (v+ mid (v 0 height-diff 0))
-                                    (v+ p2 (v 0 height-diff 0))
-                                    other-side midf p2f)
-              ;; Other side is solid, this is the impact point.
-              (let ((normal (sbsp:linedef-normal (sbsp:node-line node))))
-                (when (minusp t1)
-                  (setf normal (v- normal)))
-                (multiple-value-bind (adj-midf adj-mid)
-                    (adjust-midf hull p1 p2 p1f p2f mid midf frac)
-                  (values
-                   (make-mtrace :fraction adj-midf :endpos adj-mid
-                                :normal (v2->v3 normal))
-                   t)))))))))
+            (if (crossp other-side mid 0.5d0) ;; TODO: Don't hardcode height
+                ;; Continue through the other part.
+                (recursive-hull-check hull mid p2 other-side midf p2f)
+                ;; Other side is solid, this is the impact point.
+                (let ((normal (sbsp:linedef-normal (sbsp:node-line node))))
+                  (when (minusp t1)
+                    (setf normal (v- normal)))
+                  (multiple-value-bind (adj-midf adj-mid)
+                      (adjust-midf hull p1 p2 p1f p2f mid midf frac)
+                    (values
+                     (make-mtrace :fraction adj-midf :endpos adj-mid
+                                  :normal (v2->v3 normal))
+                     t)))))))))
 
 (defun recursive-hull-check (hull p1 p2 &optional (node nil) (p1f 0d0) (p2f 1d0))
   "Checks the HULL for the nearest collision on the way from P1 to P2. Returns

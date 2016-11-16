@@ -56,7 +56,7 @@
          :test (lambda (a b)
                  (if (null a)
                      (null b)
-                     (v= a b))))))
+                     (and b (v= a b)))))))
 
 (subtest "hull-point-contents"
   (let* ((surfs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
@@ -70,11 +70,11 @@
   (let* ((segs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
          (hull (build-bsp segs)))
     (test-recursive-hull-check
-     (v 0.5d0 1d0 -1d0) (v 0d0 1d0 -0.5d0)
+     (v 0.5d0 0d0 -1d0) (v 0d0 0d0 -0.5d0)
      :fraction 1d0 :endpos p2 :normal nil)
     (test-recursive-hull-check
-     (v 0.5d0 1d0 -0.5d0) (v -0.5d0 1d0 -0.5d0)
-     :fraction 0.5d0 :endpos (v 0d0 1d0 -0.5d0) :normal (v 1d0 0d0 0d0))
+     (v 0.5d0 0d0 -0.5d0) (v -0.5d0 0d0 -0.5d0)
+     :fraction 0.5d0 :endpos (v 0d0 0d0 -0.5d0) :normal (v 1d0 0d0 0d0))
     (test-recursive-hull-check
      (v -0.5d0 0d0 -1.5d0) (v -0.5d0 0d0 0.5d0)
      :fraction 0.25d0 :endpos (v -0.5d0 0d0 -1d0) :normal (v 0d0 0d0 -1d0))))

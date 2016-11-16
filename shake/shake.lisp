@@ -383,13 +383,16 @@ object as the primary value. Second and third value are image width and height."
     (let* ;; Intentionally make diagonal movement faster.
         ((velocity (v+ (vscale forward-move forward-dir)
                        (vscale side-move (view-dir :right player))))
-         (origin (camera-position player))
+         ;; TODO: Seperate player position from camera.
+         (camera-offset (v 0d0 0.5d0 0d0))
+         (origin (v- (camera-position player) camera-offset))
          (end-pos (v+ origin velocity)))
       (if noclip
-          (setf (camera-position player) end-pos)
+          (setf (camera-position player) (v+ camera-offset end-pos))
           (let ((hull (smdl:model-hull (res "world-model"))))
             (setf (camera-position player)
-                  (player-ground-move origin velocity hull)))))))
+                  (v+ camera-offset
+                      (player-ground-move origin velocity hull))))))))
 
 (defun run-tic (camera cmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
