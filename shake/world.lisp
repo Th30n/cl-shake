@@ -26,25 +26,28 @@
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
+(defun hull-point-leaf (hull point)
+  "Traverse the HULL to the leaf where POINT is located and return it."
+  (declare (type (vec 2) point))
+  (if (sbsp:leaf-p hull)
+      hull
+      (ecase (sbsp:determine-side (sbsp:node-line hull) point)
+        ((or :front :on-line)
+         (hull-point-leaf (sbsp:node-front hull) point))
+        (:back
+         (hull-point-leaf (sbsp:node-back hull) point)))))
+
 (defun hull-point-contents (hull point)
   "Traverse the HULL to the leaf where POINT is located and return
   LEAF-CONTENTS. Secondary value is a parent NODE."
   (declare (type (vec 2) point))
-  (if (sbsp:leaf-p hull)
-      (values (sbsp:leaf-contents hull) hull)
-      (ecase (sbsp:determine-side (sbsp:node-line hull) point)
-        ((or :front :on-line)
-         (hull-point-contents (sbsp:node-front hull) point))
-        (:back
-         (hull-point-contents (sbsp:node-back hull) point)))))
+  (let ((leaf (hull-point-leaf hull point)))
+    (values (sbsp:leaf-contents leaf) leaf)))
 
 (defun hull-point-sector (hull-node point)
   "Get the hull SECTOR which contains the POINT. Returns NIL if no sector
   found, this is the case when the point is inside a solid leaf."
-  (multiple-value-bind (contents leaf)
-      ;; TODO: Make a hull-point-leaf function.
-      (hull-point-contents hull-node point)
-    (declare (ignore contents))
+  (let ((leaf (hull-point-leaf hull-node point)))
     (aif (first (sbsp:leaf-surfaces leaf))
          ;; TODO: Make sure all non solid leafs have a sector.
          (or (sbsp:sidedef-front-sector it) (sbsp:make-sector))
@@ -129,7 +132,6 @@
       (let ((t1 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p1)))
             (t2 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p2))))
         (cond
-          ;; XXX: floating point comparison?!
           ((and (minusp t1) (minusp t2))
            ;; Path is behind the line.
            (recursive-hull-check hull p1 p2 (sbsp:node-back node) p1f p2f))
