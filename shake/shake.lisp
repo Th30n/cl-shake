@@ -356,24 +356,55 @@ object as the primary value. Second and third value are image width and height."
     (setf (cdr *mouse*) 0)
     cmd))
 
+;; Player movement
+
 (defun clip-velocity (velocity normal)
   "Clip the given VELOCITY by projecting it on NORMAL and return a parallel
   vector to the surface."
   (let ((change (vscale (vdot velocity normal) normal)))
     (v- velocity change)))
 
+(defconstant +step-height+ 0.2d0 "Height of a stair step.")
+
+(defun player-climb-move (origin velocity hull)
+  (let ((step-origin (v+ origin (v 0d0 +step-height+ 0d0))))
+    (if (/= 1d0 (mtrace-fraction (recursive-hull-check hull origin step-origin)))
+        ;; Unable to move up to climb a stair.
+        origin
+        ;; Try climbing a stair with regular movement.
+        ;; XXX: What if we need to climb again?
+        (mtrace-endpos (recursive-hull-check hull step-origin
+                                             (v+ step-origin velocity))))))
+
+;; Moving the player on the ground should work the following way.
+;; The trivial case is when the full move can be made, so we just return the
+;; final position after adding the velocity to the origin.
+;; If the full move cannot be made:
+;;   * try climbing a stair and continue moving;
+;;   * try sliding along the obstacle.
+;; The try which results in greater movement should be returned.
+;; TODO: Add gravity somewhere, probably outside of player-ground-move.
 (defun player-ground-move (origin velocity hull)
   (let ((mtrace (recursive-hull-check hull origin (v+ origin velocity))))
     (if (= (mtrace-fraction mtrace) 1d0)
         ;; Completed the whole move.
         (mtrace-endpos mtrace)
-        ;; Partial move, try sliding
-        (let ((time-left (- 1d0 (mtrace-fraction mtrace)))
-              (new-origin (mtrace-endpos mtrace))
-              (new-vel (clip-velocity velocity (mtrace-normal mtrace))))
-          (mtrace-endpos
-           (recursive-hull-check hull new-origin
-                                 (v+ new-origin (vscale time-left new-vel))))))))
+        ;; Partial move, try sliding or climbing.
+        ;; XXX: Maybe use time-left to scale climb velocity?
+        (let ((climb-endpos (player-climb-move origin velocity hull))
+              (slide-endpos
+               (let ((time-left (- 1d0 (mtrace-fraction mtrace)))
+                     (new-origin (mtrace-endpos mtrace))
+                     (new-vel (clip-velocity velocity
+                                             (mtrace-normal mtrace))))
+                 (mtrace-endpos
+                  (recursive-hull-check hull new-origin
+                                        (v+ new-origin
+                                            (vscale time-left new-vel)))))))
+          (if (double> (vdistsq (v3->v2 origin) (v3->v2 climb-endpos))
+                       (vdistsq (v3->v2 origin) (v3->v2 slide-endpos)))
+              climb-endpos
+              slide-endpos)))))
 
 (defun move-player (player forward-move side-move &key (noclip nil))
   (let ((forward-dir (view-dir :forward player)))
