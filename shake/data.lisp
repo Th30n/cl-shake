@@ -65,16 +65,6 @@
      (declare (special *search-paths*))
      ,@body))
 
-(defmacro define-data-fun (name lambda-list &body body)
-  (let* ((doc-string (when (stringp (car body)) (car body)))
-         (rem-body (if doc-string (cdr body) body)))
-    `(defun ,name ,lambda-list
-       ,doc-string
-       (declare (special *search-paths*))
-       (unless (boundp '*search-paths*)
-         (error "This function needs to be called inside with-data-dirs."))
-       ,@rem-body)))
-
 (define-condition data-file-error (error)
   ((filename :initarg :filename :reader filename)
    (search-paths :initarg :search-paths :reader search-paths)
@@ -83,10 +73,13 @@
              (format stream "Error opening file '~A'. ~A~%Looked for in: ~{~%  ~A~}"
                      (filename e) (message e) (search-paths e)))))
 
-(define-data-fun data-path (filename &key (if-does-not-exist nil))
+(defun data-path (filename &key (if-does-not-exist nil))
   "Construct a path to FILENAME by looking for it in *SEARCH-PATHS*. When
   IF-DOES-NOT-EXIST is :ERROR, then DATA-FILE-ERROR is signaled. Otherwise,
   returns NIL."
+  (declare (special *search-paths*))
+  (unless (boundp '*search-paths*)
+    (error "This function needs to be called inside with-data-dirs."))
   (or (dolist (search *search-paths*)
         (when-let ((full-path (file-exists-p (merge-pathnames filename search))))
           (unless (directory-pathname-p full-path)
