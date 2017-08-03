@@ -75,18 +75,40 @@
          (error "This function needs to be called inside with-data-dirs."))
        ,@rem-body)))
 
-(define-data-fun data-path (filename)
-  "Construct a path to FILENAME by looking for it in to
-  *SEARCH-PATHS*. Returns NIL if file not found."
-  (dolist (search *search-paths*)
-    (when-let ((full-path (file-exists-p (merge-pathnames filename search))))
-      (unless (directory-pathname-p full-path)
-        (return full-path)))))
+(define-condition data-file-error (error)
+  ((filename :initarg :filename :reader filename)
+   (search-paths :initarg :search-paths :reader search-paths)
+   (message :initarg :message :reader message))
+  (:report (lambda (e stream)
+             (format stream "Error opening file '~A'. ~A~%Looked for in: ~{~%  ~A~}"
+                     (filename e) (message e) (search-paths e)))))
+
+(define-data-fun data-path (filename &key (if-does-not-exist nil))
+  "Construct a path to FILENAME by looking for it in *SEARCH-PATHS*. When
+  IF-DOES-NOT-EXIST is :ERROR, then DATA-FILE-ERROR is signaled. Otherwise,
+  returns NIL."
+  (or (dolist (search *search-paths*)
+        (when-let ((full-path (file-exists-p (merge-pathnames filename search))))
+          (unless (directory-pathname-p full-path)
+            (return full-path))))
+      (ccase if-does-not-exist
+        ((:error) (flet ((read-new-filename ()
+                           (format t "Enter a new filename: ")
+                           (multiple-value-list (eval (read)))))
+                    (restart-case (error 'data-file-error
+                                         :filename filename
+                                         :message "File is missing."
+                                         :search-paths *search-paths*)
+                      (use-value (new-filename)
+                        :interactive read-new-filename
+                        :report "Use another filename."
+                        (data-path new-filename :if-does-not-exist if-does-not-exist)))))
+        ((nil) nil))))
 
 (defmacro with-data-file ((stream filespec) &body body)
   "Behaves like WITH-OPEN-FILE, but searches the FILESPEC in search paths. If
   the file is not found, an error will be raised."
-  `(with-open-file (,stream (data-path ,filespec))
+  `(with-open-file (,stream (data-path ,filespec :if-does-not-exist :error))
      ,@body))
 
 (defstruct resource
