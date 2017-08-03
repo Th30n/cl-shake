@@ -100,7 +100,7 @@
 
 (defmacro with-data-file ((stream filespec) &body body)
   "Behaves like WITH-OPEN-FILE, but searches the FILESPEC in search paths. If
-  the file is not found, an error will be raised."
+  the file is not found, DATA-FILE-ERROR will be signaled."
   `(with-open-file (,stream (data-path ,filespec :if-does-not-exist :error))
      ,@body))
 
