@@ -557,41 +557,6 @@ object as the primary value. Second and third value are image width and height."
    ;; set CONTEXT_PROFILE_CORE
    :context-profile-mask #x1))
 
-(defun collect-visible-surfaces (camera bsp)
-  (with-struct (camera- position) camera
-    (let ((pos-2d (v (vx position) (vz position)))
-          (bound-y (vy position))
-          (frustum (mapcar (rcurry #'funcall camera)
-                           (list #'left-frustum-plane #'right-frustum-plane
-                                 #'near-frustum-plane #'far-frustum-plane))))
-      (labels ((rec (node &optional (test-frustum-p t))
-                 (if (sbsp:leaf-p node)
-                     (when (or (not test-frustum-p)
-                               (intersect-frustum-2d frustum
-                                                     (sbsp:leaf-bounds node)
-                                                     bound-y))
-                       (sbsp:leaf-surfaces node))
-                     ;; split node
-                     (let ((front (sbsp:node-front node))
-                           (back (sbsp:node-back node)))
-                       (when-let ((intersect (or (not test-frustum-p)
-                                                 (intersect-frustum-2d
-                                                  frustum (sbsp:node-bounds node)
-                                                  bound-y))))
-                         ;; Frustum testing is no longer needed if the bounds
-                         ;; are completely inside.
-                         (let ((test-p (and test-frustum-p
-                                            (not (eq :inside intersect)))))
-                           (ecase (sbsp:determine-side (sbsp:node-line node) pos-2d)
-                             ((or :front :on-line)
-                              (append (rec back test-p) (rec front test-p)))
-                             (:back
-                              (append (rec front test-p) (rec back test-p))))))))))
-        (remove nil (rec bsp))))))
-
-(defun get-map-walls (camera bsp)
-  (collect-visible-surfaces camera (smdl:model-nodes bsp)))
-
 (defun render-world (camera world-model)
   (declare (optimize (speed 3) (space 3) (safety 0) (debug 0)))
   (with-struct (camera- position) camera
