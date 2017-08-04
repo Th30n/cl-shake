@@ -172,15 +172,19 @@ around the local X axis. The vertical angle is clamped."
           (timer-new-max timer) 0d0))
   timer)
 
+(defun call-with-timer (timer function &key (reset-every 1d0))
+  "Upate the TIMER with the execution time of FUNCTION. If the TIMER TOTAL
+  exceeds RESET-EVERY seconds, TIMER is reset."
+  (let ((start (sdl2:get-performance-counter)))
+    (multiple-value-prog1 (funcall function)
+      (let* ((end (sdl2:get-performance-counter))
+             (delta (performance-delta start end)))
+        (nupdate-timer timer delta)
+        (when (>= (timer-total timer) reset-every)
+          (nreset-timer timer))))))
+
 (defmacro with-timer ((timer &key (reset-every 1d0)) &body body)
-  (with-gensyms (start delta end)
-    `(let ((,start (sdl2:get-performance-counter)))
-       (multiple-value-prog1 (progn ,@body)
-         (let* ((,end (sdl2:get-performance-counter))
-                (,delta (performance-delta ,start ,end)))
-           (nupdate-timer ,timer ,delta)
-           (when (>= (timer-total ,timer) ,reset-every)
-             (nreset-timer ,timer)))))))
+  `(call-with-timer ,timer (lambda () ,@body) :reset-every ,reset-every))
 
 (defun load-image-from-file (image-file)
   (sdl2:load-bmp image-file))
