@@ -420,7 +420,7 @@ object as the primary value. Second and third value are image width and height."
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (camera-position player) (v+ camera-offset end-pos))
-          (let ((hull (smdl:model-hull (res "world-model"))))
+          (let ((hull (smdl:model-hull smdl:*world-model*)))
             (setf (camera-position player)
                   (v+ camera-offset
                       (player-ground-move origin velocity hull))))))))
@@ -496,11 +496,11 @@ object as the primary value. Second and third value are image width and height."
                                      0.1d0 100d0))
              (camera (make-camera :projection proj :position (v 1 0.5 8)))
              (frame-timer (make-timer))
-             (world-model (add-res "world-model"
-                                   (lambda () (smdl:load-model "test.bsp"))
-                                   #'smdl:free-model)))
-        (load-map-textures render-system (smdl:model-nodes world-model))
-        (spawn-player (smdl:model-things world-model) camera)
+             (smdl:*world-model* (add-res "world-model"
+                                          (lambda () (smdl:load-model "test.bsp"))
+                                          #'smdl:free-model)))
+        (load-map-textures render-system (smdl:model-nodes smdl:*world-model*))
+        (spawn-player (smdl:model-things smdl:*world-model*) camera)
         (symbol-macrolet ((input-focus-p
                            (member :input-focus
                                    (sdl2:get-window-flags win)))
@@ -624,15 +624,14 @@ object as the primary value. Second and third value are image width and height."
 (defun render (render-system camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
-  (res-let (world-model)
-    (let* ((progs (srend:render-system-prog-manager render-system))
-           (shader-prog (shake.render-progs:get-program progs "pass" "color")))
-      (shake.render-progs:bind-program progs shader-prog)
-      (uniform-mvp shader-prog
-                   (m* (camera-projection-matrix camera)
-                       (camera-view-transform camera)))
-      (srend:with-draw-frame (render-system)
-        (render-world camera world-model)))))
+  (let* ((progs (srend:render-system-prog-manager render-system))
+         (shader-prog (shake.render-progs:get-program progs "pass" "color")))
+    (shake.render-progs:bind-program progs shader-prog)
+    (uniform-mvp shader-prog
+                 (m* (camera-projection-matrix camera)
+                     (camera-view-transform camera)))
+    (srend:with-draw-frame (render-system)
+      (render-world camera smdl:*world-model*))))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp

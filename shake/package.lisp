@@ -1,4 +1,4 @@
-;;;; Copyright (C) 2016 Teon Banek
+;;;; Copyright (C) 2017 Teon Banek
 ;;;;
 ;;;; This program is free software; you can redistribute it and/or modify
 ;;;; it under the terms of the GNU General Public License as published by
@@ -34,7 +34,8 @@
 (defpackage #:shake.model
   (:nicknames #:smdl)
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.data)
-  (:export #:load-model
+  (:export #:*world-model*
+           #:load-model
            #:free-model
            #:model
            #:model-nodes
