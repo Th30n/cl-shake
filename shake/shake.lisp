@@ -19,6 +19,9 @@
 (defvar *base-dir*
   #.(directory-namestring (or *compile-file-truename* *load-truename*)))
 
+(defvar *win-width* nil "Current window width in pixels")
+(defvar *win-height* nil "Current window height in pixels")
+
 (defstruct plane
   (normal nil :type (vec 3) :read-only t)
   (dist nil :type double-float :read-only t))
@@ -470,22 +473,25 @@ object as the primary value. Second and third value are image width and height."
 (defun get-base-dir ()
   *base-dir*)
 
-(defmacro with-init ((render-system win) &body body)
+(defun call-with-init (function)
+  "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
   ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
   ;; executed inside that thread.
-  `(sdl2:with-init (:everything)
-     (reset-game-keys)
-     (with-data-dirs (get-base-dir)
-       (set-gl-attrs)
-       (let ((*win-width* 800)
-             (*win-height* 600))
-         (declare (special *win-width* *win-height*))
-         (sdl2:with-window (,win :title "shake" :w *win-width* :h *win-height*
-                                 :flags '(:shown :opengl))
-           (srend:with-render-system (,render-system ,win)
-             (sdl2:set-relative-mouse-mode 1)
-             (srend:print-gl-info (srend:render-system-gl-config ,render-system))
-             ,@body))))))
+  (sdl2:with-init (:everything)
+    (reset-game-keys)
+    (with-data-dirs (get-base-dir)
+      (set-gl-attrs)
+      (let ((*win-width* 800)
+            (*win-height* 600))
+        (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
+                                  :flags '(:shown :opengl))
+          (srend:with-render-system (render-system window)
+            (sdl2:set-relative-mouse-mode 1)
+            (srend:print-gl-info (srend:render-system-gl-config render-system))
+            (funcall function render-system window)))))))
+
+(defmacro with-init ((render-system window) &body body)
+  `(call-with-init (lambda (,render-system ,window) ,@body)))
 
 (defun main ()
   (with-init (render-system win)
