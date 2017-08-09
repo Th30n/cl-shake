@@ -1,0 +1,120 @@
+* Shake [4/17]
+** DONE Wall Textures [100%]
+   - [X] Add texture info structure
+   - [X] Serialize texture info in .bsp
+   - [X] Generate texture coordinates upon loading .bsp
+   - [X] Preload needed textures after loading .bsp
+   - [X] Render walls with and without textures
+   - transparency? (windows ...)
+     - handle later?
+   - partial walls? (e.g. fence, hanging from ceiling...)
+     - like transparency? collisions?
+** DONE Build Bounding Boxes on BSP
+** DONE Frustum culling
+** DONE Batching
+   Add support for batching geometry even with differing textures using
+   texture arrays.
+** TODO Floors and Ceilings
+   Add sectors which determine the floor and ceiling properties (height,
+   texture...).  Collision hull is expanded for brushes of type 'stairs' in
+   the direction of lower height.  Higher stairs and solid geometry clip the
+   lower brushes.  Collision detection will need to consider the height
+   diference when moving to stairs as well as the vertical space.  Both for
+   collision and for rendering, stairs generate inverted brush sides, so that
+   normals point inside the brush.  Thus, the BSP will generate non empty
+   leafs so that stair floor can be rendered properly.
+** TODO Serialization (Sexp)
+   Needs to support defstruct and defclass compound serialization.  Does not
+   need to support regular and circular referencing.  Versioning is also
+   unsupported.
+** TODO Shader Reloading
+** TODO Gamma Correction
+** TODO Anti Aliasing
+** TODO Framebuffer & Window Resolution
+** TODO Normal Mapping
+** TODO Resource management [0%]
+   - [ ] dependencies (ref count)
+** TODO Cmdline arg for map select on start
+Time to roll my own command line option parser library.
+#+BEGIN_SRC common-lisp
+  ;; Creates a CLI argument '--draw-caulk' which is a flag.
+  (define-argument draw-caulk
+      (:documentation "Don't ignore geometry with caulk texture.")
+    (:flag)) ;; This is the default, so can be left out.
+
+  ;; Create a CLI argument '--win-width=<val>' and '-w <val>' which takes an
+  ;; integer argument.
+  (define-argument (win-width w)
+      (:documentation "Width of the window.")
+    (:arg :type integer :initform 800))
+
+  (define-argument (map m)
+      (:documentation "A .bsp file of the map to run.")
+    (:arg :type file :required))
+
+  (with-parsed-args (args :return-on-error t)
+    ;; Parses CLI arguments and stores them in args structure. Unknown options
+    ;; or errors are reported. The body is evaluated if :return-on-error is NIL.
+    (win-width args) ;; Returns the argument or initform value.
+    ...)
+
+  (print-args-help)
+  "Usage:
+    path-to-exe -m FILE [OPTION]...
+
+  Options:
+        --draw-caulk  Don't ignore geometry with caulk texture.
+    -m, --map=FILE    A .bsp file of the map to run.
+    -w, --win-width=INTEGER
+                      Width of the window."
+#+END_SRC
+** TODO Demo record/playback
+** TODO Keybindings
+** TODO BSP debug view
+** TODO Potentially Visible Set
+   Precalculate the PVS when generating BSP and use it for further geometry
+   culling.
+* ShakeEd [0/3]
+** TODO Reactive Data Model [0%]
+   Convert the data model so that it is easy for editors to react to their
+   target data changes.  Think about observers and (functional) reactive
+   programming.
+   #+BEGIN_SRC common-lisp
+     (define-data texinfo
+         (name
+          offset))
+
+     (define-data sidedef
+         (color ;; primitive data
+          texinfo))
+
+     (define-editor sidedef-editor
+         (color-widget
+          texinfo)) ;; texinfo editor
+
+     (defmethod update-widgets ((editor sidedef-editor))
+       ...)
+
+     (define-editor texinfo-editor
+         (name-widget
+          offset-widget))
+
+     (defmethod update-widgets ((editor texinfo-editor))
+       ...)
+
+     (let ((sidedef (make-instance 'sidedef ...))
+           (editor (make-instance 'sidedef-editor ...)))
+       ;; Set the target and update widgets on top editor and its child editors.
+       (setf (target editor) sidedef)
+       ;; Update only sidedef-editor.
+       (setf (color sidedef) (v 1 1 1))
+       ;; Update texinfo-editor (and sidedef-editor?)
+       (setf (name (texinfo sidedef)) "test.png"))
+   #+END_SRC
+** TODO Undo in map editor
+** TODO Properties Window in Map Editor [100%]
+   A simple properties window for easier editing, instead of going through
+   'Edit' menu.
+   - [X] line color which when clicked opens the picker
+   - [X] texture picker
+   - [X] texture offset and draw mode
