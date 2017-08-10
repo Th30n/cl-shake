@@ -1,11 +1,11 @@
 # cl-shake
 
-This is my hobby project for learning Common Lisp. It is a first person game
-in vein of original Doom and Quake. Most of the engine I'm building as a part
-of this project is based on my insights from Doom and Quake engines. The idea
-is not to copy or reimplement that code, but come to my own solution by
-studying approaches of those engines. Oh, and I always wanted to make a BSP
-ased rendering engine :)
+This is my hobby project for learning Common Lisp. It is a first person
+shooter game in vein of original Doom and Quake. Most of the engine I'm
+building as a part of this project is based on my insights from Doom and Quake
+engines. The idea is not to copy or reimplement that code, but come to my own
+solution by studying approaches of those engines. Oh, and I always wanted to
+make a BSP based rendering engine :)
 
 # Installation
 
@@ -63,3 +63,8 @@ http://doc.qt.io/qt-4.8/install-win.html.
 
 All of the libraries and `/bin/` directory of Qt need to be on `PATH`
 environment variable.
+
+# Licensing
+
+This project uses the GPL-2.0 license, for details see the `LICENSE`
+file. Copyright (C) 2016-2017 Teon Banek
