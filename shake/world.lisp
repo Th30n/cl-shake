@@ -47,6 +47,8 @@
 (defun hull-point-sector (hull-node point)
   "Get the hull SECTOR which contains the POINT. Returns NIL if no sector
   found, this is the case when the point is inside a solid leaf."
+  (check-type hull-node (or sbsp:leaf sbsp:node))
+  (check-type point (vec 2))
   (let ((leaf (hull-point-leaf hull-node point)))
     (aif (first (sbsp:leaf-surfaces leaf))
          ;; TODO: Make sure all non solid leafs have a sector.
@@ -128,6 +130,7 @@
   (unless node
     (setf node hull))
   (if (sbsp:leaf-p node)
+      ;; TODO: Clip direct/only vertical movement, e.g. gravity.
       (values (make-mtrace :endpos p2) nil)
       (let ((t1 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p1)))
             (t2 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p2))))

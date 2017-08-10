@@ -1,18 +1,4 @@
-;;;; Copyright (C) 2016 Teon Banek
-;;;;
-;;;; This program is free software; you can redistribute it and/or modify
-;;;; it under the terms of the GNU General Public License as published by
-;;;; the Free Software Foundation; either version 2 of the License, or
-;;;; (at your option) any later version.
-;;;;
-;;;; This program is distributed in the hope that it will be useful,
-;;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;;;; GNU General Public License for more details.
-;;;;
-;;;; You should have received a copy of the GNU General Public License along
-;;;; with this program; if not, write to the Free Software Foundation, Inc.,
-;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+;;;; Entry point for Shake game.
 
 (in-package #:shake)
 
@@ -46,7 +32,7 @@
 
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
-and rotation as a quaternion."
+  and rotation as a quaternion."
   (projection nil :type projection)
   (position (v 0 0 0) :type (vec 3))
   (rotation (q 0 0 0 1) :type quat))
@@ -123,7 +109,7 @@ and rotation as a quaternion."
 
 (defun nrotate-camera (xrel yrel camera)
   "Rotate the CAMERA for XREL degrees around the world Y axis and YREL degrees
-around the local X axis. The vertical angle is clamped."
+  around the local X axis. The vertical angle is clamped."
   (let* ((xrot (q* (qrotation (v 0 1 0) (* deg->rad (- xrel)))
                    (camera-rotation camera)))
          (old-v-angle (* rad->deg (q->euler-x xrot)))
@@ -194,7 +180,8 @@ around the local X axis. The vertical angle is clamped."
 
 (defun load-texture (texture-file)
   "Load a texture from given string file path. Returns the OpenGL texture
-object as the primary value. Second and third value are image width and height."
+  object as the primary value. Second and third value are image width and
+  height."
   (let* ((surface (load-image-from-file texture-file))
          (pixels (sdl2:surface-pixels surface))
          (width (sdl2:surface-width surface))
@@ -390,9 +377,15 @@ object as the primary value. Second and third value are image width and height."
 ;;   * try climbing a stair and continue moving;
 ;;   * try sliding along the obstacle.
 ;; The try which results in greater movement should be returned.
-;; TODO: Add gravity somewhere, probably outside of player-ground-move.
-(defun player-ground-move (origin velocity hull)
-  (let ((mtrace (recursive-hull-check hull origin (v+ origin velocity))))
+(defun player-ground-move (origin velocity)
+  "Returns the destination by trying to move the ORIGIN point by the VELOCITY
+  vector. Movement is clipped by detecting collisions with the
+  SMDL:*WORLD-MODEL*."
+  (declare (special smdl:*world-model*))
+  (check-type origin (vec 3))
+  (check-type velocity (vec 3))
+  (let* ((hull (smdl:model-hull smdl:*world-model*))
+         (mtrace (recursive-hull-check hull origin (v+ origin velocity))))
     (if (= (mtrace-fraction mtrace) 1d0)
         ;; Completed the whole move.
         (mtrace-endpos mtrace)
@@ -413,6 +406,33 @@ object as the primary value. Second and third value are image width and height."
               climb-endpos
               slide-endpos)))))
 
+(defun groundedp (entity-position)
+  (declare (special smdl:*world-model*))
+  (check-type entity-position (vec 3))
+  (let ((sector (hull-point-sector (smdl:model-hull smdl:*world-model*)
+                                   (v3->v2 entity-position))))
+    (or (not sector) ; We are off the map, treat it as grounded.
+        (double= (sbsp:sector-floor-height sector) (vy entity-position)))))
+
+(defun apply-gravity (entity-position)
+  (declare (special *time-delta* smdl:*world-model*))
+  (check-type entity-position (vec 3))
+  (flet ((clamp-to-floor (position)
+           (let ((floor (sbsp:sector-floor-height (hull-point-sector (smdl:model-hull smdl:*world-model*)
+                                                                     (v3->v2 position)))))
+             (v (vx position) (max (vy position) floor) (vz position)))))
+    (if (groundedp entity-position)
+        entity-position
+        (let* ((gravity-speed 10d0)
+               ;; TODO: Use remaining time fraction.
+               (gravity-velocity (v 0d0 (- (* gravity-speed *time-delta*)) 0d0)))
+          ;; TODO: Remove `clamp-to-floor' when `recursive-hull-check'
+          ;; correctly clips vertical movement
+          (clamp-to-floor
+           (mtrace-endpos (recursive-hull-check (smdl:model-hull smdl:*world-model*)
+                                                entity-position
+                                                (v+ entity-position gravity-velocity))))))))
+
 (defun move-player (player forward-move side-move &key (noclip nil))
   (let ((forward-dir (view-dir :forward player)))
     (unless noclip
@@ -427,19 +447,28 @@ object as the primary value. Second and third value are image width and height."
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (camera-position player) (v+ camera-offset end-pos))
-          (let ((hull (smdl:model-hull smdl:*world-model*)))
+          (let ((destination (apply-gravity (player-ground-move origin velocity))))
             (setf (camera-position player)
-                  (v+ camera-offset
-                      (player-ground-move origin velocity hull))))))))
+                  (v+ camera-offset destination)))))))
 
 (defun run-tic (camera cmd)
+  "Run a single tic/frame of game logic. CMD is used to read and act on player
+  controls."
+  (check-type camera camera)
+  (check-type cmd ticcmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
-    (let ((dt (coerce (/ +ticrate+) 'double-float)))
+    (let ((*time-delta* (coerce (/ +ticrate+) 'double-float))
+          (noclip nil))
+      (declare (special *time-delta*))
       (unless (and (zerop forward-move) (zerop side-move))
-        (move-player camera (* forward-move dt) (* side-move dt) :noclip nil))
+        (move-player camera (* forward-move *time-delta*) (* side-move *time-delta*) :noclip noclip))
       (destructuring-bind (x-turn . y-turn) angle-turn
         (unless (and (zerop x-turn) (zerop y-turn))
-          (nrotate-camera x-turn y-turn camera))))))
+          (nrotate-camera x-turn y-turn camera)))
+      (unless noclip
+        (let ((camera-offset (v 0d0 0.5d0 0d0)))
+          (setf (camera-position camera)
+                (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset)))))))))
 
 (defun load-main-resources (render-system)
   (add-res "vertex-array" #'gl:gen-vertex-array
