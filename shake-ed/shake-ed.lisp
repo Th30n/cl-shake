@@ -280,6 +280,7 @@
     (q+:set-profile gl-format 1)
     (q+:qglformat-set-default-format gl-format)
     ;; Register image resources
-    (q+:qresource-register-resource
-     (concatenate 'string *base-dir* "resource.rcc"))
+    (let ((resource-file (concatenate 'string *base-dir* "resource.rcc")))
+      (unless (q+:qresource-register-resource resource-file)
+        (format t "Failed to load resources from '~A'!" resource-file)))
     (with-main-window (window (make-instance 'main)))))
