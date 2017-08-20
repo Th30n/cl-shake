@@ -73,11 +73,11 @@
 ;;; Editors
 
 (defclass editor (form)
-  ((target :initform nil :initarg :target :reader target :type edk.data:data)
+  ((data :initform nil :initarg :data :reader data :type edk.data:data)
    (updating-data-p :initform nil :accessor updating-data-p :type boolean)))
 
 (defgeneric set-data-from-widget (editor)
-  (:documentation "Update TARGET data of EDITOR with the value in widget"))
+  (:documentation "Update DATA of EDITOR with the value in widget"))
 
 (defmethod set-data-from-widget :before ((editor editor))
   (assert (not (updating-data-p editor)) (editor)
@@ -88,23 +88,23 @@
   (setf (updating-data-p editor) nil))
 
 (defgeneric set-widget-from-data (editor)
-  (:documentation "Update WIDGET of EDITOR with the value from TARGET"))
+  (:documentation "Update WIDGET of EDITOR with the value from DATA"))
 
 (defmethod initialize-instance :after ((editor editor) &key)
-  (let ((data (slot-value editor 'target)))
+  (let ((data (slot-value editor 'data)))
     (when data
       (edk.data:observe data (lambda ()
                                (unless (or (updating-data-p editor) (not (widget editor)))
                                  (set-widget-from-data editor)))))))
 
-(defgeneric (setf target) (data editor))
+(defgeneric (setf data) (data editor))
 
-(defmethod (setf target) (data (editor editor))
+(defmethod (setf data) (data (editor editor))
   (check-type data edk.data:data)
   (assert (not (updating-data-p editor)) (editor)
-          "Unexpected target change while updating data!")
+          "Unexpected data change while updating!")
   ;; TODO: Dettach previous observer
-  (setf (slot-value editor 'target) data)
+  (setf (slot-value editor 'data) data)
   (when data
     (edk.data:observe data (lambda ()
                              (unless (or (updating-data-p editor) (not (widget editor)))
@@ -118,14 +118,14 @@
 
 (defmethod set-data-from-widget ((text-entry text-entry))
   (edk.data:with-change-operation ("Change text")
-    (setf (edk.data:value (target text-entry)) (q+:text (widget text-entry)))))
+    (setf (edk.data:value (data text-entry)) (q+:text (widget text-entry)))))
 
 (defmethod set-widget-from-data ((text-entry text-entry))
-  (q+:set-text (widget text-entry) (edk.data:value (target text-entry))))
+  (q+:set-text (widget text-entry) (edk.data:value (data text-entry))))
 
-(defun text-entry (target)
-  (check-type target edk.data:boxed-string)
-  (let ((text-entry (make-instance 'text-entry :target target)))
+(defun text-entry (data)
+  (check-type data edk.data:boxed-string)
+  (let ((text-entry (make-instance 'text-entry :data data)))
     text-entry))
 
 (define-widget line-edit (QLineEdit)
@@ -133,12 +133,12 @@
 
 (define-slot (line-edit on-editing-finished) ()
   (declare (connected line-edit (editing-finished)))
-  (unless (string= (edk.data:value (target text-entry)) (q+:text line-edit))
+  (unless (string= (edk.data:value (data text-entry)) (q+:text line-edit))
     (set-data-from-widget text-entry)))
 
 (defmethod create-widget ((form text-entry))
   (let ((line-ed (make-instance 'line-edit :text-entry form)))
-    (q+:set-text line-ed (edk.data:value (target form)))
+    (q+:set-text line-ed (edk.data:value (data form)))
     (setf (widget form) line-ed)))
 
 ;;; Buttons
@@ -167,16 +167,16 @@
 (defclass selector (editor)
   ((choices :initarg :choices :accessor choices)))
 
-(defun selector (target choice &rest choices)
-  ;; check target
-  (make-instance 'selector :target target :choices (cons choice choices)))
+(defun selector (data choice &rest choices)
+  ;; check data
+  (make-instance 'selector :data data :choices (cons choice choices)))
 
 (define-widget combo-box (QComboBox)
   ((selector :initarg :selector)))
 
 (define-slot (combo-box on-activated) ((index int))
   (declare (connected combo-box (activated int)))
-  ;; (edk.data:set-val (target selector) (nth index (choices selector)))
+  ;; (edk.data:set-val (data selector) (nth index (choices selector)))
   )
 
 (defmethod create-widget ((form selector))
