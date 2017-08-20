@@ -153,14 +153,3 @@
   (setf (slot-value boxed-string 'value) value)
   (notify-observers boxed-string))
 
-(defmacro ref (var)
-  (let ((val (gensym))
-        (val-p (gensym)))
-    `(lambda (&optional (,val nil ,val-p))
-       (if ,val-p (setf ,var ,val) ,var))))
-
-(defun get-val (target)
-  (funcall target))
-
-(defun set-val (target value)
-  (funcall target value))

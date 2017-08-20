@@ -4,21 +4,42 @@
 ;;; Forms
 
 (defclass form ()
-  ((widget :initarg :widget :initform nil :accessor widget)))
+  ((widget :initarg :widget :initform nil :accessor widget
+           :documentation "Underlying widget of this form.")))
 
 (defgeneric build-widget (form)
   (:documentation "Build underlying GUI widgets."))
 
-(defclass label ()
-  ((text :initarg :text :accessor text :type string)))
+(defmethod build-widget :after ((form form))
+  (assert (widget form) (form)
+          "BUILD-WIDGET needs to set the WIDGET on FORM"))
+
+(defgeneric destroy-widget (form)
+  (:documentation "Remove references to underlying GUI widgets."))
+
+(defmethod destroy-widget ((form form))
+  (setf (widget form) nil))
+
+(defclass label (form)
+  ((text :initarg :text :accessor text :type (or string edk.data:boxed-string))))
 
 (defun label (text)
-  (declare (type string text))
-  (check-type text string)
-  (make-instance 'label :text text))
+  (check-type text (or string edk.data:boxed-string))
+  (let ((label (make-instance 'label :text text)))
+    (when (typep text 'edk.data:boxed-string)
+      (edk.data:observe text (lambda ()
+                               (when (widget label)
+                                 (setf (q+:text (widget label))
+                                       (edk.data:value text))))))
+    label))
 
 (defmethod build-widget ((form label))
-  (q+:make-qlabel (text form)))
+  (let ((text (if (typep (text form) 'edk.data:boxed-string)
+                  (edk.data:value (text form))
+                  (text form))))
+    (setf (widget form) (q+:make-qlabel text))))
+
+;;; Layout
 
 (defclass layout ()
   ((subforms :initarg :subforms :accessor subforms)
