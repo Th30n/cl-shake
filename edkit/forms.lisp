@@ -49,14 +49,13 @@
 (defclass text-entry (editor)
   ())
 
-(defmethod edk.data:notify ((text-entry text-entry))
-  (unless (or (updating-data-p text-entry) (not (widget text-entry)))
-    (q+:set-text (widget text-entry) (edk.data:value (target text-entry)))))
-
 (defun text-entry (target)
   ;; check is string
   (let ((text-entry (make-instance 'text-entry :target target)))
-    (edk.data:observe text-entry target)
+    (flet ((update-text-from-data ()
+             (unless (or (updating-data-p text-entry) (not (widget text-entry)))
+               (q+:set-text (widget text-entry) (edk.data:value (target text-entry))))))
+      (edk.data:observe target #'update-text-from-data))
     text-entry))
 
 (define-widget line-edit (QLineEdit)

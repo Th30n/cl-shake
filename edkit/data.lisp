@@ -20,15 +20,13 @@
   ((observers :accessor observers :initform (tg:make-weak-hash-table :weakness :key)))
   (:documentation "Base class for all editable data."))
 
-(defgeneric notify (observer)
-  (:documentation "Called by the observed data when it changes."))
-
-(defun observe (observer data)
-  "Attach an OBSERVER to DATA."
+(defun observe (data observer)
+  "Attach an OBSERVER function to DATA."
   (check-type data data)
+  (check-type observer function)
   (setf (gethash observer (observers data)) t))
 
-(defun unobserve (observer data)
+(defun unobserve (data observer)
   "Detach an OBSERVER from DATA."
   (check-type data data)
   (remhash observer (observers data)))
@@ -39,7 +37,7 @@
   ;; TODO: What if NOTIFY triggers another NOTIFY-OBSERVERS?
   (maphash (lambda (obs _)
              (declare (ignore _))
-             (notify obs))
+             (funcall obs))
            (observers data)))
 
 ;;; Tracking data changes
@@ -104,8 +102,7 @@
   (flet ((undo-change (change)
            (setf (slot-value (change-data change) (change-slot change))
                  (change-old-value change))
-           ;; (notify-observers (change-data change))
-           ))
+           (notify-observers (change-data change))))
     (setf (undop *change-tracker*) t)
     (let ((change-operation (pop (undolog *change-tracker*))))
       (setf (change-operation-workingp change-operation) t)
@@ -122,8 +119,7 @@
   (flet ((redo-change (change)
            (setf (slot-value (change-data change) (change-slot change))
                  (change-new-value change))
-           ;; (notify-observers (change-data change))
-           ))
+           (notify-observers (change-data change))))
     (setf (redop *change-tracker*) t)
     (let ((change-operation (pop (redolog *change-tracker*))))
       (setf (change-operation-workingp change-operation) t)
