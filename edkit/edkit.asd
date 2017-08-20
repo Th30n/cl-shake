@@ -9,5 +9,6 @@
   :components ((:file "package")
                (:file "data")
                (:file "forms")
-               (:file "edkit")))
+               (:file "edkit"))
+  :in-order-to ((test-op (test-op edkit-test))))
 

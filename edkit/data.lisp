@@ -62,6 +62,11 @@
   old-value
   new-value)
 
+(defstruct change-operation
+  (description "" :type string)
+  (workingp nil :type boolean)
+  (changes nil))
+
 (defclass change-tracker ()
   ((undop :accessor undop :initform nil :type boolean)
    (redop :accessor redop :initform nil :type boolean)
@@ -71,44 +76,72 @@
 (defun make-change-tracker ()
   (make-instance 'change-tracker))
 
-(defun track-change (change-tracker data slot old-value new-value)
-  (unless (or (undop change-tracker) (redop change-tracker))
-    (push (make-change :data data :slot slot :old-value old-value :new-value new-value)
-          (undolog change-tracker))))
+(defun call-with-change-operation (description function)
+  (declare (special *change-tracker* *change-operation*))
+  ;; Nesting reuses the top operation
+  (let* ((nestedp (boundp '*change-operation*))
+         (*change-operation* (if nestedp
+                                *change-operation*
+                                (make-change-operation :description description))))
+    (declare (special *change-operation*))
+    (prog1 (funcall function)
+      (when (and (not nestedp) (change-operation-changes *change-operation*))
+        (push *change-operation* (undolog *change-tracker*))))))
+
+(defmacro with-change-operation ((description) &body body)
+  `(call-with-change-operation ,description (lambda () ,@body)))
+
+(defun track-change (change-operation data slot old-value new-value)
+  (if (change-operation-workingp change-operation)
+      (error "Tracking a change while undoing/redoing!")
+      (push (make-change :data data :slot slot :old-value old-value :new-value new-value)
+            (change-operation-changes change-operation))))
 
 (defun undo ()
   (declare (special *change-tracker*))
+  (when (or (undop *change-tracker*) (redop *change-tracker*))
+    (error "Recursive undo!"))
   (flet ((undo-change (change)
            (setf (slot-value (change-data change) (change-slot change))
                  (change-old-value change))
            ;; (notify-observers (change-data change))
            ))
     (setf (undop *change-tracker*) t)
-    (let ((change (pop (undolog *change-tracker*))))
-      (undo-change change)
-      (push change (redolog *change-tracker*)))
+    (let ((change-operation (pop (undolog *change-tracker*))))
+      (setf (change-operation-workingp change-operation) t)
+      (dolist (change (change-operation-changes change-operation))
+        (undo-change change))
+      (setf (change-operation-workingp change-operation) nil)
+      (push change-operation (redolog *change-tracker*)))
     (setf (undop *change-tracker*) nil)))
 
 (defun redo ()
   (declare (special *change-tracker*))
+  (when (or (undop *change-tracker*) (redop *change-tracker*))
+    (error "Recursive redo!"))
   (flet ((redo-change (change)
            (setf (slot-value (change-data change) (change-slot change))
                  (change-new-value change))
            ;; (notify-observers (change-data change))
            ))
     (setf (redop *change-tracker*) t)
-    (let ((change (pop (redolog *change-tracker*))))
-      (redo-change change)
-      (push change (undolog *change-tracker*)))
+    (let ((change-operation (pop (redolog *change-tracker*))))
+      (setf (change-operation-workingp change-operation) t)
+      (dolist (change (reverse (change-operation-changes change-operation)))
+        (redo-change change))
+      (setf (change-operation-workingp change-operation) nil)
+      (push change-operation (undolog *change-tracker*)))
     (setf (redop *change-tracker*) nil)))
 
 (defun call-with-change-tracker (function)
   (let ((*change-tracker* (make-change-tracker)))
     (declare (special *change-tracker*))
-    (funcall function)))
+    (funcall function *change-tracker*)))
 
-(defmacro with-change-tracker (() &body body)
-  `(call-with-change-tracker (lambda () ,@body)))
+(defmacro with-change-tracker ((change-tracker) &body body)
+  `(call-with-change-tracker (lambda (,change-tracker)
+                               (declare (ignorable ,change-tracker))
+                               ,@body)))
 
 ;;; Concrete data types
 
@@ -118,9 +151,9 @@
 (defgeneric (setf value) (value boxed-string))
 
 (defmethod (setf value) (value (boxed-string boxed-string))
-  (declare (special *change-tracker*))
-  (when (boundp '*change-tracker*)
-    (track-change *change-tracker* boxed-string 'value (value boxed-string) value))
+  (declare (special *change-operation*))
+  (when (boundp '*change-operation*)
+    (track-change *change-operation* boxed-string 'value (value boxed-string) value))
   (setf (slot-value boxed-string 'value) value)
   (notify-observers boxed-string))
 

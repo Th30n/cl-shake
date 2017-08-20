@@ -13,6 +13,7 @@
            #:boxed-string
            #:value
            #:with-change-tracker
+           #:with-change-operation
            #:undo
            #:redo))
 
