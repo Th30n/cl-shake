@@ -7,18 +7,27 @@
   ((widget :initarg :widget :initform nil :accessor widget
            :documentation "Underlying widget of this form.")))
 
-(defgeneric build-widget (form)
-  (:documentation "Build underlying GUI widgets."))
-
-(defmethod build-widget :after ((form form))
-  (assert (widget form) (form)
-          "BUILD-WIDGET needs to set the WIDGET on FORM"))
+(defgeneric create-widget (form)
+  (:documentation "Create the underlying GUI widget."))
 
 (defgeneric destroy-widget (form)
-  (:documentation "Remove references to underlying GUI widgets."))
+  (:documentation "Remove reference to underlying GUI widget."))
 
-(defmethod destroy-widget ((form form))
-  (setf (widget form) nil))
+(defmethod destroy-widget :after ((form form))
+  (when (widget form)
+    (fsetf (widget form) nil)))
+
+(defun build-widget (form)
+  "Calls `CREATE-WIDGET' on FORM and performs additional setup of the FORM"
+  (check-type form form)
+  (assert (not (widget form)) (form)
+          "BUILD-WIDGET called on already built FORM.")
+  (let ((widget (create-widget form)))
+    (assert widget (widget)
+            "CREATE-WIDGET needs to make an underlying GUI widget")
+    ;; TODO: Figure out how to connect widget destruction
+    ;; (connect! widget (destroyed QObject) widget (destroy-widget QObject))
+    (setf (widget form) widget)))
 
 (defclass label (form)
   ((text :initarg :text :accessor text :type (or string edk.data:boxed-string))))
@@ -33,15 +42,15 @@
                                        (edk.data:value text))))))
     label))
 
-(defmethod build-widget ((form label))
+(defmethod create-widget ((form label))
   (let ((text (if (typep (text form) 'edk.data:boxed-string)
                   (edk.data:value (text form))
                   (text form))))
-    (setf (widget form) (q+:make-qlabel text))))
+    (q+:make-qlabel text)))
 
 ;;; Layout
 
-(defclass layout ()
+(defclass layout (form)
   ((subforms :initarg :subforms :accessor subforms)
    (orientation :initarg :orientation :accessor orientation)))
 
@@ -51,7 +60,7 @@
 (defun top-down (&rest forms)
   (make-instance 'layout :subforms forms :orientation :vertical))
 
-(defmethod build-widget ((form layout))
+(defmethod create-widget ((form layout))
   (let ((widget (q+:make-qwidget))
         (layout (ecase (orientation form)
                   (:horizontal (q+:make-qhboxlayout))
@@ -64,19 +73,59 @@
 ;;; Editors
 
 (defclass editor (form)
-  ((target :initarg :target :accessor target :type data)
+  ((target :initform nil :initarg :target :reader target :type edk.data:data)
    (updating-data-p :initform nil :accessor updating-data-p :type boolean)))
+
+(defgeneric set-data-from-widget (editor)
+  (:documentation "Update TARGET data of EDITOR with the value in widget"))
+
+(defmethod set-data-from-widget :before ((editor editor))
+  (assert (not (updating-data-p editor)) (editor)
+          "Recursively updating editor data!")
+  (setf (updating-data-p editor) t))
+
+(defmethod set-data-from-widget :after ((editor editor))
+  (setf (updating-data-p editor) nil))
+
+(defgeneric set-widget-from-data (editor)
+  (:documentation "Update WIDGET of EDITOR with the value from TARGET"))
+
+(defmethod initialize-instance :after ((editor editor) &key)
+  (let ((data (slot-value editor 'target)))
+    (when data
+      (edk.data:observe data (lambda ()
+                               (unless (or (updating-data-p editor) (not (widget editor)))
+                                 (set-widget-from-data editor)))))))
+
+(defgeneric (setf target) (data editor))
+
+(defmethod (setf target) (data (editor editor))
+  (check-type data edk.data:data)
+  (assert (not (updating-data-p editor)) (editor)
+          "Unexpected target change while updating data!")
+  ;; TODO: Dettach previous observer
+  (setf (slot-value editor 'target) data)
+  (when data
+    (edk.data:observe data (lambda ()
+                             (unless (or (updating-data-p editor) (not (widget editor)))
+                               (set-widget-from-data editor))))
+    (when (widget editor)
+      (set-widget-from-data editor)))
+  data)
 
 (defclass text-entry (editor)
   ())
 
+(defmethod set-data-from-widget ((text-entry text-entry))
+  (edk.data:with-change-operation ("Change text")
+    (setf (edk.data:value (target text-entry)) (q+:text (widget text-entry)))))
+
+(defmethod set-widget-from-data ((text-entry text-entry))
+  (q+:set-text (widget text-entry) (edk.data:value (target text-entry))))
+
 (defun text-entry (target)
-  ;; check is string
+  (check-type target edk.data:boxed-string)
   (let ((text-entry (make-instance 'text-entry :target target)))
-    (flet ((update-text-from-data ()
-             (unless (or (updating-data-p text-entry) (not (widget text-entry)))
-               (q+:set-text (widget text-entry) (edk.data:value (target text-entry))))))
-      (edk.data:observe target #'update-text-from-data))
     text-entry))
 
 (define-widget line-edit (QLineEdit)
@@ -84,18 +133,17 @@
 
 (define-slot (line-edit on-editing-finished) ()
   (declare (connected line-edit (editing-finished)))
-  (setf (updating-data-p text-entry) t)
-  (setf (edk.data:value (target text-entry)) (q+:text line-edit))
-  (setf (updating-data-p text-entry) t))
+  (unless (string= (edk.data:value (target text-entry)) (q+:text line-edit))
+    (set-data-from-widget text-entry)))
 
-(defmethod build-widget ((form text-entry))
+(defmethod create-widget ((form text-entry))
   (let ((line-ed (make-instance 'line-edit :text-entry form)))
     (q+:set-text line-ed (edk.data:value (target form)))
     (setf (widget form) line-ed)))
 
 ;;; Buttons
 
-(defclass button ()
+(defclass button (form)
   ((action :initarg :action :accessor action)
    (text :initarg :text :accessor text)))
 
@@ -109,7 +157,7 @@
   (declare (connected push-button (clicked bool)))
   (funcall action))
 
-(defmethod build-widget ((form button))
+(defmethod create-widget ((form button))
   (let ((widget (make-instance 'push-button :action (action form))))
     (q+:set-text widget (text form))
     widget))
@@ -128,9 +176,10 @@
 
 (define-slot (combo-box on-activated) ((index int))
   (declare (connected combo-box (activated int)))
-  (edk.data:set-val (target selector) (nth index (choices selector))))
+  ;; (edk.data:set-val (target selector) (nth index (choices selector)))
+  )
 
-(defmethod build-widget ((form selector))
+(defmethod create-widget ((form selector))
   (let ((widget (make-instance 'combo-box :selector form)))
     (dolist (choice (choices form))
       (q+:add-item widget (string choice)))
