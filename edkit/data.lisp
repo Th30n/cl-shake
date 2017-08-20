@@ -151,5 +151,6 @@
   (when (boundp '*change-operation*)
     (track-change *change-operation* boxed-string 'value (value boxed-string) value))
   (setf (slot-value boxed-string 'value) value)
-  (notify-observers boxed-string))
+  (notify-observers boxed-string)
+  value)
 

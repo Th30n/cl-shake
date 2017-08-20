@@ -1,0 +1,112 @@
+(in-package #:cl-user)
+
+(defpackage #:edkit.data-test
+  (:use #:cl
+        #:prove))
+
+(in-package #:edkit.data-test)
+
+(plan nil)
+
+(subtest "no changes during operation"
+  (edk.data:with-change-tracker (tracker)
+    (is (edk.data::undolog tracker) nil)
+    (edk.data:with-change-operation ("Test change")
+      'no-change)
+    (is (edk.data::undolog tracker) nil)))
+
+(subtest "undo and redo"
+  (subtest "boxed-string"
+    (edk.data:with-change-tracker (tracker)
+      (let ((boxed-string (make-instance 'edk.data:boxed-string :value "initial")))
+        (flet ((is-before (&key undop)
+                 (is (edk.data:value boxed-string) "initial" :test #'string=)
+                 (is (edk.data::undolog tracker) nil)
+                 (if undop
+                     (is (length (edk.data::redolog tracker)) 1)
+                     (is (edk.data::redolog tracker) nil)))
+               (is-after ()
+                 (is (edk.data:value boxed-string) "changed" :test #'string=)
+                 (is (length (edk.data::undolog tracker)) 1)
+                 (is (edk.data::redolog tracker) nil)))
+          (is-before)
+          (edk.data:with-change-operation ("My change")
+            (setf (edk.data:value boxed-string) "changed"))
+          (is-after)
+          (edk.data:undo)
+          (is-before :undop t)
+          (edk.data:redo)
+          (is-after))))))
+
+(subtest "multiple changes"
+  (flet ((is-before (boxed-string tracker &key undop)
+           (is (edk.data:value boxed-string) "initial" :test #'string=)
+           (is (edk.data::undolog tracker) nil)
+           (if undop
+               (is (length (edk.data::redolog tracker)) 1)
+               (is (edk.data::redolog tracker) nil)))
+         (is-after (boxed-string tracker)
+           (is (edk.data:value boxed-string) "change2" :test #'string=)
+           (is (length (edk.data::undolog tracker)) 1)
+           (is (edk.data::redolog tracker) nil)))
+    (subtest "single operation"
+      (edk.data:with-change-tracker (tracker)
+        (let ((boxed-string (make-instance 'edk.data:boxed-string :value "initial")))
+          (is-before boxed-string tracker)
+          (edk.data:with-change-operation ("My change")
+            (setf (edk.data:value boxed-string) "change1"
+                  (edk.data:value boxed-string) "change2"))
+          (is-after boxed-string tracker)
+          (edk.data:undo)
+          (is-before boxed-string tracker :undop t)
+          (edk.data:redo)
+          (is-after boxed-string tracker))))
+    (subtest "nested operations"
+      (edk.data:with-change-tracker (tracker)
+        (let ((boxed-string (make-instance 'edk.data:boxed-string :value "initial")))
+          (is-before boxed-string tracker)
+          (edk.data:with-change-operation ("change1")
+            (setf (edk.data:value boxed-string) "change1")
+            (edk.data:with-change-operation ("change2")
+              (setf (edk.data:value boxed-string) "change2")))
+          (is-after boxed-string tracker)
+          (edk.data:undo)
+          (is-before boxed-string tracker :undop t)
+          (edk.data:redo)
+          (is-after boxed-string tracker))))
+    (subtest "multiple operations"
+      (edk.data:with-change-tracker (tracker)
+        (let ((boxed-string (make-instance 'edk.data:boxed-string :value "initial")))
+          (edk.data:with-change-operation ("change1")
+            (setf (edk.data:value boxed-string) "change1"))
+          (edk.data:with-change-operation ("change2")
+            (setf (edk.data:value boxed-string) "change2"))
+          (is (edk.data:value boxed-string) "change2" :test #'string=)
+          (is (length (edk.data::undolog tracker)) 2)
+          (edk.data:undo)
+          (is (edk.data:value boxed-string) "change1" :test #'string=)
+          (edk.data:redo)
+          (is (edk.data:value boxed-string) "change2" :test #'string=)
+          (edk.data:undo)
+          (edk.data:undo)
+          (is (edk.data:value boxed-string) "initial" :test #'string=)
+          (is (length (edk.data::redolog tracker)) 2))))))
+
+(subtest "observing"
+  (edk.data:with-change-tracker (tracker)
+    (let ((boxed-string (make-instance 'edk.data:boxed-string :value "initial"))
+          (notify-count 0))
+      (flet ((count-notifications () (incf notify-count)))
+        (edk.data:observe boxed-string #'count-notifications)
+        (edk.data:with-change-operation ("change")
+          (setf (edk.data:value boxed-string) "changed"))
+        (is notify-count 1)
+        (edk.data:undo)
+        (is notify-count 2)
+        (edk.data:redo)
+        (is notify-count 3)
+        (edk.data:unobserve boxed-string #'count-notifications)
+        (edk.data:undo)
+        (is notify-count 3)))))
+
+(finalize)
