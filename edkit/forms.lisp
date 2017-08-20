@@ -3,9 +3,19 @@
 
 ;;; Forms
 
+;; Silly thing to forward Qt signals to function/method calls outside of
+;; QWidget classes.
+(define-widget dummy-qobject (QObject)
+  ((form :initarg :form)))
+
 (defclass form ()
   ((widget :initarg :widget :initform nil :accessor widget
-           :documentation "Underlying widget of this form.")))
+           :documentation "Underlying widget of this form.")
+   (dummy-qobject :initform nil :reader dummy-qobject)))
+
+(defmethod initialize-instance :after ((form form) &key)
+  (setf (slot-value form 'dummy-qobject)
+        (make-instance 'dummy-qobject :form form)))
 
 (defgeneric create-widget (form)
   (:documentation "Create the underlying GUI widget."))
@@ -13,9 +23,16 @@
 (defgeneric destroy-widget (form)
   (:documentation "Remove reference to underlying GUI widget."))
 
+(defmethod destroy-widget ((form form))
+  ;; No-op, since all is done in :after
+  )
+
 (defmethod destroy-widget :after ((form form))
   (when (widget form)
     (fsetf (widget form) nil)))
+
+(define-slot (dummy-qobject on-destroyed) ()
+   (destroy-widget form))
 
 (defun build-widget (form)
   "Calls `CREATE-WIDGET' on FORM and performs additional setup of the FORM"
@@ -25,8 +42,7 @@
   (let ((widget (create-widget form)))
     (assert widget (widget)
             "CREATE-WIDGET needs to make an underlying GUI widget")
-    ;; TODO: Figure out how to connect widget destruction
-    ;; (connect! widget (destroyed QObject) widget (destroy-widget QObject))
+    (connect! widget (destroyed) (dummy-qobject form) (on-destroyed))
     (setf (widget form) widget)))
 
 (defclass label (form)
@@ -36,6 +52,7 @@
   (check-type text (or string edk.data:boxed-string))
   (let ((label (make-instance 'label :text text)))
     (when (typep text 'edk.data:boxed-string)
+      ;; TODO: Check if this is freed correctly
       (edk.data:observe text (lambda ()
                                (when (widget label)
                                  (setf (q+:text (widget label))
@@ -93,6 +110,7 @@
 (defmethod initialize-instance :after ((editor editor) &key)
   (let ((data (slot-value editor 'data)))
     (when data
+      ;; TODO: Check if this is freed correctly
       (edk.data:observe data (lambda ()
                                (unless (or (updating-data-p editor) (not (widget editor)))
                                  (set-widget-from-data editor)))))))
@@ -106,6 +124,7 @@
   ;; TODO: Dettach previous observer
   (setf (slot-value editor 'data) data)
   (when data
+    ;; TODO: Check if this is freed correctly
     (edk.data:observe data (lambda ()
                              (unless (or (updating-data-p editor) (not (widget editor)))
                                (set-widget-from-data editor))))
@@ -138,8 +157,8 @@
 
 (defmethod create-widget ((form text-entry))
   (let ((line-ed (make-instance 'line-edit :text-entry form)))
-    (q+:set-text line-ed (edk.data:value (data form)))
-    (setf (widget form) line-ed)))
+    (setf (q+:text line-ed) (edk.data:value (data form)))
+    line-ed))
 
 ;;; Buttons
 
