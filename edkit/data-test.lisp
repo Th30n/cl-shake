@@ -105,7 +105,7 @@
         (is notify-count 2)
         (edk.data:redo)
         (is notify-count 3)
-        (edk.data:unobserve boxed-string #'count-notifications)
+        (edk.data:unobserve boxed-string :observer #'count-notifications)
         (edk.data:undo)
         (is notify-count 3)))))
 

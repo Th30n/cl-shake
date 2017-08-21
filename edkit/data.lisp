@@ -20,24 +20,32 @@
   ((observers :accessor observers :initform (tg:make-weak-hash-table :weakness :key)))
   (:documentation "Base class for all editable data."))
 
-(defun observe (data observer)
+(defun observe (data observer &key tag)
   "Attach an OBSERVER function to DATA."
   (check-type data data)
   (check-type observer function)
-  (setf (gethash observer (observers data)) t))
+  (pushnew observer (gethash (if tag tag observer) (observers data))))
 
-(defun unobserve (data observer)
+(defun unobserve (data &key observer tag)
   "Detach an OBSERVER from DATA."
   (check-type data data)
-  (remhash observer (observers data)))
+  (assert (or observer tag) (observer tag)
+          "At least one of OBSERVER or TAG must be supplied.")
+  (unless tag
+    (setf tag observer))
+  (if observer
+      (let ((observers (gethash tag (observers data))))
+        (setf (gethash tag (observers data)) (remove observer observers)))
+      (remhash tag (observers data))))
 
 (defun notify-observers (data)
   "Call NOTIFY method on all of the DATA observers."
   (check-type data data)
   ;; TODO: What if NOTIFY triggers another NOTIFY-OBSERVERS?
-  (maphash (lambda (obs _)
+  (maphash (lambda (_ observers)
              (declare (ignore _))
-             (funcall obs))
+             (dolist (obs observers)
+               (funcall obs)))
            (observers data)))
 
 ;;; Tracking data changes

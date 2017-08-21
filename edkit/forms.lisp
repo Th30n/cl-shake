@@ -46,24 +46,14 @@
     (setf (widget form) widget)))
 
 (defclass label (form)
-  ((text :initarg :text :accessor text :type (or string edk.data:boxed-string))))
+  ((text :initarg :text :accessor text :type string)))
 
 (defun label (text)
-  (check-type text (or string edk.data:boxed-string))
-  (let ((label (make-instance 'label :text text)))
-    (when (typep text 'edk.data:boxed-string)
-      ;; TODO: Check if this is freed correctly
-      (edk.data:observe text (lambda ()
-                               (when (widget label)
-                                 (setf (q+:text (widget label))
-                                       (edk.data:value text))))))
-    label))
+  (check-type text string)
+  (make-instance 'label :text text))
 
 (defmethod create-widget ((form label))
-  (let ((text (if (typep (text form) 'edk.data:boxed-string)
-                  (edk.data:value (text form))
-                  (text form))))
-    (q+:make-qlabel text)))
+  (q+:make-qlabel (text form)))
 
 ;;; Layout
 
@@ -90,7 +80,7 @@
 ;;; Editors
 
 (defclass editor (form)
-  ((data :initform nil :initarg :data :reader data :type edk.data:data)
+  ((data :initform nil :initarg :data :reader data :type (or null edk.data:data))
    (updating-data-p :initform nil :accessor updating-data-p :type boolean)))
 
 (defgeneric set-data-from-widget (editor)
@@ -110,26 +100,33 @@
 (defmethod initialize-instance :after ((editor editor) &key)
   (let ((data (slot-value editor 'data)))
     (when data
-      ;; TODO: Check if this is freed correctly
       (edk.data:observe data (lambda ()
                                (unless (or (updating-data-p editor) (not (widget editor)))
-                                 (set-widget-from-data editor)))))))
+                                 (set-widget-from-data editor)))
+                        :tag editor))))
 
 (defgeneric (setf data) (data editor))
 
 (defmethod (setf data) (data (editor editor))
-  (check-type data edk.data:data)
+  (check-type data (or null edk.data:data))
   (assert (not (updating-data-p editor)) (editor)
           "Unexpected data change while updating!")
-  ;; TODO: Dettach previous observer
+  (when (data editor)
+    (edk.data:unobserve (data editor) :tag editor))
   (setf (slot-value editor 'data) data)
-  (when data
-    ;; TODO: Check if this is freed correctly
-    (edk.data:observe data (lambda ()
-                             (unless (or (updating-data-p editor) (not (widget editor)))
-                               (set-widget-from-data editor))))
-    (when (widget editor)
-      (set-widget-from-data editor)))
+  (if data
+      (progn
+        (edk.data:observe data
+                          (lambda ()
+                            (unless (or (updating-data-p editor) (not (widget editor)))
+                              (set-widget-from-data editor)))
+                          :tag editor)
+        (when (widget editor)
+          (set-widget-from-data editor)))
+      ;; Disable the editor when there's no data
+      ;; TODO: Make disabling a method?
+      (when (widget editor)
+        (setf (q+:enabled (widget editor)) nil)))
   data)
 
 (defclass text-entry (editor)
@@ -142,8 +139,7 @@
 (defmethod set-widget-from-data ((text-entry text-entry))
   (q+:set-text (widget text-entry) (edk.data:value (data text-entry))))
 
-(defun text-entry (data)
-  (check-type data edk.data:boxed-string)
+(defun text-entry (&optional data)
   (let ((text-entry (make-instance 'text-entry :data data)))
     text-entry))
 
@@ -152,12 +148,15 @@
 
 (define-slot (line-edit on-editing-finished) ()
   (declare (connected line-edit (editing-finished)))
-  (unless (string= (edk.data:value (data text-entry)) (q+:text line-edit))
+  (unless (or (not (data text-entry))
+              (string= (edk.data:value (data text-entry)) (q+:text line-edit)))
     (set-data-from-widget text-entry)))
 
 (defmethod create-widget ((form text-entry))
   (let ((line-ed (make-instance 'line-edit :text-entry form)))
-    (setf (q+:text line-ed) (edk.data:value (data form)))
+    (if (data form)
+        (setf (q+:text line-ed) (edk.data:value (data form)))
+        (setf (q+:enabled line-ed) nil))
     line-ed))
 
 ;;; Buttons
