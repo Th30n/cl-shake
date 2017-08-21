@@ -162,3 +162,16 @@
   (notify-observers boxed-string)
   value)
 
+(defclass boxed-double (data)
+  ((value :reader value :initarg :value :type double-float :initform 0d0)))
+
+(defgeneric (setf value) (value boxed-double))
+
+(defmethod (setf value) (value (boxed-double boxed-double))
+  (declare (special *change-operation*))
+  (setf value (coerce value 'double-float))
+  (when (boundp '*change-operation*)
+    (track-change *change-operation* boxed-double 'value (value boxed-double) value))
+  (setf (slot-value boxed-double 'value) value)
+  (notify-observers boxed-double)
+  value)

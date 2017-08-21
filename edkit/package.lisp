@@ -11,6 +11,7 @@
            #:observe
            #:unobserve
            #:boxed-string
+           #:boxed-double
            #:value
            #:with-change-tracker
            #:with-change-operation
@@ -27,7 +28,8 @@
            #:editor
            #:text-entry
            #:button
-           #:selector))
+           #:selector
+           #:double-spinner))
 
 (defpackage #:edkit
   (:nicknames #:edk)

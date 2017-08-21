@@ -180,6 +180,34 @@
         (setf (q+:enabled line-ed) nil))
     line-ed))
 
+(defclass double-spinner (editor)
+  ())
+
+(defun double-spinner (&optional data)
+  (make-instance 'double-spinner :data data))
+
+(define-widget double-spinbox (QDoubleSpinBox)
+  ((spinner :initarg :spinner)))
+
+(define-slot (double-spinbox on-editing-finished) ()
+  (declare (connected double-spinbox (editing-finished)))
+  (set-data-from-widget spinner))
+
+(defmethod set-data-from-widget ((double-spinner double-spinner))
+  (edk.data:with-change-operation ("change double")
+    (setf (edk.data:value (data double-spinner))
+          (q+:value (widget double-spinner)))))
+
+(defmethod set-widget-from-data ((double-spinner double-spinner))
+  (setf (q+:value (widget double-spinner)) (edk.data:value (data double-spinner))))
+
+(defmethod create-widget ((double-spinner double-spinner))
+  (let ((spinbox (make-instance 'double-spinbox :spinner double-spinner)))
+    (if (data double-spinner)
+        (setf (q+:value spinbox) (edk.data:value (data double-spinner)))
+        (setf (q+:enabled spinbox) nil))
+    spinbox))
+
 ;;; Selectors
 
 (defclass selector (editor)
