@@ -77,6 +77,27 @@
     (q+:set-layout widget layout)
     widget))
 
+;;; Buttons
+
+(defclass button (form)
+  ((action :initarg :action :accessor action)
+   (text :initarg :text :accessor text)))
+
+(defun button (text action)
+  (make-instance 'button :text text :action action))
+
+(define-widget push-button (QPushButton)
+  ((action :initarg :action)))
+
+(define-slot (push-button on-clicked) ((checked bool))
+  (declare (connected push-button (clicked bool)))
+  (funcall action))
+
+(defmethod create-widget ((form button))
+  (let ((widget (make-instance 'push-button :action (action form))))
+    (q+:set-text widget (text form))
+    widget))
+
 ;;; Editors
 
 (defclass editor (form)
@@ -159,27 +180,6 @@
         (setf (q+:enabled line-ed) nil))
     line-ed))
 
-;;; Buttons
-
-(defclass button (form)
-  ((action :initarg :action :accessor action)
-   (text :initarg :text :accessor text)))
-
-(defun button (text action)
-  (make-instance 'button :text text :action action))
-
-(define-widget push-button (QPushButton)
-  ((action :initarg :action)))
-
-(define-slot (push-button on-clicked) ((checked bool))
-  (declare (connected push-button (clicked bool)))
-  (funcall action))
-
-(defmethod create-widget ((form button))
-  (let ((widget (make-instance 'push-button :action (action form))))
-    (q+:set-text widget (text form))
-    widget))
-
 ;;; Selectors
 
 (defclass selector (editor)
@@ -187,6 +187,7 @@
 
 (defun selector (data choice &rest choices)
   ;; check data
+  (setf (edk.data:value data) choice)
   (make-instance 'selector :data data :choices (cons choice choices)))
 
 (define-widget combo-box (QComboBox)
@@ -194,8 +195,17 @@
 
 (define-slot (combo-box on-activated) ((index int))
   (declare (connected combo-box (activated int)))
-  ;; (edk.data:set-val (data selector) (nth index (choices selector)))
-  )
+  (set-data-from-widget selector))
+
+(defmethod set-data-from-widget ((selector selector))
+  (edk.data:with-change-operation ("select")
+    (setf (edk.data:value (data selector))
+          (nth (q+:current-index (widget selector)) (choices selector)))))
+
+(defmethod set-widget-from-data ((selector selector))
+  (setf (q+:current-index (widget selector))
+        ;; TODO: Maybe specify test predicate?
+        (position (edk.data:value (data selector)) (choices selector))))
 
 (defmethod create-widget ((form selector))
   (let ((widget (make-instance 'combo-box :selector form)))
