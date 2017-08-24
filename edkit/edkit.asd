@@ -4,7 +4,7 @@
   :description "edkit: A simple framework for creating GUI editors"
   :author "Teon Banek <theongugl@gmail.com>"
   :license "GPL2"
-  :depends-on ("trivial-garbage" "qtools" "qtcore" "qtgui")
+  :depends-on ("trivial-garbage" "closer-mop" "qtools" "qtcore" "qtgui")
   :serial t
   :components ((:file "package")
                (:file "data")

@@ -2,11 +2,13 @@
 
 (defpackage #:edkit.data
   (:nicknames #:edk.data)
-  (:use #:cl)
+  (:use #:closer-common-lisp)
   (:export #:ref
            #:get-val
            #:set-val
            #:data
+           #:data-class
+           #:defdata
            #:notify
            #:observe
            #:unobserve

@@ -17,6 +17,7 @@
 (in-package #:shake-ed)
 (in-readtable :qtools)
 
+;; TODO: directory-namestring is wrong on Windows, fix it.
 (defvar *base-dir*
   #.(directory-namestring (or *compile-file-truename* *load-truename*)))
 

@@ -109,8 +109,7 @@
     (error "Recursive undo!"))
   (flet ((undo-change (change)
            (setf (slot-value (change-data change) (change-slot change))
-                 (change-old-value change))
-           (notify-observers (change-data change))))
+                 (change-old-value change))))
     (setf (undop *change-tracker*) t)
     (let ((change-operation (pop (undolog *change-tracker*))))
       (setf (change-operation-workingp change-operation) t)
@@ -126,8 +125,7 @@
     (error "Recursive redo!"))
   (flet ((redo-change (change)
            (setf (slot-value (change-data change) (change-slot change))
-                 (change-new-value change))
-           (notify-observers (change-data change))))
+                 (change-new-value change))))
     (setf (redop *change-tracker*) t)
     (let ((change-operation (pop (redolog *change-tracker*))))
       (setf (change-operation-workingp change-operation) t)
@@ -147,31 +145,71 @@
                                (declare (ignorable ,change-tracker))
                                ,@body)))
 
+;;; Metaclass which sets up the observer and tracking mechanisms
+
+(defclass data-class (standard-class)
+  ()
+  (:documentation
+   "Metaclass for all editable data classes. It ensures that the `DATA' class
+  is inherited from and sets up the obervers and tracking mechanisms."))
+
+;; TODO: Check these methods with AMOP
+(defmethod initialize-instance :around ((class data-class) &rest initargs &key direct-superclasses)
+  "Add `DATA' as a superclass if it is missing."
+  (if (find (find-class 'data) direct-superclasses
+            :test (lambda (data-class superclass) (subtypep data-class superclass)))
+      (call-next-method)
+      (apply #'call-next-method
+             class
+             :direct-superclasses (cons (find-class 'data) direct-superclasses)
+             initargs)))
+
+(defmethod reinitialize-instance :around ((class data-class) &rest initargs
+                                          &key (direct-superclasses nil direct-superclasses-p))
+  (if (not direct-superclasses-p)
+      (call-next-method)
+      (if (find (find-class 'data) direct-superclasses
+                :test (lambda (data-class superclass) (subtypep data-class superclass)))
+          (call-next-method)
+          (apply #'call-next-method
+                 class
+                 :direct-superclasses (cons (find-class 'data) direct-superclasses)
+                 initargs))))
+
+(defmethod (setf slot-value-using-class) (new-value (class data-class) object slotd)
+  "Tracks slot changes in *CHANGE-OPERATION*"
+  (declare (special *change-operation*))
+  (let ((slot-name (slot-definition-name slotd)))
+    (if (or (eq slot-name 'observers) (not (boundp '*change-operation*)))
+        ;; Don't track observers change or if not inside an operation
+        (call-next-method)
+        (let ((old-value (slot-value object (slot-definition-name slotd))))
+          (prog1 (call-next-method)
+            (track-change *change-operation* object slot-name old-value new-value))))))
+
+(defmethod (setf slot-value-using-class) :after (new-value (class data-class) object slotd)
+  "Slot changes on `DATA-CLASS' classes provoke observer notification."
+  (unless (eq (slot-definition-name slotd) 'observers)
+    ;; It makes no sense to notify observers when observers change.
+    (notify-observers object)))
+
+(defmethod validate-superclass ((class data-class) (superclass standard-class))
+  "`DATA-CLASS' is compatible with STANDARD-CLASS"
+  t)
+
+(defmacro defdata (name direct-superclasses direct-slots &rest options)
+  "Macro for DEFCLASS which sets the `DATA-CLASS' as the metaclass."
+  `(defclass ,name ,direct-superclasses ,direct-slots ,@options (:metaclass data-class)))
+
 ;;; Concrete data types
 
-(defclass boxed-string (data)
-  ((value :reader value :initarg :value :type string :initform "")))
+(defdata boxed-string ()
+  ((value :accessor value :initarg :value :type string :initform "")))
 
-(defgeneric (setf value) (value boxed-string))
-
-(defmethod (setf value) (value (boxed-string boxed-string))
-  (declare (special *change-operation*))
-  (when (boundp '*change-operation*)
-    (track-change *change-operation* boxed-string 'value (value boxed-string) value))
-  (setf (slot-value boxed-string 'value) value)
-  (notify-observers boxed-string)
-  value)
-
-(defclass boxed-double (data)
+(defdata boxed-double ()
   ((value :reader value :initarg :value :type double-float :initform 0d0)))
 
-(defgeneric (setf value) (value boxed-double))
-
 (defmethod (setf value) (value (boxed-double boxed-double))
-  (declare (special *change-operation*))
   (setf value (coerce value 'double-float))
-  (when (boundp '*change-operation*)
-    (track-change *change-operation* boxed-double 'value (value boxed-double) value))
   (setf (slot-value boxed-double 'value) value)
-  (notify-observers boxed-double)
   value)
