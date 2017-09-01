@@ -17,9 +17,8 @@
 (in-package #:shake-ed)
 (in-readtable :qtools)
 
-;; TODO: directory-namestring is wrong on Windows, fix it.
 (defvar *base-dir*
-  #.(directory-namestring (or *compile-file-truename* *load-truename*)))
+  #.(uiop:pathname-directory-pathname (or *compile-file-truename* *load-truename*)))
 
 (defconstant +initial-scale+ 50d0)
 
@@ -281,7 +280,7 @@
     (q+:set-profile gl-format 1)
     (q+:qglformat-set-default-format gl-format)
     ;; Register image resources
-    (let ((resource-file (concatenate 'string *base-dir* "resource.rcc")))
-      (unless (q+:qresource-register-resource resource-file)
-        (format t "Failed to load resources from '~A'!" resource-file)))
+    (let ((resource-pathname (merge-pathnames #p"resource.rcc" *base-dir*)))
+      (unless (q+:qresource-register-resource (uiop:native-namestring resource-pathname))
+        (format t "Failed to load resources from '~A'!" resource-pathname)))
     (with-main-window (window (make-instance 'main)))))

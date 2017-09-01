@@ -3,7 +3,8 @@
 (in-package #:shake)
 
 (defvar *base-dir*
-  #.(directory-namestring (or *compile-file-truename* *load-truename*)))
+  #.(uiop:pathname-directory-pathname (or *compile-file-truename* *load-truename*))
+  "Directory pathname where this file is located.")
 
 (defvar *win-width* nil "Current window width in pixels")
 (defvar *win-height* nil "Current window height in pixels")
@@ -503,16 +504,13 @@
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
         (return (nrotate-camera angle 0d0 camera))))))
 
-(defun get-base-dir ()
-  *base-dir*)
-
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
   ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
   ;; executed inside that thread.
   (sdl2:with-init (:everything)
     (reset-game-keys)
-    (with-data-dirs (get-base-dir)
+    (with-data-dirs *base-dir*
       (set-gl-attrs)
       (let ((*win-width* 800)
             (*win-height* 600))

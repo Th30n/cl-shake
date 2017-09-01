@@ -61,7 +61,7 @@
 (defmacro with-data-dirs (basedir &body body)
   "Sets up the environment for searching data files. BASEDIR is added to a
   list of search paths, which by default contains the current directory."
-  `(let ((*search-paths* (list "" (pathname-as-directory ,basedir))))
+  `(let ((*search-paths* (list #p"" (pathname-as-directory ,basedir))))
      (declare (special *search-paths*))
      ,@body))
 
