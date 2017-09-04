@@ -92,7 +92,9 @@
     (declare (special *change-operation*))
     (prog1 (funcall function)
       (when (and (not nestedp) (change-operation-changes *change-operation*))
-        (push *change-operation* (undolog *change-tracker*))))))
+        (push *change-operation* (undolog *change-tracker*))
+        ;; Reset the redolog
+        (setf (redolog *change-tracker*) nil)))))
 
 (defmacro with-change-operation ((description) &body body)
   `(call-with-change-operation ,description (lambda () ,@body)))

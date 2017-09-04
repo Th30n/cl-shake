@@ -36,7 +36,19 @@
           (edk.data:undo)
           (is-before :undop t)
           (edk.data:redo)
-          (is-after))))))
+          (is-after)))))
+  (subtest "reset redolog"
+    (edk.data:with-change-tracker (tracker)
+      (let ((boxed-string (make-instance 'edk.data:boxed-string :value "initial")))
+        (edk.data:with-change-operation ("My change")
+          (setf (edk.data:value boxed-string) "changed"))
+        (edk.data:undo)
+        (is (length (edk.data::redolog tracker)) 1)
+        (is (edk.data::undolog tracker) nil)
+        (edk.data:with-change-operation ("My other change")
+          (setf (edk.data:value boxed-string) "new change"))
+        (is (edk.data::redolog tracker) nil)
+        (is (length (edk.data::undolog tracker)) 1)))))
 
 (subtest "multiple changes"
   (flet ((is-before (boxed-string tracker &key undop)
