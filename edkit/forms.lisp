@@ -172,8 +172,7 @@
   (when (data editor)
     (edk.data:unobserve (data editor) :tag editor))
   (setf (slot-value editor 'data) data)
-  (if data
-      (progn
+  (when data
         (edk.data:observe data
                           (lambda ()
                             (unless (or (updating-data-p editor) (not (widget editor)))
@@ -181,9 +180,45 @@
                           :tag editor)
         (when (widget editor)
           (set-widget-from-data editor)))
-      ;; Disable the editor when there's no data
-      (setf (enabledp editor) nil))
+  ;; Disable the editor when there's no data
+  (setf (enabledp editor) (when data t))
   data)
+
+;;; Compound editor
+;;; A compound editor consists of multiple editors. Each subeditor is used to
+;;; view and edit a part of a compound `EDK.DATA:DATA' type. Implementors
+;;; of compound editors should only have to provide the layout of various
+;;; forms and editors along with the mapping of main data slots to their
+;;; corresponding sub editors.
+
+(defclass compound-editor (editor)
+  ((subeditors :initform (make-hash-table) :accessor subeditors
+               :documentation "Map from slot name to a subeditor responsible for editing it.")
+   (top-form :initform nil :accessor top-form
+             :documentation "Top `FORM' containing all the subformss.")
+   (layout-info :initform nil :accessor layout-info
+                :documentation "Information on how the subeditors should be
+                laid out in the GUI and mapped to slots of DATA."))
+  (:documentation "Base class for editors of compound `EDK.DATA:DATA' types."))
+
+(defmethod create-widget ((editor compound-editor))
+  ;; TODO: Who builds the top-from from layout-info?
+  (build-widget (top-form editor)))
+
+(defmethod destroy-widget :after ((editor compound-editor))
+  (destroy-widget (top-form editor)))
+
+(defmethod set-data-from-widget ((editor compound-editor))
+  ;; Everything should be handled by the subeditors, so default implementation
+  ;; can be empty.
+  )
+
+(defmethod set-widget-from-data ((editor compound-editor))
+  (maphash (lambda (slot-name subeditor)
+             (setf (data subeditor) (slot-value (data editor) slot-name)))
+           (subeditors editor)))
+
+;;; Various editor implementations
 
 (defclass text-entry (editor)
   ())
