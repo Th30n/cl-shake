@@ -1,7 +1,19 @@
+;;;; GUI forms and editors for `EDKIT.DATA:DATA' instances.
+;;;; `FORM' and `EDITOR' subtypes are used to describe the GUI. Each subtype
+;;;; handles that updates are correctly propagated between underlying widgets
+;;;; (Qt in our case) and data types. Ideally, the user should never have to
+;;;; work with the underlying widget library.
+
 (in-package #:edkit.forms)
 (in-readtable :qtools)
 
 ;;; Forms
+;;; A form is a GUI view of some data (not necessarily editable). Each form
+;;; should be able to construct its underlying widget as well as destroy
+;;; it. Destruction should not be tied to `FORM' finalization, since we may
+;;; want to reuse forms. For example, a modal editor may present the same
+;;; forms at different times. When a form isn't being shown, its underlying
+;;; widgets should be destroyed and removed.
 
 ;; Silly thing to forward Qt signals to function/method calls outside of
 ;; QWidget classes.
@@ -11,17 +23,17 @@
 (defclass form ()
   ((widget :initarg :widget :initform nil :accessor widget
            :documentation "Underlying widget of this form.")
-   (dummy-qobject :initform nil :reader dummy-qobject)))
-
-(defmethod initialize-instance :after ((form form) &key)
-  (setf (slot-value form 'dummy-qobject)
-        (make-instance 'dummy-qobject :form form)))
+   (enabledp :initarg :enabledp :initform t :reader enabledp
+             :documentation "True if the form and its widget(s) are enabled.")
+   (dummy-qobject :initform nil :reader dummy-qobject))
+  (:documentation "Base class for a view of some data. It encapsulates the
+  underlying widget."))
 
 (defgeneric create-widget (form)
   (:documentation "Create the underlying GUI widget."))
 
 (defgeneric destroy-widget (form)
-  (:documentation "Remove reference to underlying GUI widget."))
+  (:documentation "Remove all references to underlying GUI widget(s)."))
 
 (defmethod destroy-widget ((form form))
   ;; No-op, since all is done in :after
@@ -30,6 +42,15 @@
 (defmethod destroy-widget :after ((form form))
   (when (widget form)
     (fsetf (widget form) nil)))
+
+(defmethod initialize-instance :after ((form form) &key)
+  (setf (slot-value form 'dummy-qobject)
+        (make-instance 'dummy-qobject :form form)))
+
+(defmethod (setf enabledp) (value (form form))
+  (check-type value boolean)
+  (when (widget form)
+    (setf (q+:enabled (widget form)) value)))
 
 (define-slot (dummy-qobject on-destroyed) ()
    (destroy-widget form))
@@ -45,6 +66,8 @@
     (connect! widget (destroyed) (dummy-qobject form) (on-destroyed))
     (setf (widget form) widget)))
 
+;;; Label
+
 (defclass label (form)
   ((text :initarg :text :accessor text :type string)))
 
@@ -56,6 +79,8 @@
   (q+:make-qlabel (text form)))
 
 ;;; Layout
+;;; A layout is a form containg multiple subforms arranged in a certain
+;;; layout.
 
 (defclass layout (form)
   ((subforms :initarg :subforms :accessor subforms)
@@ -76,6 +101,10 @@
       (q+:add-widget layout (build-widget subform)))
     (q+:set-layout widget layout)
     widget))
+
+(defmethod destroy-widget :after ((form layout))
+  (dolist (subform (subforms form))
+    (destroy-widget subform)))
 
 ;;; Buttons
 
@@ -99,24 +128,32 @@
     widget))
 
 ;;; Editors
+;;; Editor stores and observers `EDKIT.DATA:DATA' instance. Changes made by
+;;; the user via GUI are propagated to the data. Similarly, any programatic
+;;; changes to the data are propagated to the editor and its widgets.
 
 (defclass editor (form)
   ((data :initform nil :initarg :data :reader data :type (or null edk.data:data))
    (updating-data-p :initform nil :accessor updating-data-p :type boolean)))
 
 (defgeneric set-data-from-widget (editor)
-  (:documentation "Update DATA of EDITOR with the value in widget"))
-
-(defmethod set-data-from-widget :before ((editor editor))
-  (assert (not (updating-data-p editor)) (editor)
-          "Recursively updating editor data!")
-  (setf (updating-data-p editor) t))
-
-(defmethod set-data-from-widget :after ((editor editor))
-  (setf (updating-data-p editor) nil))
+  (:documentation "Update DATA of EDITOR with the value in
+  widget. Modification of DATA is done inside a
+  `EDK.DATA:WITH-CHANGE-OPERATION' block. This method is called when the GUI
+  widget changes its value, e.g. a user makes an edit."))
 
 (defgeneric set-widget-from-data (editor)
-  (:documentation "Update WIDGET of EDITOR with the value from DATA"))
+  (:documentation "Update WIDGET of EDITOR with the value from DATA. This is
+  called in 2 cases. One case is when the DATA slot of the EDITOR is
+  changed. The other case is when the value stored in DATA is changed, e.g. by
+  calling `EDK.DATA:UNDO'"))
+
+(defmethod set-data-from-widget :around ((editor editor))
+  (assert (not (updating-data-p editor)) (editor)
+          "Recursively updating editor data!")
+  (setf (updating-data-p editor) t)
+  (prog1 (call-next-method)
+    (setf (updating-data-p editor) nil)))
 
 (defmethod initialize-instance :after ((editor editor) &key)
   (let ((data (slot-value editor 'data)))
@@ -145,9 +182,7 @@
         (when (widget editor)
           (set-widget-from-data editor)))
       ;; Disable the editor when there's no data
-      ;; TODO: Make disabling a method?
-      (when (widget editor)
-        (setf (q+:enabled (widget editor)) nil)))
+      (setf (enabledp editor) nil))
   data)
 
 (defclass text-entry (editor)
