@@ -96,7 +96,7 @@
                                     ;; TODO: Recursive include and multiple includes
                                     (read-shader-file (shader-path (strip include-path)))
                                     line)))))))
-      (sgl::compile-shader (read-shader-file (shader-path name ext)) shader-type))))
+      (sgl:compile-shader (read-shader-file (shader-path name ext)) shader-type))))
 
 (defun find-program (prog-manager vs-name fs-name gs-name)
   (gethash (list vs-name fs-name gs-name) (prog-manager-programs prog-manager)))

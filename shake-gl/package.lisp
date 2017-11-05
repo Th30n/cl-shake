@@ -23,6 +23,7 @@
            #:clear-buffer-fv
            #:draw-arrays-indirect-command
            #:load-shader
+           #:compile-shader
            #:map-buffer
            #:set-draw-arrays-command
            #:uniform-matrix-4f
