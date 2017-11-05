@@ -86,6 +86,15 @@
                (:geometry-shader ".geom"))))
     (labels ((strip (string)
                (string-trim '(#\Space #\Tab #\Linefeed #\Return) string))
+             (get-include-path (include-string)
+               (cond
+                 ((<= (length include-string) 2)
+                  (error "Expected a quoted non-empty include path"))
+                 ((and (starts-with #\" include-string) (ends-with #\" include-string))
+                  (shader-path (subseq include-string 1 (1- (length include-string)))))
+                 ((and (starts-with #\< include-string) (ends-with #\> include-string))
+                  (shader-path (subseq include-string 1 (1- (length include-string)))))
+                 (t (error "Unable to parse '#include ~A'" include-string))))
              (read-shader-file (path)
                (sdata:with-data-file (file path)
                  (format nil "~{~A~%~}"
@@ -94,7 +103,7 @@
                                   (starts-with-subseq "#include" (strip line) :return-suffix t)
                                 (if includep
                                     ;; TODO: Recursive include and multiple includes
-                                    (read-shader-file (shader-path (strip include-path)))
+                                    (read-shader-file (get-include-path (strip include-path)))
                                     line)))))))
       (sgl:compile-shader (read-shader-file (shader-path name ext)) shader-type))))
 
