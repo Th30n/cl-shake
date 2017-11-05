@@ -18,7 +18,7 @@
 
 (in-package #:shake.render-progs)
 
-(defun shader-path (name ext)
+(defun shader-path (name &optional ext)
   "Return the data path for shaders of given NAME and file extension EXT."
   (sdata:data-path (concatenate 'string "shaders/" name ext)))
 
@@ -80,13 +80,23 @@
 
 (defun load-shader (shader-type name)
   "Create and compile a shader of SHADER-TYPE from file NAME."
-  (let* ((ext (ecase shader-type
+  (let ((ext (ecase shader-type
                (:vertex-shader ".vert")
                (:fragment-shader ".frag")
-               (:geometry-shader ".geom")))
-         (source (sdata:with-data-file (file (shader-path name ext))
-                   (read-stream-content-into-string file))))
-    (sgl::compile-shader source shader-type)))
+               (:geometry-shader ".geom"))))
+    (labels ((strip (string)
+               (string-trim '(#\Space #\Tab #\Linefeed #\Return) string))
+             (read-shader-file (path)
+               (sdata:with-data-file (file path)
+                 (format nil "~{~A~%~}"
+                         (loop as line = (read-line file nil) while line collect
+                              (multiple-value-bind (includep include-path)
+                                  (starts-with-subseq "#include" (strip line) :return-suffix t)
+                                (if includep
+                                    ;; TODO: Recursive include and multiple includes
+                                    (read-shader-file (shader-path (strip include-path)))
+                                    line)))))))
+      (sgl::compile-shader (read-shader-file (shader-path name ext)) shader-type))))
 
 (defun find-program (prog-manager vs-name fs-name gs-name)
   (gethash (list vs-name fs-name gs-name) (prog-manager-programs prog-manager)))
