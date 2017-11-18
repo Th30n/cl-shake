@@ -52,20 +52,9 @@
                 #:lineseg-t-end
                 #:linedef-end))
 
-(defpackage #:shake.render-progs
-  (:use #:cl #:alexandria #:shake-utils)
-  (:export #:prog-manager
-           #:with-prog-manager
-           #:init-prog-manager
-           #:shutdown-prog-manager
-           #:get-program
-           #:bind-program
-           #:unbind-program
-           #:reload-programs))
-
 (defpackage #:shake.render
   (:nicknames #:srend)
-  (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.render-progs)
+  (:use #:cl #:alexandria #:shiva #:shake-utils)
   (:export #:load-map-images
            #:gl-config
            #:print-gl-info

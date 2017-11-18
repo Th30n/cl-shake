@@ -247,11 +247,10 @@
     (with-struct (font- texture cell-size) font
       (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
             (half-cell (* 0.5 cell-size))
-            (text-shader (shake.render-progs:get-program
-                          progs "billboard" "text" "billboard")))
+            (text-shader (srend::get-program progs "billboard" "text" "billboard")))
         (gl:active-texture :texture0)
         (gl:bind-texture :texture-2d texture)
-        (shake.render-progs:bind-program progs text-shader)
+        (srend::bind-program progs text-shader)
         (with-uniform-locations text-shader (tex-font proj size cell mv char-pos)
           (gl:uniformi tex-font-loc 0)
           (uniform-matrix-4f proj-loc (list ortho))
@@ -476,8 +475,8 @@
            (lambda (va) (gl:delete-vertex-arrays (list va))))
   (add-res "point-renderer" #'make-point-renderer #'renderer-delete)
   (let ((progs (srend:render-system-prog-manager render-system)))
-    (shake.render-progs:get-program progs "billboard" "text" "billboard")
-    (shake.render-progs:get-program progs "pass" "color"))
+    (srend::get-program progs "billboard" "text" "billboard")
+    (srend::get-program progs "pass" "color"))
   (add-res "font"
            (lambda ()
              (load-font (data-path "share/font-16.bmp") 16 #\Space))
@@ -627,8 +626,8 @@
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
   (let* ((progs (srend:render-system-prog-manager render-system))
-         (shader-prog (shake.render-progs:get-program progs "pass" "color")))
-    (shake.render-progs:bind-program progs shader-prog)
+         (shader-prog (srend::get-program progs "pass" "color")))
+    (srend::bind-program progs shader-prog)
     (uniform-mvp shader-prog
                  (m* (camera-projection-matrix camera)
                      (camera-view-transform camera)))

@@ -16,7 +16,7 @@
 
 ;;; Shader program management: loading, compiling and reusing.
 
-(in-package #:shake.render-progs)
+(in-package #:shake.render)
 
 (defun shader-path (name &optional ext)
   "Return the data path for shaders of given NAME and file extension EXT."
