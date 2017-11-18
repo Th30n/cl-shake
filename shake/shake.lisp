@@ -2,6 +2,7 @@
 
 (in-package #:shake)
 
+;; TODO: How does this work with executable image?
 (defvar *base-dir*
   #.(uiop:pathname-directory-pathname (or *compile-file-truename* *load-truename*))
   "Directory pathname where this file is located.")
@@ -173,30 +174,7 @@
 (defmacro with-timer ((timer &key (reset-every 1d0)) &body body)
   `(call-with-timer ,timer (lambda () ,@body) :reset-every ,reset-every))
 
-(defun load-image-from-file (image-file)
-  (sdl2:load-bmp image-file))
-
-(defun free-image (image)
-  (sdl2:free-surface image))
-
-(defun load-texture (texture-file)
-  "Load a texture from given string file path. Returns the OpenGL texture
-  object as the primary value. Second and third value are image width and
-  height."
-  (let* ((surface (load-image-from-file texture-file))
-         (pixels (sdl2:surface-pixels surface))
-         (width (sdl2:surface-width surface))
-         (height (sdl2:surface-height surface))
-         (tex (car (gl:gen-textures 1))))
-    (gl:active-texture :texture0)
-    (gl:bind-texture :texture-2d tex)
-    (gl:tex-image-2d :texture-2d 0 :srgb8 width height 0
-                     :bgr :unsigned-byte pixels)
-    (gl:tex-parameter :texture-2d :texture-min-filter :nearest)
-    (gl:tex-parameter :texture-2d :texture-mag-filter :nearest)
-    (free-image surface)
-    (values tex width height)))
-
+;; TODO: Move these to shake.render, or remove entirely.
 (defun make-point-renderer ()
   "Creates a function which draws a single point. The function takes keywords
   :DRAW and :DELETE for drawing and deleting respectively."
@@ -213,70 +191,13 @@
      (:delete () (unless deleted
                    (gl:delete-vertex-arrays (list vao))
                    (setf deleted t))))))
-
 (defun renderer-draw (renderer) (funcall renderer :draw))
 (defun renderer-delete (renderer) (funcall renderer :delete))
 
-(defstruct font
-  (texture 0 :type fixnum)
-  (width 0 :type fixnum)
-  (height 0 :type fixnum)
-  (chars-per-line 0 :type fixnum)
-  (cell-size 0 :type fixnum)
-  (start-char-code 0 :type fixnum))
-
-(defun load-font (font-file cell-size start-char)
-  (multiple-value-bind (tex width height) (load-texture font-file)
-    (make-font :texture tex :width width :height height
-               :start-char-code (char-code start-char)
-               :chars-per-line (floor width cell-size) :cell-size cell-size)))
-
-(defun delete-font (font)
-  (gl:delete-textures (list (font-texture font))))
-
-(defun char->font-cell-pos (char font)
-  "Returns the char position in pixels for the given font."
-  (with-struct (font- cell-size chars-per-line start-char-code) font
-    (let ((char-code (- (char-code char) start-char-code)))
-      (multiple-value-bind (y x) (floor char-code chars-per-line)
-        (cons (* x cell-size) (* y cell-size))))))
-
-(defun render-text (renderer text pos-x pos-y width height font)
-  (declare (special *rs*))
-  (let ((progs (srend:render-system-prog-manager *rs*)))
-    (with-struct (font- texture cell-size) font
-      (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
-            (half-cell (* 0.5 cell-size))
-            (text-shader (srend::get-program progs "billboard" "text" "billboard")))
-        (gl:active-texture :texture0)
-        (gl:bind-texture :texture-2d texture)
-        (srend::bind-program progs text-shader)
-        (with-uniform-locations text-shader (tex-font proj size cell mv char-pos)
-          (gl:uniformi tex-font-loc 0)
-          (uniform-matrix-4f proj-loc (list ortho))
-          (gl:uniformf size-loc half-cell)
-          (gl:uniformi cell-loc cell-size cell-size)
-          (loop for char across text and offset from half-cell by half-cell do
-               (destructuring-bind (x . y) (char->font-cell-pos char font)
-                 (gl:uniformi char-pos-loc x y)
-                 (uniform-matrix-4f mv-loc
-                                    (list (translation :x (+ offset pos-x)
-                                                       :y (+ pos-y half-cell))))
-                 (renderer-draw renderer))))))))
-
-(defun draw-text (text x y)
-  "Draw a single line of text on given window coordinates."
-  (declare (special *win-width* *win-height*))
-  (let ((pos-x (if (minusp x) (+ *win-width* x) x))
-        (pos-y (if (minusp y) (+ *win-height* y) y)))
-    (res-let (point-renderer font)
-      (render-text point-renderer text pos-x pos-y *win-width* *win-height*
-                   font))))
-
 (defun draw-timer-stats (timer &key (x -200) (y -20))
   (with-struct (timer- max avg) timer
-    (draw-text (format nil "CPU time: ~,2Fms (max)" (* 1d3 max)) x y)
-    (draw-text (format nil "CPU time: ~,2Fms (avg)" (* 1d3 avg)) x (- y 16))))
+    (srend::draw-text (format nil "CPU time: ~,2Fms (max)" (* 1d3 max)) :x x :y y)
+    (srend::draw-text (format nil "CPU time: ~,2Fms (avg)" (* 1d3 avg)) :x x :y (- y 16))))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
                *last-time* *base-time* *gametic*))
@@ -293,6 +214,7 @@
          1000))
 
 (defun start-game-loop ()
+  "Starts the game loop by reseting the game time."
   (setf *base-time* (sdl2:get-ticks)
         *last-time* *base-time*))
 
@@ -471,16 +393,14 @@
                 (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset)))))))))
 
 (defun load-main-resources (render-system)
-  (add-res "vertex-array" #'gl:gen-vertex-array
-           (lambda (va) (gl:delete-vertex-arrays (list va))))
   (add-res "point-renderer" #'make-point-renderer #'renderer-delete)
   (let ((progs (srend:render-system-prog-manager render-system)))
     (srend::get-program progs "billboard" "text" "billboard")
     (srend::get-program progs "pass" "color"))
   (add-res "font"
            (lambda ()
-             (load-font (data-path "share/font-16.bmp") 16 #\Space))
-           #'delete-font))
+             (srend::load-font (data-path "share/font-16.bmp") 16 #\Space))
+           #'srend::delete-font))
 
 (defun load-map-textures (render-system bsp)
   (labels ((texture-name (surf)
@@ -564,13 +484,9 @@
                                    (lambda (tic) (run-tic camera tic)))
                      (unless minimized-p
                        (clear-buffer-fv :color 0 0 0 0)
-                       (render render-system camera)
-                       (let ((*rs* render-system))
-                         (declare (special *rs*))
-                         (draw-timer-stats frame-timer))
-                       ;; TODO: Move swap to srend::finish-draw-frame.
-                       (sdl2:gl-swap-window
-                        (srend::render-system-window render-system)))))))))))
+                       (srend:with-draw-frame (render-system)
+                         (render render-system camera)
+                         (draw-timer-stats frame-timer)))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window
@@ -631,8 +547,7 @@
     (uniform-mvp shader-prog
                  (m* (camera-projection-matrix camera)
                      (camera-view-transform camera)))
-    (srend:with-draw-frame (render-system)
-      (render-world camera smdl:*world-model*))))
+    (render-world camera smdl:*world-model*)))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp

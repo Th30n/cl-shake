@@ -1,20 +1,41 @@
-;;;; Copyright (C) 2016 Teon Banek
-;;;;
-;;;; This program is free software; you can redistribute it and/or modify
-;;;; it under the terms of the GNU General Public License as published by
-;;;; the Free Software Foundation; either version 2 of the License, or
-;;;; (at your option) any later version.
-;;;;
-;;;; This program is distributed in the hope that it will be useful,
-;;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;;;; GNU General Public License for more details.
-;;;;
-;;;; You should have received a copy of the GNU General Public License along
-;;;; with this program; if not, write to the Free Software Foundation, Inc.,
-;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+;;;; Defines `render-system' and functions for rendering to screen.
 
 (in-package #:shake.render)
+
+(defun load-texture (texture-file)
+  "Load a texture from given string file path. Returns the OpenGL texture
+  object as the primary value. Second and third value are image width and
+  height."
+  (let* ((surface (sdl2:load-bmp texture-file))
+         (pixels (sdl2:surface-pixels surface))
+         (width (sdl2:surface-width surface))
+         (height (sdl2:surface-height surface))
+         (tex (car (gl:gen-textures 1))))
+    (gl:active-texture :texture0)
+    (gl:bind-texture :texture-2d tex)
+    (gl:tex-image-2d :texture-2d 0 :srgb8 width height 0
+                     :bgr :unsigned-byte pixels)
+    (gl:tex-parameter :texture-2d :texture-min-filter :nearest)
+    (gl:tex-parameter :texture-2d :texture-mag-filter :nearest)
+    (sdl2:free-surface surface)
+    (values tex width height)))
+
+(defstruct font
+  (texture 0 :type fixnum)
+  (width 0 :type fixnum)
+  (height 0 :type fixnum)
+  (chars-per-line 0 :type fixnum)
+  (cell-size 0 :type fixnum)
+  (start-char-code 0 :type fixnum))
+
+(defun load-font (font-file cell-size start-char)
+  (multiple-value-bind (tex width height) (load-texture font-file)
+    (make-font :texture tex :width width :height height
+               :start-char-code (char-code start-char)
+               :chars-per-line (floor width cell-size) :cell-size cell-size)))
+
+(defun delete-font (font)
+  (gl:delete-textures (list (font-texture font))))
 
 (defstruct gl-config
   "Stores constants of various capabilities for the initialized GL context."
@@ -56,6 +77,11 @@
     (format t "Max array texture layers: ~S~%" max-array-texture-layers)
     (finish-output)))
 
+(defstruct debug-text
+  (char-string nil :type string :read-only t)
+  (x 0 :type fixnum :read-only t)
+  (y 0 :type fixnum :read-only t))
+
 (defstruct render-system
   "Rendering related global variables and constants."
   (width nil :type fixnum)
@@ -63,6 +89,8 @@
   window
   (gl-config nil :type gl-config :read-only t)
   batches
+  ;; List of `debug-text' to render on the next frame.
+  (debug-text-list nil)
   (image-manager nil :type image-manager)
   (prog-manager nil :type prog-manager))
 
@@ -95,14 +123,6 @@
 (defvar *rs*)
 ;; BATCHES of the currently active RENDER-SYSTEM (*RS*).
 (defvar *batches*)
-
-(defmacro with-draw-frame ((render-system) &body body)
-  "Establishes the environment where SHAKE.RENDER package functions can be
-  used."
-  `(let ((*batches* (init-draw-frame ,render-system))
-         (*rs* ,render-system))
-     (multiple-value-prog1 (progn ,@body)
-       (finish-draw-frame ,render-system))))
 
 (defun print-memory-usage (render-system)
   "Print the estimate of used memory in GL."
@@ -311,3 +331,61 @@
                    ;; Each batch contains 100kB of vertex data.
                    (add-new-batch (max surface-space (* 100 1024))))))
           (add-surface-vertex-data surface batch))))))
+
+(defun draw-text (text &key x y)
+  "Draw a single line of text on given window coordinates."
+  (let ((pos-x (if (minusp x) (+ (render-system-width *rs*) x) x))
+        (pos-y (if (minusp y) (+ (render-system-height *rs*) y) y)))
+    (push (make-debug-text :char-string text :x pos-x :y pos-y)
+          (render-system-debug-text-list *rs*))))
+
+(defun char->font-cell-pos (char font)
+  "Returns the char position in pixels for the given font."
+  (with-struct (font- cell-size chars-per-line start-char-code) font
+    (let ((char-code (- (char-code char) start-char-code)))
+      (multiple-value-bind (y x) (floor char-code chars-per-line)
+        (cons (* x cell-size) (* y cell-size))))))
+
+(defun renderer-draw (renderer) (funcall renderer :draw))
+
+(defun show-debug-text (render-system)
+  (with-struct (render-system- debug-text-list width height) render-system
+    (dolist (debug-text debug-text-list)
+      (sdata:res-let (point-renderer font)
+        (let ((progs (render-system-prog-manager render-system)))
+          (with-struct (font- texture cell-size) font
+            (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
+                  (half-cell (* 0.5 cell-size))
+                  (text-shader (get-program progs "billboard" "text" "billboard")))
+              (gl:active-texture :texture0)
+              (gl:bind-texture :texture-2d texture)
+              (bind-program progs text-shader)
+              (sgl:with-uniform-locations text-shader (tex-font proj size cell mv char-pos)
+                (gl:uniformi tex-font-loc 0)
+                (sgl:uniform-matrix-4f proj-loc (list ortho))
+                (gl:uniformf size-loc half-cell)
+                (gl:uniformi cell-loc cell-size cell-size)
+                (let ((text (debug-text-char-string debug-text))
+                      (pos-x (debug-text-x debug-text))
+                      (pos-y (debug-text-y debug-text)))
+                  (loop for char across text and offset from half-cell by half-cell do
+                       (destructuring-bind (x . y) (char->font-cell-pos char font)
+                         (gl:uniformi char-pos-loc x y)
+                         (sgl:uniform-matrix-4f mv-loc
+                                                (list (translation :x (+ offset pos-x)
+                                                                   :y (+ pos-y half-cell))))
+                         (renderer-draw point-renderer))))))))))))
+
+(defun call-with-draw-frame (render-system fun)
+  (let ((*batches* (init-draw-frame render-system))
+        (*rs* render-system))
+    (multiple-value-prog1 (funcall fun)
+      (finish-draw-frame render-system)
+      (show-debug-text render-system)
+      (setf (render-system-debug-text-list render-system) nil)
+      (sdl2:gl-swap-window (render-system-window render-system)))))
+
+(defmacro with-draw-frame ((render-system) &body body)
+  "Establishes the environment where SHAKE.RENDER package functions can be
+  used."
+  `(call-with-draw-frame ,render-system (lambda () ,@body)))
