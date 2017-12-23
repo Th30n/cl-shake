@@ -202,7 +202,7 @@
   (:documentation "Base class for editors of compound `EDK.DATA:DATA' types."))
 
 (defmethod create-widget ((editor compound-editor))
-  ;; TODO: Who builds the top-from from layout-info?
+  ;; TODO: Who builds the top-form from layout-info?
   (build-widget (top-form editor)))
 
 (defmethod destroy-widget :after ((editor compound-editor))

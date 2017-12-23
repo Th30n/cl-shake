@@ -32,15 +32,34 @@
     (1 :scale-to-fit)))
 
 (define-widget texture-editor (QWidget)
-  ((texinfo :initform nil)))
+  ((texinfo :initform nil)
+   (choose-btn :initform nil)))
 
-(define-subwidget (texture-editor choose-button)
-    (q+:make-qpushbutton "Texture"))
 (define-subwidget (texture-editor name-label) (q+:make-qlabel "No texture"))
+
+(defun choose-btn-clicked (texture-editor)
+  (with-all-slots-bound (texture-editor texture-editor)
+    (let ((filepath (q+:qfiledialog-get-open-file-name
+                     texture-editor "Select Texture" "" "Textures (*.bmp)")))
+      (when (and filepath (ends-with-subseq ".bmp" filepath))
+        (let ((name (file-namestring filepath)))
+          (unless texinfo
+            (let ((offset (shiva:v (q+:value x-offset-spinbox)
+                                   (q+:value y-offset-spinbox)))
+                  (draw-mode (combo-index->draw-mode
+                              (q+:current-index draw-mode-combo))))
+              (setf texinfo (sbsp:make-texinfo :name name :offset offset
+                                               :draw-mode draw-mode))))
+          (setf (sbsp:texinfo-name texinfo) name
+                (q+:text (slot-value texture-editor 'name-label)) name))
+        (signal! texture-editor (target-changed))))))
+
 (define-subwidget (texture-editor choose-widget) (q+:make-qwidget)
   (let ((hbox (q+:make-qhboxlayout)))
     (q+:set-layout choose-widget hbox)
-    (q+:add-widget hbox choose-button)
+    (setf choose-btn (edk.forms:button
+                      "Texture" (lambda () (choose-btn-clicked texture-editor))))
+    (q+:add-widget hbox (edk.forms:build-widget choose-btn))
     (q+:add-widget hbox name-label)))
 
 (define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
@@ -67,23 +86,6 @@
     (q+:add-widget hbox y-offset-spinbox)))
 
 (define-signal (texture-editor target-changed) ())
-
-(define-slot (texture-editor choose-button-clicked) ((checked bool))
-  (declare (connected choose-button (clicked bool)))
-  (let ((filepath (q+:qfiledialog-get-open-file-name
-                   texture-editor "Select Texture" "" "Textures (*.bmp)")))
-    (when (and filepath (ends-with-subseq ".bmp" filepath))
-      (let ((name (file-namestring filepath)))
-        (unless texinfo
-          (let ((offset (shiva:v (q+:value x-offset-spinbox)
-                                 (q+:value y-offset-spinbox)))
-                (draw-mode (combo-index->draw-mode
-                            (q+:current-index draw-mode-combo))))
-            (setf texinfo (sbsp:make-texinfo :name name :offset offset
-                                             :draw-mode draw-mode))))
-        (setf (sbsp:texinfo-name texinfo) name
-              (q+:text name-label) name))
-      (signal! texture-editor (target-changed)))))
 
 (define-slot (texture-editor draw-mode-changed) ((index int))
   (declare (connected draw-mode-combo (current-index-changed int)))
@@ -136,21 +138,19 @@
   target)
 
 (define-widget properties-editor (QWidget)
-  ((sidedefs :initform nil)))
+  ((sidedefs :initform nil :accessor sidedefs)
+   (color-btn :initform nil)))
 
-(define-subwidget (properties-editor color-button)
-    (q+:make-qpushbutton "Color"))
-(define-subwidget (properties-editor tex-ed) (make-instance 'texture-editor))
-
-(define-slot (properties-editor color-button-clicked) ((checked bool))
-  (declare (connected color-button (clicked bool)))
-  (when-let ((sidedef (first sidedefs)))
+(defun color-btn-clicked (properties-editor)
+  (when-let ((sidedef (first (sidedefs properties-editor))))
     (with-finalizing* ((qcolor (vector->qcolor (sbsp:sidedef-color sidedef)))
                        (new-qcolor (q+:qcolordialog-get-color
                                     qcolor properties-editor)))
       (when (q+:is-valid new-qcolor)
-        (dolist (side sidedefs)
+        (dolist (side (sidedefs properties-editor))
           (setf (sbsp:sidedef-color side) (qcolor->vector new-qcolor)))))))
+
+(define-subwidget (properties-editor tex-ed) (make-instance 'texture-editor))
 
 (define-slot (properties-editor texinfo-changed) ()
   (declare (connected tex-ed (target-changed)))
@@ -165,7 +165,10 @@
 (define-initializer (properties-editor setup)
   (let ((layout (q+:make-qvboxlayout)))
     (q+:set-layout properties-editor layout)
-    (q+:add-widget layout color-button)
+    (setf color-btn
+          (edk.forms:button
+           "Color" (lambda () (color-btn-clicked properties-editor))))
+    (q+:add-widget layout (edk.forms:build-widget color-btn))
     (q+:add-widget layout tex-ed 0 (q+:qt.align-top)))
   (unless sidedefs
     (q+:set-enabled properties-editor nil)))

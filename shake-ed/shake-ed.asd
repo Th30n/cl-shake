@@ -21,7 +21,7 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("alexandria" "shiva" "shake-bspc"
+  :depends-on ("alexandria" "shiva" "shake-bspc" "edkit"
                "qtools" "qtcore" "qtgui" "qtsvg" "qtopengl")
   :serial t
   :components ((:file "package")
