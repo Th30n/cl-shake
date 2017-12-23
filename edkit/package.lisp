@@ -25,6 +25,7 @@
   (:use #:cl+qt)
   (:export #:build-widget
            #:label
+           #:text
            #:left-right
            #:top-down
            #:editor

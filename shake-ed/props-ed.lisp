@@ -33,9 +33,10 @@
 
 (define-widget texture-editor (QWidget)
   ((texinfo :initform nil)
-   (choose-btn :initform nil)))
-
-(define-subwidget (texture-editor name-label) (q+:make-qlabel "No texture"))
+   (choose-btn :initform nil)
+   (name-lbl :initform (edk.forms:label "No texture"))
+   (x-offset-lbl :initform (edk.forms:label "X offset"))
+   (y-offset-lbl :initform (edk.forms:label "Y offset"))))
 
 (defun choose-btn-clicked (texture-editor)
   (with-all-slots-bound (texture-editor texture-editor)
@@ -51,7 +52,7 @@
               (setf texinfo (sbsp:make-texinfo :name name :offset offset
                                                :draw-mode draw-mode))))
           (setf (sbsp:texinfo-name texinfo) name
-                (q+:text (slot-value texture-editor 'name-label)) name))
+                (edk.forms:text name-lbl) name))
         (signal! texture-editor (target-changed))))))
 
 (define-subwidget (texture-editor choose-widget) (q+:make-qwidget)
@@ -60,29 +61,27 @@
     (setf choose-btn (edk.forms:button
                       "Texture" (lambda () (choose-btn-clicked texture-editor))))
     (q+:add-widget hbox (edk.forms:build-widget choose-btn))
-    (q+:add-widget hbox name-label)))
+    (q+:add-widget hbox (edk.forms:build-widget name-lbl))))
 
 (define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
   (q+:add-items draw-mode-combo (list "Tile" "Scale To Fit")))
 
-(define-subwidget (texture-editor x-offset-label) (q+:make-qlabel "X offset"))
 (define-subwidget (texture-editor x-offset-spinbox) (q+:make-qdoublespinbox)
   (setf (q+:range x-offset-spinbox) (values -1d0 1d0)
         (q+:single-step x-offset-spinbox) 0.05d0))
 (define-subwidget (texture-editor x-offset-widget) (q+:make-qwidget)
   (let ((hbox (q+:make-qhboxlayout)))
     (q+:set-layout x-offset-widget hbox)
-    (q+:add-widget hbox x-offset-label)
+    (q+:add-widget hbox (edk.forms:build-widget x-offset-lbl))
     (q+:add-widget hbox x-offset-spinbox)))
 
-(define-subwidget (texture-editor y-offset-label) (q+:make-qlabel "Y offset"))
 (define-subwidget (texture-editor y-offset-spinbox) (q+:make-qdoublespinbox)
   (setf (q+:range y-offset-spinbox) (values -1d0 1d0)
         (q+:single-step y-offset-spinbox) 0.05d0))
 (define-subwidget (texture-editor y-offset-widget) (q+:make-qwidget)
   (let ((hbox (q+:make-qhboxlayout)))
     (q+:set-layout y-offset-widget hbox)
-    (q+:add-widget hbox y-offset-label)
+    (q+:add-widget hbox (edk.forms:build-widget y-offset-lbl))
     (q+:add-widget hbox y-offset-spinbox)))
 
 (define-signal (texture-editor target-changed) ())
@@ -120,12 +119,12 @@
     texinfo))
 
 (defmethod (setf target) (target (editor texture-editor))
-  (with-slots (texinfo name-label draw-mode-combo
+  (with-slots (texinfo name-lbl draw-mode-combo
                        x-offset-spinbox y-offset-spinbox) editor
     (setf texinfo target
-          (q+:text name-label) (if texinfo
-                                   (sbsp:texinfo-name texinfo)
-                                   "No texture")
+          (edk.forms:text name-lbl) (if texinfo
+                                        (sbsp:texinfo-name texinfo)
+                                        "No texture")
           (q+:current-index draw-mode-combo) (if texinfo
                                                  (draw-mode->combo-index
                                                   (sbsp:texinfo-draw-mode texinfo))

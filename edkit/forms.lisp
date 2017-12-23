@@ -23,6 +23,7 @@
 (defclass form ()
   ((widget :initarg :widget :initform nil :accessor widget
            :documentation "Underlying widget of this form.")
+   ;; TODO: Connect enabledp with direct disable of widget
    (enabledp :initarg :enabledp :initform t :reader enabledp
              :documentation "True if the form and its widget(s) are enabled.")
    (dummy-qobject :initform nil :reader dummy-qobject))
@@ -60,6 +61,7 @@
   (check-type form form)
   (assert (not (widget form)) (form)
           "BUILD-WIDGET called on already built FORM.")
+  ;; TODO: Track live widgets for debugging
   (let ((widget (create-widget form)))
     (assert widget (widget)
             "CREATE-WIDGET needs to make an underlying GUI widget")
@@ -69,7 +71,13 @@
 ;;; Label
 
 (defclass label (form)
-  ((text :initarg :text :accessor text :type string)))
+  ((text :initarg :text :reader text :type string)))
+
+(defmethod (setf text) (text (label label))
+  (check-type text string)
+  (setf (slot-value label 'text) text)
+  (when (widget label)
+    (setf (q+:text (widget label)) text)))
 
 (defun label (text)
   (check-type text string)
