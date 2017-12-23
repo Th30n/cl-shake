@@ -33,7 +33,7 @@
 
 (define-widget texture-editor (QWidget)
   ((texinfo :initform nil)
-   (choose-btn :initform nil)
+   (choose-form :initform nil)
    (name-lbl :initform (edk.forms:label "No texture"))
    (x-offset-lbl :initform (edk.forms:label "X offset"))
    (y-offset-lbl :initform (edk.forms:label "Y offset"))))
@@ -54,14 +54,6 @@
           (setf (sbsp:texinfo-name texinfo) name
                 (edk.forms:text name-lbl) name))
         (signal! texture-editor (target-changed))))))
-
-(define-subwidget (texture-editor choose-widget) (q+:make-qwidget)
-  (let ((hbox (q+:make-qhboxlayout)))
-    (q+:set-layout choose-widget hbox)
-    (setf choose-btn (edk.forms:button
-                      "Texture" (lambda () (choose-btn-clicked texture-editor))))
-    (q+:add-widget hbox (edk.forms:build-widget choose-btn))
-    (q+:add-widget hbox (edk.forms:build-widget name-lbl))))
 
 (define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
   (q+:add-items draw-mode-combo (list "Tile" "Scale To Fit")))
@@ -107,9 +99,12 @@
     (signal! texture-editor (target-changed))))
 
 (define-initializer (texture-editor setup)
-  (let ((layout (q+:make-qvboxlayout)))
+  (let ((layout (q+:make-qvboxlayout))
+        (choose-btn (edk.forms:button
+                     "Texture" (lambda () (choose-btn-clicked texture-editor)))))
     (q+:set-layout texture-editor layout)
-    (q+:add-widget layout choose-widget)
+    (setf choose-form (edk.forms:left-right choose-btn name-lbl))
+    (q+:add-widget layout (edk.forms:build-widget choose-form))
     (q+:add-widget layout draw-mode-combo)
     (q+:add-widget layout x-offset-widget)
     (q+:add-widget layout y-offset-widget)))
