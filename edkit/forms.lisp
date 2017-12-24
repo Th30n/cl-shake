@@ -209,8 +209,33 @@
                 laid out in the GUI and mapped to slots of DATA."))
   (:documentation "Base class for editors of compound `EDK.DATA:DATA' types."))
 
+(defmethod create-widget :before ((ed compound-editor))
+  (labels ((build-form (form-info)
+             (let ((form-name (car form-info))
+                   (make-form (cadr form-info))
+                   (form-args (mapcar #'build-layout (cddr form-info))))
+               (declare (ignore form-name))
+               ;; TODO: Add subforms mapping
+               (apply make-form form-args)))
+           (build-editor (edit-info)
+             (let ((form (build-form edit-info))
+                   (slot-name (car edit-info)))
+               (setf (data form) (slot-value (data ed) slot-name)
+                     (gethash slot-name (subeditors ed)) form)
+               form))
+           (build-layout (layout-info)
+             (if (atom layout-info)
+                 layout-info
+                 (cond
+                   ((eq :edit (car layout-info))
+                    (build-editor (cdr layout-info)))
+                   ((eq :form (car layout-info))
+                    (build-form (cdr layout-info)))
+                   (t (apply (car layout-info)
+                             (mapcar #'build-layout (cdr layout-info))))))))
+    (setf (top-form ed) (build-layout (layout-info ed)))))
+
 (defmethod create-widget ((editor compound-editor))
-  ;; TODO: Who builds the top-form from layout-info?
   (build-widget (top-form editor)))
 
 (defmethod destroy-widget :after ((editor compound-editor))
@@ -219,6 +244,7 @@
 (defmethod set-data-from-widget ((editor compound-editor))
   ;; Everything should be handled by the subeditors, so default implementation
   ;; can be empty.
+  ;; TODO: Propagate this from subeditors
   )
 
 (defmethod set-widget-from-data ((editor compound-editor))

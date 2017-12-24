@@ -29,6 +29,8 @@
            #:left-right
            #:top-down
            #:editor
+           #:compound-editor
+           #:layout-info
            #:text-entry
            #:button
            #:selector
