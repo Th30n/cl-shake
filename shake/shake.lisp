@@ -434,7 +434,7 @@
       (let ((*win-width* 800)
             (*win-height* 600))
         (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
-                                  :flags '(:shown :opengl))
+                                  :flags '(:opengl))
           (srend:with-render-system (render-system window)
             (sdl2:set-relative-mouse-mode 1)
             (srend:print-gl-info (srend:render-system-gl-config render-system))
