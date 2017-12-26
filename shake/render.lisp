@@ -248,9 +248,7 @@
 (defun add-surface-vertex-data (surface batch)
   (flet ((fill-buffer (byte-offset data size)
            (gl:bind-buffer :array-buffer (batch-buffer batch))
-           (gl:buffer-sub-data :array-buffer data
-                               :buffer-offset byte-offset
-                               :size size)
+           (%gl:buffer-sub-data :array-buffer byte-offset size data)
            (gl:bind-buffer :array-buffer 0)
            size))
     (with-struct (batch- offset) batch

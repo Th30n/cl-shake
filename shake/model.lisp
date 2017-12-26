@@ -6,15 +6,75 @@
 
 (defstruct surf-triangles
   "Stores surface triangles ready for rendering.
-  VERTS is a foreign array of vertex data, ready for sending to GPU.
+  VERTS is a foreign array of `C-VERTEX-DATA', ready for sending to GPU.
   TEX-NAME is the name of texture image used, can be NIL."
   (num-verts 0 :type fixnum)
   (verts-byte-size 0 :type fixnum)
   verts
   (tex-name nil :type (or null string)))
 
+(cffi:defcstruct (vertex-data :class c-vertex-data)
+  (position :float :count 3)
+  (color :float :count 3)
+  (normal :float :count 3)
+  (uv :float :count 2))
+
+(defstruct l-vertex-data
+  (position (v 0 0 0) :type (vec 3) :read-only t)
+  (color (v 0 0 0) :type (vec 3) :read-only t)
+  (normal (v 0 0 0) :type (vec 3) :read-only t)
+  (uv (v 0 0) :type (vec 2) :read-only t))
+
+(defmethod cffi:translate-from-foreign (ptr (type c-vertex-data))
+  (cffi:with-foreign-slots ((position color normal uv) ptr (:struct vertex-data))
+    (flet ((vec-from-foreign (ptr count)
+             ;; NOTE: cffi:foreign-array-to-lisp cannot be used since we
+             ;; convert C float array to Lisp double array.
+             (apply #'v (loop for i from 0 below count collect
+                             (cffi:mem-aref ptr :float i)))))
+      (make-l-vertex-data :position (vec-from-foreign position 3)
+                          :color (vec-from-foreign color 3)
+                          :normal (vec-from-foreign normal 3)
+                          :uv (vec-from-foreign uv 2)))))
+
+(defmethod cffi:expand-from-foreign (ptr (type c-vertex-data))
+  `(cffi:with-foreign-slots ((position color normal uv) ,ptr (:struct vertex-data))
+     (flet ((vec-from-foreign (ptr count)
+              (apply #'v (loop for i from 0 below count collect
+                              (cffi:mem-aref ptr :float i)))))
+       (make-l-vertex-data :position (vec-from-foreign position 3)
+                           :color (vec-from-foreign color 3)
+                           :normal (vec-from-foreign normal 3)
+                           :uv (vec-from-foreign uv 2)))))
+
+(defmethod cffi:translate-into-foreign-memory (vd (type c-vertex-data) ptr)
+  (cffi:with-foreign-slots ((position color normal uv) ptr (:struct vertex-data))
+    (flet ((vec-to-foreign (v ptr)
+             ;; NOTE: cffi:lisp-array-to-foreign cannot be used since we
+             ;; convert Lisp double array to C float array.
+             (loop for i from 0 below (array-total-size v) do
+                  (setf (cffi:mem-aref ptr :float i)
+                        (coerce (aref v i) 'single-float)))))
+      (vec-to-foreign (l-vertex-data-position vd) position)
+      (vec-to-foreign (l-vertex-data-color vd) color)
+      (vec-to-foreign (l-vertex-data-normal vd) normal)
+      (vec-to-foreign (l-vertex-data-uv vd) uv))))
+
+(defmethod cffi:expand-into-foreign-memory (vd (type c-vertex-data) ptr)
+  `(cffi:with-foreign-slots ((position color normal uv) ,ptr (:struct vertex-data))
+     (flet ((vec-to-foreign (v ptr)
+              ;; NOTE: cffi:lisp-array-to-foreign cannot be used since we
+              ;; convert Lisp double array to C float array.
+              (loop for i from 0 below (array-total-size v) do
+                   (setf (cffi:mem-aref ptr :float i)
+                         (coerce (aref v i) 'single-float)))))
+       (vec-to-foreign (l-vertex-data-position ,vd) position)
+       (vec-to-foreign (l-vertex-data-color ,vd) color)
+       (vec-to-foreign (l-vertex-data-normal ,vd) normal)
+       (vec-to-foreign (l-vertex-data-uv ,vd) uv))))
+
 (defun free-surf-triangles (surf-triangles)
-  (gl:free-gl-array (surf-triangles-verts surf-triangles)))
+  (cffi:foreign-free (surf-triangles-verts surf-triangles)))
 
 (defstruct (surface (:include sbsp:sidedef))
   "Extended SIDEDEF which contains 3D faces for rendering."
@@ -69,48 +129,44 @@
                   (list (v u-start 0) (v u-end 0) (v u-start 1)
                         (v u-start 1) (v u-end 0) (v u-end 1))))))))
 
-(defun make-gl-array (data)
-  (let ((arr (gl:alloc-gl-array
-              :float (reduce #'+ (mapcar #'array-total-size data))))
-        (offset 0))
-    (dolist (vec data)
-      (dotimes (i (array-total-size vec))
-        (setf (gl:glaref arr offset) (coerce (row-major-aref vec i) 'single-float))
-        (incf offset)))
-    (cons (coerce (gl:gl-array-byte-size arr) 'fixnum)
-          arr)))
-
 (defun sidedef->surf-triangles (sidedef)
-  (let ((positions (make-triangles sidedef))
-        (tex-name (aif (sbsp:sidedef-texinfo sidedef)
-                       (string-downcase (sbsp:texinfo-name it)))))
-    (destructuring-bind (byte-size . verts)
-        (make-gl-array
-         (loop for pos in positions
-            and color = (sbsp:sidedef-color sidedef)
-            and normal = (v2->v3 (sbsp:lineseg-normal
-                                  (sbsp:sidedef-lineseg sidedef)))
-            and uv in (or (make-texcoords sidedef)
-                          (make-list 6 :initial-element (v 0 0)))
-            append (list pos color normal uv)))
-      (make-surf-triangles :num-verts (list-length positions)
-                           :verts-byte-size byte-size
-                           :verts verts
-                           :tex-name tex-name))))
+  (let* ((positions (make-triangles sidedef))
+         (tex-name (aif (sbsp:sidedef-texinfo sidedef)
+                        (string-downcase (sbsp:texinfo-name it))))
+         (num-verts (list-length positions))
+         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+    (loop for pos in positions
+       and uv in (or (make-texcoords sidedef)
+                     (make-list 6 :initial-element (v 0 0)))
+       and i from 0 do
+         (setf (cffi:mem-aref verts '(:struct vertex-data) i)
+               (make-l-vertex-data
+                :position pos
+                :color (sbsp:sidedef-color sidedef)
+                :normal (v2->v3 (sbsp:lineseg-normal
+                                 (sbsp:sidedef-lineseg sidedef)))
+                :uv uv)))
+    (make-surf-triangles :num-verts num-verts
+                         :verts-byte-size (* num-verts (cffi:foreign-type-size
+                                                        '(:struct vertex-data)))
+                         :verts verts
+                         :tex-name tex-name)))
 
 (defun polygon->surf-triangles (polygon height)
   (let* ((triangles (sbsp:triangulate (mapcar #'sbsp:linedef->lineseg polygon)))
-         (positions (mapcar #'sbsp:lineseg-start (apply #'append triangles))))
-    (destructuring-bind (byte-size . verts)
-        (make-gl-array
-         (loop for pos in positions
-            and color = (v 1 0 0)
-            and normal = (v 0 1 0)
-            and uv = (v 0 0)
-            append (list (v2->v3 pos height) color normal uv)))
-      (make-surf-triangles :num-verts (list-length positions)
-                           :verts-byte-size byte-size
-                           :verts verts))))
+         (positions (mapcar #'sbsp:lineseg-start (apply #'append triangles)))
+         (num-verts (list-length positions))
+         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+    (loop for pos in positions and i from 0 do
+         (setf (cffi:mem-aref verts '(:struct vertex-data) i)
+               (make-l-vertex-data :position (v2->v3 pos height)
+                                   :color (v 1 0 0)
+                                   :normal (v 0 1 0)
+                                   :uv (v 0 0))))
+    (make-surf-triangles :num-verts num-verts
+                         :verts-byte-size (* num-verts (cffi:foreign-type-size
+                                                        '(:struct vertex-data)))
+                         :verts verts)))
 
 (defun sidedef->surface (sidedef)
   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
