@@ -15,6 +15,10 @@
 ;;;; 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 (in-package #:shiva)
+(declaim (optimize (speed 3)))
+
+(deftype vec (size)
+  `(simple-array double-float (,size)))
 
 ;; purpose-specific language compiler for matrix computation
 
@@ -107,10 +111,16 @@
 
 (defun m* (m1 m2
 	   &aux (n1 (1- (array-dimension m1 0))) (n2 (1- (array-dimension m1 1))) (n3 (1- (array-dimension m2 1))))
-  (declare (optimize (speed 3) (space 3)))
   (tensor ((i 0 n1) (j 0 n2) (k 0 n3)) ((out (list (1+ n1) (1+ n3)))) (:simple-arrays (m1 m2))
 	  ($ i ($ k (setf (out i k) (sum j (* (m1 i j) (m2 j k))))))
 	  out))
+
+(declaim (ftype (function ((vec 3) (vec 3)) double-float) v3dot))
+(defun v3dot (v1 v2)
+  (declare (type (vec 3) v1 v2))
+  (+ (* (aref v1 0) (aref v2 0))
+     (* (aref v1 1) (aref v2 1))
+     (* (aref v1 2) (aref v2 2))))
 
 (defun vdot (v1 v2 &aux (n (1- (array-dimension v1 0))))
   "Return the dot product of vectors V1 and V2."
@@ -196,13 +206,9 @@
 	  (setf (out ii col) (tmp ii))))
    out))
 
-(deftype vec (size)
-  `(simple-array double-float (,size)))
-
 (defun v (&rest elements)
   "Create a vector of double-float and will it with ELEMENTS."
-  (declare (dynamic-extent elements)
-           (optimize (speed 3) (space 3)))
+  (declare (dynamic-extent elements))
   (let* ((n (length elements))
 	 (vector (make-array n :element-type 'double-float)))
     (iter (for i from 0)
@@ -348,8 +354,7 @@ with ROWS."
 (defun double= (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
   "Compare floating points using epsilon difference and fallback to relative
 epsilon. Doesn't handle infinities."
-  (declare (type double-float a b epsilon rel-epsilon)
-           (optimize (speed 3) (space 3) (safety 0)))
+  (declare (type double-float a b epsilon rel-epsilon))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
     (declare (type double-float diff max)
@@ -357,29 +362,21 @@ epsilon. Doesn't handle infinities."
     (or (<= diff epsilon) ;; Needed when near zero.
         (<= diff (* max rel-epsilon)))))
 
-(defmacro define-double-cmp (cmp-name test-sexp)
-  `(defun ,cmp-name (number &rest more-numbers)
-     (declare (optimize (speed 3) (space 3) (safety 0))
-              (dynamic-extent more-numbers))
-     (iter (for (a b) on (cons number more-numbers))
-           (always (or (not b)
-                       ,test-sexp)))))
+(defun double> (a b)
+  (and (not (double= a b)) (> (the double-float a)
+                              (the double-float b))))
 
-(define-double-cmp double>
-    (and (not (double= a b)) (> (the double-float a)
-                                (the double-float b))))
+(defun double>= (a b)
+  (or (double= a b) (> (the double-float a)
+                       (the double-float b))))
 
-(define-double-cmp double>=
-    (or (double= a b) (> (the double-float a)
-                         (the double-float b))))
+(defun double< (a b)
+  (and (not (double= a b)) (< (the double-float a)
+                              (the double-float b))))
 
-(define-double-cmp double<
-    (and (not (double= a b)) (< (the double-float a)
-                                (the double-float b))))
-
-(define-double-cmp double<=
-    (or (double= a b) (< (the double-float a)
-                         (the double-float b))))
+(defun double<= (a b)
+  (or (double= a b) (< (the double-float a)
+                       (the double-float b))))
 
 (defun v= (v1 v2 &key (test #'double=))
   "Perform a comparison of two vectors."
@@ -432,8 +429,7 @@ epsilon. Doesn't handle infinities."
 
 (defun vrotate (quaternion vector)
   "Rotate a 3 component VECTOR by given QUATERNION."
-  (declare (type quat quaternion) (type (vec 3) vector)
-           (optimize (speed 3) (space 3)))
+  (declare (type quat quaternion) (type (vec 3) vector))
   (vnormalize
    (car (q* (q* quaternion (q (vx vector) (vy vector) (vz vector) 0))
             (qconj quaternion)))))

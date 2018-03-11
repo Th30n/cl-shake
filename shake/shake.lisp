@@ -79,7 +79,7 @@
   completely inside the frustum. BOUND-Y is used to lift the bounds from 2D
   into 3D."
   (declare (type (cons (vec 2) (vec 2)) bounds)
-           (optimize (speed 3) (space 3) (safety 0) (debug 0)))
+           (optimize (speed 3)))
   (destructuring-bind (mins . maxs) bounds
     (declare (type (vec 2) mins maxs) (type double-float bound-y))
     (flet ((intersect-plane (plane)
@@ -88,10 +88,8 @@
              (with-struct (plane- normal dist) plane
                (let* ((center (the (vec 2) (vscale 0.5d0 (v+ mins maxs))))
                       (h (the (vec 2) (vscale 0.5d0 (v- maxs mins))))
-                      (s (the double-float
-                              (+ (the double-float
-                                      (vdot (v2->v3 center bound-y) normal))
-                                 dist)))
+                      (s (+ (v3dot (v2->v3 center bound-y) normal)
+                            dist))
                       (e (+ (* (vx h) (abs (vx normal)))
                             (* bound-y (abs (vy normal)))
                             ;; Note 2D vy iz vz in 3D.

@@ -252,7 +252,8 @@
     (when relative-t
       (let ((t-diff (- t-end t-start)))
         (setf t-split (+ t-start (* t-split t-diff)))))
-    (when (double> t-end t-split t-start)
+    (when (and (double> t-end t-split)
+               (double> t-split t-start))
       (let ((l1 (copy-lineseg lineseg))
             (l2 (copy-lineseg lineseg)))
         (setf (lineseg-t-end l1) t-split)
@@ -401,7 +402,8 @@
                    (cond
                      ((double= t-split 0d0) (linedef-start line))
                      ((double= t-split 1d0) (linedef-end line))
-                     ((double> 1d0 t-split 0d0)
+                     ((and (double> 1d0 t-split)
+                           (double> t-split 0d0))
                       (lineseg-end (car (split-lineseg lineseg t-split)))))))))))
     (destructuring-bind (mins . maxs) bounds
       (let* ((rect-lines (make-linedef-loop mins (v (vx mins) (vy maxs))
