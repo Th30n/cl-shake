@@ -86,20 +86,28 @@
              "Intersect a plane with AABB. Based on the algorithm from
             Real-Time Rendering 3rd edition, 16.10.1 AABB"
              (with-struct (plane- normal dist) plane
-               (let* ((center (the (vec 2) (vscale 0.5d0 (v+ mins maxs))))
-                      (h (the (vec 2) (vscale 0.5d0 (v- maxs mins))))
-                      (s (+ (v3dot (v2->v3 center bound-y) normal)
-                            dist))
-                      (e (+ (* (vx h) (abs (vx normal)))
-                            (* bound-y (abs (vy normal)))
-                            ;; Note 2D vy iz vz in 3D.
-                            (* (vy h) (abs (vz normal))))))
-                 (declare (dynamic-extent center h s e)
-                          (type double-float s e))
-                 (cond
-                   ((double> (- s e) 0d0) nil) ;; outside
-                   ((double> 0d0 (+ s e)) :inside)
-                   (t :intersect))))))
+               (let ((center (make-array 2 :element-type 'double-float))
+                     (h (make-array 2 :element-type 'double-float)))
+                 (declare (dynamic-extent center h))
+                 (setf
+                  ;; (setf center (vscale 0.5d0 (v+ mins maxs)))
+                  (aref center 0) (* 0.5d0 (aref (v+ mins maxs) 0))
+                  (aref center 1) (* 0.5d0 (aref (v+ mins maxs) 1))
+                  ;; (setf h (vscale 0.5d0 (v- mins maxs)))
+                  (aref h 0) (* 0.5d0 (aref (v- maxs mins) 0))
+                  (aref h 1) (* 0.5d0 (aref (v- maxs mins) 1)))
+                 (let ((s (+ (v3dot (v2->v3 center bound-y) normal)
+                             dist))
+                       (e (+ (* (vx h) (abs (vx normal)))
+                             (* bound-y (abs (vy normal)))
+                             ;; Note 2D vy iz vz in 3D.
+                             (* (vy h) (abs (vz normal))))))
+                   (declare (dynamic-extent s e)
+                            (type double-float s e))
+                   (cond
+                     ((double> (- s e) 0d0) nil) ;; outside
+                     ((double> 0d0 (+ s e)) :inside)
+                     (t :intersect)))))))
       (let (intersect-type)
         (dolist (plane frustum-planes intersect-type)
           (if-let ((intersect (intersect-plane plane)))
