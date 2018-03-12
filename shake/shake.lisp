@@ -10,6 +10,7 @@
 (defvar *win-width* nil "Current window width in pixels")
 (defvar *win-height* nil "Current window height in pixels")
 
+(declaim (inline make-plane))
 (defstruct plane
   (normal nil :type (vec 3) :read-only t)
   (dist nil :type double-float :read-only t))
@@ -56,15 +57,14 @@
   "Define a frustum plane extraction function. Taken from
   Real-Time Rendering 3rd edition, 16.14.1 Frustum Plane Extraction"
   `(defun ,(symbolicate plane-name '-frustum-plane) (camera)
-     (declare (optimize (speed 3) (space 3)))
+     (declare (optimize (speed 3)))
      (with-struct (camera- projection-matrix view-transform) camera
        (let* ((m (m* projection-matrix view-transform))
               (plane (v- (,vfun (the (vec 4) (mat-row m 3))
                                 (the (vec 4) (mat-row m ,row-index))))))
          (declare (type (mat 4) m) (type (vec 4) plane))
          (make-plane :normal (vnormalize (vxyz plane))
-                     :dist (/ (vw plane) (the double-float
-                                              (vnorm (vxyz plane)))))))))
+                     :dist (/ (vw plane) (vnorm (vxyz plane))))))))
 
 (define-extract-frustum-plane left v+ 0)
 (define-extract-frustum-plane right v- 0)
@@ -215,8 +215,8 @@
 
 (defun get-time ()
   "Return time in 1/TICRATE second tics offset by *BASE-TIME*."
-  (declare (optimize (speed 2)))
-  (floor (* +ticrate+ (the (unsigned-byte 32) (- (sdl2:get-ticks) *base-time*)))
+  (declare (optimize (speed 3)))
+  (floor (* +ticrate+ (- (the (unsigned-byte 32) (sdl2:get-ticks)) *base-time*))
          1000))
 
 (defun start-game-loop ()
@@ -506,7 +506,7 @@
    :context-profile-mask #x1))
 
 (defun render-world (camera world-model)
-  (declare (optimize (speed 3) (space 3) (safety 0) (debug 0)))
+  (declare (optimize (speed 3)))
   (with-struct (camera- position) camera
     (let ((pos-2d (the (vec 2) (v (vx position) (vz position))))
           (frustum (list (left-frustum-plane camera) (right-frustum-plane camera)

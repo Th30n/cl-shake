@@ -98,6 +98,8 @@
 
 (defun vscale (scalar vector &aux (n (1- (array-dimension vector 0))))
   "Scale a VECTOR by given SCALAR."
+  (declare (type double-float scalar))
+  (declare (type (simple-array double-float) vector))
   (tensor ((i 0 n)) ((out (1+ n))) (:scalars (scalar) :simple-arrays (vector))
 	  ($ i (setf (out i) (* scalar (vector i))))
 	  out))
@@ -128,7 +130,7 @@
 	  (sum i (* (v1 i) (v2 i)))))
 
 (declaim (inline vnorm vnormalize vdist vdistsq))
-(defun vnorm (v) (sqrt (the double-float (vdot v v))))
+(defun vnorm (v) (sqrt (the (double-float 0d0) (vdot v v))))
 (defun vnormalize (v) (vscale (/ 1d0 (vnorm v)) v))
 (defun vdist (v1 v2) (vnorm (v- v1 v2)))
 (defun vdistsq (v1 v2) (let ((d (v- v1 v2))) (vdot d d)))
@@ -363,20 +365,20 @@ epsilon. Doesn't handle infinities."
         (<= diff (* max rel-epsilon)))))
 
 (defun double> (a b)
-  (and (not (double= a b)) (> (the double-float a)
-                              (the double-float b))))
+  (declare (type double-float a b))
+  (and (not (double= a b)) (> a b)))
 
 (defun double>= (a b)
-  (or (double= a b) (> (the double-float a)
-                       (the double-float b))))
+  (declare (type double-float a b))
+  (or (double= a b) (> a b)))
 
 (defun double< (a b)
-  (and (not (double= a b)) (< (the double-float a)
-                              (the double-float b))))
+  (declare (type double-float a b))
+  (and (not (double= a b)) (< a b)))
 
 (defun double<= (a b)
-  (or (double= a b) (< (the double-float a)
-                       (the double-float b))))
+  (declare (type double-float a b))
+  (or (double= a b) (< a b)))
 
 (defun v= (v1 v2 &key (test #'double=))
   "Perform a comparison of two vectors."
