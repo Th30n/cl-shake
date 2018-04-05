@@ -26,6 +26,7 @@
   :components ((:file "package")
                (:file "data")
                (:file "render-progs")
+               (:file "obj")
                (:file "model")
                (:file "world")
                (:file "image")

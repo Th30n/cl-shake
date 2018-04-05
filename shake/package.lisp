@@ -31,6 +31,11 @@
            #:free-res
            #:free-resources))
 
+(defpackage #:shake.obj
+  (:nicknames #:sobj)
+  (:use #:cl #:shiva)
+  (:export #:read-obj))
+
 (defpackage #:shake.model
   (:nicknames #:smdl)
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.data)
