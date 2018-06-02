@@ -451,56 +451,50 @@
 
 (defun main ()
   (with-init (render-system win)
-    (with-resources "main"
-      (load-main-resources render-system)
-      (let* ((proj (make-perspective (* deg->rad 60d0)
-                                     (/ *win-width* *win-height*)
-                                     0.1d0 100d0))
-             (camera (make-camera :projection proj :position (v 1 0.5 8)))
-             (frame-timer (make-timer))
-             (smdl:*world-model* (add-res "world-model"
-                                          (lambda () (smdl:load-model "test.bsp"))
-                                          #'smdl:free-model))
-             (*cube* (add-res "cube"
-                              (lambda () (smdl::obj->surf-triangles
-                                          (with-input-from-string (s sobj::+cube+)
-                                            (sobj:read-obj s))))
-                              #'smdl::free-surf-triangles)))
-        (declare (special *cube*))
-        (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
-        (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
-        (symbol-macrolet ((input-focus-p
-                           (member :input-focus
-                                   (sdl2:get-window-flags win)))
-                          (minimized-p
-                           (member :minimized
-                                   (sdl2:get-window-flags win))))
-          (start-game-loop)
-          (sdl2:with-event-loop (:method :poll)
-            (:quit () t)
-            (:keydown
-             (:keysym keysym)
-             (when input-focus-p
-               (press-game-key (sdl2:scancode keysym))))
-            (:keyup
-             (:keysym keysym)
-             (when input-focus-p
-               (release-game-key (sdl2:scancode keysym))))
-            (:mousemotion
-             (:xrel xrel :yrel yrel)
-             (when input-focus-p
-               (update-mouse-relative xrel yrel)))
-            (:idle ()
-                   (with-timer (frame-timer)
-                     (try-run-tics #'build-ticcmd
-                                   (lambda (tic) (run-tic camera tic)))
-                     (unless minimized-p
-                       (clear-buffer-fv :color 0 0 0 0)
-                       (clear-buffer-fv :depth 0 1)
-                       (srend:with-draw-frame (render-system)
-                         (render render-system camera)
-                         (srend:render-surface *cube*)
-                         (draw-timer-stats frame-timer)))))))))))
+    (smdl:with-model-manager model-manager
+      (with-resources "main"
+        (load-main-resources render-system)
+        (let* ((proj (make-perspective (* deg->rad 60d0)
+                                       (/ *win-width* *win-height*)
+                                       0.1d0 100d0))
+               (camera (make-camera :projection proj :position (v 1 0.5 8)))
+               (frame-timer (make-timer))
+               (smdl:*world-model* (smdl:get-model model-manager "test.bsp")))
+          (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
+          (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
+          (symbol-macrolet ((input-focus-p
+                             (member :input-focus
+                                     (sdl2:get-window-flags win)))
+                            (minimized-p
+                             (member :minimized
+                                     (sdl2:get-window-flags win))))
+            (start-game-loop)
+            (sdl2:with-event-loop (:method :poll)
+              (:quit () t)
+              (:keydown
+               (:keysym keysym)
+               (when input-focus-p
+                 (press-game-key (sdl2:scancode keysym))))
+              (:keyup
+               (:keysym keysym)
+               (when input-focus-p
+                 (release-game-key (sdl2:scancode keysym))))
+              (:mousemotion
+               (:xrel xrel :yrel yrel)
+               (when input-focus-p
+                 (update-mouse-relative xrel yrel)))
+              (:idle ()
+                     (with-timer (frame-timer)
+                       (try-run-tics #'build-ticcmd
+                                     (lambda (tic) (run-tic camera tic)))
+                       (unless minimized-p
+                         (clear-buffer-fv :color 0 0 0 0)
+                         (clear-buffer-fv :depth 0 1)
+                         (srend:with-draw-frame (render-system)
+                           (render render-system camera)
+                           (srend:render-surface
+                            (smdl::obj-model-verts (smdl:model-manager-default-model model-manager)))
+                           (draw-timer-stats frame-timer))))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window

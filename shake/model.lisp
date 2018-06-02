@@ -93,6 +93,12 @@
   hull
   things)
 
+(declaim (inline make-obj-model))
+(defstruct obj-model
+  "A 3D model obtained from Wavefront OBJ file.
+The VERTS slot is a pointer to `C-VERTEX-DATA'."
+  (verts nil :read-only t))
+
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
     (let* ((floor-bottom (aif (sbsp:sidedef-front-sector sidedef)
@@ -169,7 +175,7 @@
                                                         '(:struct vertex-data)))
                          :verts verts)))
 
-(defun obj->surf-triangles (obj)
+(defun obj->model (obj)
   (declare (type sobj:obj obj))
   ;; This assumes that object only consists of triangles.
   (let* ((num-verts (* 3 (length (sobj:obj-element-data obj))))
@@ -187,10 +193,12 @@
                                            :normal (vxyz normal)
                                            :uv (v 0 0)))
                  (incf i))))
-    (make-surf-triangles :num-verts num-verts
-                         :verts-byte-size (* num-verts (cffi:foreign-type-size
-                                                        '(:struct vertex-data)))
-                         :verts verts)))
+    (make-obj-model
+     :verts
+     (make-surf-triangles :num-verts num-verts
+                          :verts-byte-size (* num-verts (cffi:foreign-type-size
+                                                         '(:struct vertex-data)))
+                          :verts verts))))
 
 (defun sidedef->surface (sidedef)
   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
@@ -242,15 +250,59 @@
 
 (defun load-model (model-fname)
   (with-data-file (file model-fname)
-    (bspfile->model (sbsp:read-bspfile file))))
+    (let ((ext (pathname-type model-fname)))
+      (cond
+        ((string= "obj" ext)
+         (obj->model (sobj:read-obj file)))
+        ((string= "bsp" ext)
+         (bspfile->model (sbsp:read-bspfile file)))
+        (t (error "Unknown model format ~S" model-fname))))))
 
 (defun free-model (model)
-  (declare (type bsp-model model))
-  (with-struct (bsp-model- nodes) model
-    (sbsp:bsp-trav nodes (constantly nil)
-                   (lambda (leaf)
-                     (with-struct (mleaf- surfaces floor-geometry) leaf
-                       (when floor-geometry
-                         (free-surf-triangles floor-geometry))
-                       (dolist (surf surfaces)
-                         (free-surf-triangles (surface-geometry surf))))))))
+  (declare (type (or obj-model bsp-model) model))
+  (etypecase model
+    (obj-model (free-surf-triangles (obj-model-verts model)))
+    (bsp-model
+     (with-struct (bsp-model- nodes) model
+       (sbsp:bsp-trav nodes (constantly nil)
+                      (lambda (leaf)
+                        (with-struct (mleaf- surfaces floor-geometry) leaf
+                          (when floor-geometry
+                            (free-surf-triangles floor-geometry))
+                          (dolist (surf surfaces)
+                            (free-surf-triangles (surface-geometry surf))))))))))
+
+(declaim (inline make-model-manager))
+(defstruct model-manager
+  "All model loading and unloading should go through this."
+  (world-model nil :type (or null bsp-model))
+  (models (make-hash-table :test #'equal) :type hash-table)
+  ;; Default model is the cube
+  (default-model nil :type obj-model :read-only t))
+
+(defun init-model-manager ()
+  (make-model-manager
+   :default-model (with-input-from-string (s sobj::+cube+)
+                    (obj->model (sobj:read-obj s)))))
+
+(defun shutdown-model-manager (model-manager)
+  (declare (type model-manager model-manager))
+  (maphash-values #'free-model (model-manager-models model-manager))
+  (free-model (model-manager-default-model model-manager)))
+
+(defmacro with-model-manager (model-manager &body body)
+  `(bracket (,model-manager (init-model-manager) shutdown-model-manager)
+     ,@body))
+
+(defun add-model (model-manager model &key name)
+  (declare (type model-manager model-manager)
+           (type (or bsp-model obj-model))
+           (type string name))
+  (setf (gethash name (model-manager-models model-manager)) model))
+
+(defun get-model (model-manager name)
+  (declare (type model-manager model-manager)
+           (type string name))
+  (or (gethash name (model-manager-models model-manager))
+      (add-model model-manager (load-model name)
+                 :name name)))

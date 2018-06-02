@@ -48,15 +48,16 @@
   (:nicknames #:smdl)
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.data)
   (:export #:*world-model*
-           #:load-model
-           #:free-model
            #:bsp-model
            #:bsp-model-nodes
            #:bsp-model-hull
            #:bsp-model-things
            #:mleaf-floor-geometry
            #:surface
-           #:surface-geometry)
+           #:surface-geometry
+           #:with-model-manager
+           #:model-manager-default-model
+           #:get-model)
   (:import-from #:sbsp
                 #:lineseg-start
                 #:lineseg-end
