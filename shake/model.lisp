@@ -4,20 +4,20 @@
 
 (defvar *world-model* nil "Currently loaded 3D model of the world (map)")
 
-(defstruct surf-triangles
-  "Stores surface triangles ready for rendering.
-  VERTS is a foreign array of `C-VERTEX-DATA', ready for sending to GPU.
-  TEX-NAME is the name of texture image used, can be NIL."
-  (num-verts 0 :type fixnum)
-  (verts-byte-size 0 :type fixnum)
-  verts
-  (tex-name nil :type (or null string)))
-
 (cffi:defcstruct (vertex-data :class c-vertex-data)
   (position :float :count 3)
   (color :float :count 3)
   (normal :float :count 3)
   (uv :float :count 2))
+
+(defstruct surf-triangles
+  "Stores surface triangles ready for rendering.
+  VERTS is a foreign array of `C-VERTEX-DATA', ready for sending to GPU.
+  TEX-NAME is the name of texture image used, can be NIL."
+  (num-verts 0 :type fixnum :read-only t)
+  (verts-byte-size 0 :type fixnum :read-only t)
+  (verts nil :read-only t)
+  (tex-name nil :type (or null string) :read-only t))
 
 (defstruct l-vertex-data
   (position (v 0 0 0) :type (vec 3) :read-only t)
@@ -84,11 +84,12 @@
   "In memory, model leaf node of model BSP."
   floor-geometry)
 
-(defstruct model
+(declaim (inline make-bsp-model))
+(defstruct bsp-model
   "A 3D model. The NODES slot contains bsp nodes for rendering. The HULL slot
   contains bsp nodes for collision detection. Remaining entities are stored in
   THINGS slot."
-  nodes
+  (nodes nil :type (or mleaf sbsp:node) :read-only t)
   hull
   things)
 
@@ -168,6 +169,29 @@
                                                         '(:struct vertex-data)))
                          :verts verts)))
 
+(defun obj->surf-triangles (obj)
+  (declare (type sobj:obj obj))
+  ;; This assumes that object only consists of triangles.
+  (let* ((num-verts (* 3 (length (sobj:obj-element-data obj))))
+         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+    (loop for face across (sobj:obj-element-data obj) with i = 0 do
+         (loop for point across (sobj:element-points face)
+            for position = (sobj:vertex-val (aref (sobj:obj-geometric-vertices obj)
+                                                  (sobj:vref-geometric point)))
+            for normal = (sobj:vertex-val (aref (sobj:obj-normal-vertices obj)
+                                                (sobj:vref-normal point)))
+            do (progn
+                 (setf (cffi:mem-aref verts '(:struct vertex-data) i)
+                       (make-l-vertex-data :position (vxyz position)
+                                           :color (v 1 1 1)
+                                           :normal (vxyz normal)
+                                           :uv (v 0 0)))
+                 (incf i))))
+    (make-surf-triangles :num-verts num-verts
+                         :verts-byte-size (* num-verts (cffi:foreign-type-size
+                                                        '(:struct vertex-data)))
+                         :verts verts)))
+
 (defun sidedef->surface (sidedef)
   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
                 :front-sector (sbsp:sidedef-front-sector sidedef)
@@ -212,16 +236,17 @@
                   (leaf->mleaf leaf))))
 
 (defun bspfile->model (bspfile)
-  (make-model :hull (sbsp:bspfile-clip-nodes bspfile)
-              :nodes (nadapt-nodes (sbsp:bspfile-nodes bspfile))
-              :things (sbsp:bspfile-things bspfile)))
+  (make-bsp-model :hull (sbsp:bspfile-clip-nodes bspfile)
+                  :nodes (nadapt-nodes (sbsp:bspfile-nodes bspfile))
+                  :things (sbsp:bspfile-things bspfile)))
 
 (defun load-model (model-fname)
   (with-data-file (file model-fname)
     (bspfile->model (sbsp:read-bspfile file))))
 
 (defun free-model (model)
-  (with-struct (model- nodes) model
+  (declare (type bsp-model model))
+  (with-struct (bsp-model- nodes) model
     (sbsp:bsp-trav nodes (constantly nil)
                    (lambda (leaf)
                      (with-struct (mleaf- surfaces floor-geometry) leaf

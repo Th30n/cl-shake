@@ -34,7 +34,15 @@
 (defpackage #:shake.obj
   (:nicknames #:sobj)
   (:use #:cl #:shiva)
-  (:export #:read-obj))
+  (:export #:read-obj
+           #:obj
+           #:obj-geometric-vertices
+           #:obj-normal-vertices
+           #:obj-element-data
+           #:element-points
+           #:vref-geometric
+           #:vref-normal
+           #:vertex-val))
 
 (defpackage #:shake.model
   (:nicknames #:smdl)
@@ -42,10 +50,10 @@
   (:export #:*world-model*
            #:load-model
            #:free-model
-           #:model
-           #:model-nodes
-           #:model-hull
-           #:model-things
+           #:bsp-model
+           #:bsp-model-nodes
+           #:bsp-model-hull
+           #:bsp-model-things
            #:mleaf-floor-geometry
            #:surface
            #:surface-geometry)

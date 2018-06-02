@@ -312,7 +312,7 @@
   (declare (special smdl:*world-model*))
   (check-type origin (vec 3))
   (check-type velocity (vec 3))
-  (let* ((hull (smdl:model-hull smdl:*world-model*))
+  (let* ((hull (smdl:bsp-model-hull smdl:*world-model*))
          (mtrace (recursive-hull-check hull origin (v+ origin velocity))))
     (if (= (mtrace-fraction mtrace) 1d0)
         ;; Completed the whole move.
@@ -337,7 +337,7 @@
 (defun groundedp (entity-position)
   (declare (special smdl:*world-model*))
   (check-type entity-position (vec 3))
-  (let ((sector (hull-point-sector (smdl:model-hull smdl:*world-model*)
+  (let ((sector (hull-point-sector (smdl:bsp-model-hull smdl:*world-model*)
                                    (v3->v2 entity-position))))
     (or (not sector) ; We are off the map, treat it as grounded.
         (double= (sbsp:sector-floor-height sector) (vy entity-position)))))
@@ -346,7 +346,7 @@
   (declare (special *time-delta* smdl:*world-model*))
   (check-type entity-position (vec 3))
   (flet ((clamp-to-floor (position)
-           (let ((floor (sbsp:sector-floor-height (hull-point-sector (smdl:model-hull smdl:*world-model*)
+           (let ((floor (sbsp:sector-floor-height (hull-point-sector (smdl:bsp-model-hull smdl:*world-model*)
                                                                      (v3->v2 position)))))
              (v (vx position) (max (vy position) floor) (vz position)))))
     (if (groundedp entity-position)
@@ -357,7 +357,7 @@
           ;; TODO: Remove `clamp-to-floor' when `recursive-hull-check'
           ;; correctly clips vertical movement
           (clamp-to-floor
-           (mtrace-endpos (recursive-hull-check (smdl:model-hull smdl:*world-model*)
+           (mtrace-endpos (recursive-hull-check (smdl:bsp-model-hull smdl:*world-model*)
                                                 entity-position
                                                 (v+ entity-position gravity-velocity))))))))
 
@@ -460,9 +460,15 @@
              (frame-timer (make-timer))
              (smdl:*world-model* (add-res "world-model"
                                           (lambda () (smdl:load-model "test.bsp"))
-                                          #'smdl:free-model)))
-        (load-map-textures render-system (smdl:model-nodes smdl:*world-model*))
-        (spawn-player (smdl:model-things smdl:*world-model*) camera)
+                                          #'smdl:free-model))
+             (*cube* (add-res "cube"
+                              (lambda () (smdl::obj->surf-triangles
+                                          (with-input-from-string (s sobj::+cube+)
+                                            (sobj:read-obj s))))
+                              #'smdl::free-surf-triangles)))
+        (declare (special *cube*))
+        (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
+        (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
         (symbol-macrolet ((input-focus-p
                            (member :input-focus
                                    (sdl2:get-window-flags win)))
@@ -493,6 +499,7 @@
                        (clear-buffer-fv :depth 0 1)
                        (srend:with-draw-frame (render-system)
                          (render render-system camera)
+                         (srend:render-surface *cube*)
                          (draw-timer-stats frame-timer)))))))))))
 
 (defun set-gl-attrs ()
@@ -544,7 +551,7 @@
                              (:back
                               (rec back test-p)
                               (rec front test-p)))))))))
-        (rec (smdl:model-nodes world-model))))))
+        (rec (smdl:bsp-model-nodes world-model))))))
 
 (defun render (render-system camera)
   (declare (special *win-width* *win-height*))
