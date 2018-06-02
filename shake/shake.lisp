@@ -490,6 +490,7 @@
                                    (lambda (tic) (run-tic camera tic)))
                      (unless minimized-p
                        (clear-buffer-fv :color 0 0 0 0)
+                       (clear-buffer-fv :depth 0 1)
                        (srend:with-draw-frame (render-system)
                          (render render-system camera)
                          (draw-timer-stats frame-timer)))))))))))
@@ -506,6 +507,7 @@
    :context-profile-mask #x1))
 
 (defun render-world (camera world-model)
+  "Send geometry for rendering, front to back."
   (declare (optimize (speed 3)))
   (with-struct (camera- position) camera
     (let ((pos-2d (the (vec 2) (v (vx position) (vz position))))
@@ -521,7 +523,7 @@
                                                      (sbsp:leaf-bounds node)
                                                      (vy position)))
                        (aif (smdl:mleaf-floor-geometry node)
-                            (srend::render-surface it))
+                            (srend:render-surface it))
                        (dolist (surf (sbsp:leaf-surfaces node))
                          (srend:render-surface (smdl:surface-geometry surf))))
                      ;; split node
@@ -537,16 +539,18 @@
                                             (not (eq :inside intersect)))))
                            (ecase (sbsp:determine-side (sbsp:node-line node) pos-2d)
                              ((or :front :on-line)
-                              (rec back test-p)
-                              (rec front test-p))
-                             (:back
                               (rec front test-p)
-                              (rec back test-p)))))))))
+                              (rec back test-p))
+                             (:back
+                              (rec back test-p)
+                              (rec front test-p)))))))))
         (rec (smdl:model-nodes world-model))))))
 
 (defun render (render-system camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
+  (gl:enable :depth-test)
+  (gl:depth-func :less)
   (let* ((progs (srend:render-system-prog-manager render-system))
          (shader-prog (srend::get-program progs "pass" "color")))
     (srend::bind-program progs shader-prog)

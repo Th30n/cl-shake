@@ -379,6 +379,7 @@
         (*rs* render-system))
     (multiple-value-prog1 (funcall fun)
       (finish-draw-frame render-system)
+      (gl:disable :depth-test)
       (show-debug-text render-system)
       (setf (render-system-debug-text-list render-system) nil)
       (sdl2:gl-swap-window (render-system-window render-system)))))
