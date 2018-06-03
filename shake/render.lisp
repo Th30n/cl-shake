@@ -211,14 +211,17 @@
   (let ((layers (reverse (batch-layers batch)))
         (layer-count (list-length (batch-layers batch)))
         (draw-start 0))
+    (assert (< 0 layer-count))
+    (assert (= layer-count (batch-objects batch)))
     (sgl:with-uniform-locations shader-prog (tex-layer mvp)
       (cffi:with-foreign-object (layer-array :int layer-count)
         (dolist-enum (ix layer-pair layers)
           (let ((layer (car layer-pair)))
             (setf (cffi:mem-aref layer-array :int ix) layer)))
         (%gl:uniform-1iv tex-layer-loc layer-count layer-array))
-      (sgl:with-gl-array (gl-array :float (list (batch-mvp batch)))
-        (%gl:uniform-matrix-4fv mvp-loc 1 t
+      (sgl:with-gl-array (gl-array :float (reverse (batch-mvp batch)))
+        (assert (= layer-count (list-length (batch-mvp batch))))
+        (%gl:uniform-matrix-4fv mvp-loc layer-count t
                                 (gl::gl-array-pointer gl-array))))
     (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
       (cond
@@ -268,7 +271,7 @@
                            (get-image-layer image tex-name))
                          -1)))
             (push (cons layer draw-count) (batch-layers batch))))
-        (setf (batch-mvp batch) mvp)
+        (push mvp (batch-mvp batch))
         (incf (batch-offset batch)
               (the fixnum (fill-buffer offset gl-data byte-size)))
         (incf (batch-draw-count batch) draw-count)
@@ -329,9 +332,7 @@
                    (let ((free-space (- max-bytes offset)))
                      (and (> free-space surface-space)
                           (< objects +max-batch-size+)
-                          (tex-match-p batch)
-                          ;; TODO: Rethink this design
-                          (equalp mvp (batch-mvp batch)))))))
+                          (tex-match-p batch))))))
         (let ((batch
                (if (and current-batch (can-add-p current-batch))
                    current-batch

@@ -24,7 +24,7 @@ layout (location = 2) in vec2 uv;
 layout (location = 3) in vec3 normal;
 layout (location = 4) in int draw_id;
 
-uniform mat4 mvp = mat4(1.0);
+uniform mat4 mvp[MAX_BATCH_SIZE];
 uniform int tex_layer[MAX_BATCH_SIZE];
 
 out VS_OUT
@@ -37,7 +37,7 @@ out VS_OUT
 
 void main(void)
 {
-    gl_Position = mvp * vec4(position, 1.0);
+    gl_Position = mvp[draw_id] * vec4(position, 1.0);
     vs_out.uv = uv;
     vs_out.layer = float(tex_layer[draw_id]);
     vs_out.color = color;
