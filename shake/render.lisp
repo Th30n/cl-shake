@@ -141,6 +141,7 @@
   id-buffer
   (offset 0 :type fixnum)
   texture
+  mvp
   (layers nil :type list)
   (objects 0 :type fixnum)
   (draw-count 0 :type fixnum)
@@ -210,42 +211,45 @@
   (let ((layers (reverse (batch-layers batch)))
         (layer-count (list-length (batch-layers batch)))
         (draw-start 0))
-    (sgl:with-uniform-locations shader-prog (tex-layer)
+    (sgl:with-uniform-locations shader-prog (tex-layer mvp)
       (cffi:with-foreign-object (layer-array :int layer-count)
         (dolist-enum (ix layer-pair layers)
           (let ((layer (car layer-pair)))
             (setf (cffi:mem-aref layer-array :int ix) layer)))
         (%gl:uniform-1iv tex-layer-loc layer-count layer-array))
-      (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
-        (cond
-          ((and multi-draw-indirect-p base-instance-p)
-           (cffi:with-foreign-object
-               (cmds '(:struct sgl:draw-arrays-indirect-command) layer-count)
-             (dolist-enum (ix layer-pair layers)
-               (let ((draw-count (cdr layer-pair))
-                     (cmd (cffi:mem-aptr
-                           cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
-                 (sgl:set-draw-arrays-command cmd draw-count :first draw-start
-                                              :base-instance ix)
-                 (incf draw-start draw-count)))
-             (let ((cmd-buffer (first (gl:gen-buffers 1)))
-                   (size (* (cffi:foreign-type-size
-                             '(:struct sgl:draw-arrays-indirect-command))
-                            layer-count)))
-               (gl:bind-buffer :draw-indirect-buffer cmd-buffer)
-               (%gl:buffer-data :draw-indirect-buffer size cmds :static-draw)
-               (%gl:multi-draw-arrays-indirect :triangles (cffi:null-pointer) layer-count 0)
-               (gl:bind-buffer :draw-indirect-buffer 0)
-               (gl:delete-buffers (list cmd-buffer)))))
-          (t
+      (sgl:with-gl-array (gl-array :float (list (batch-mvp batch)))
+        (%gl:uniform-matrix-4fv mvp-loc 1 t
+                                (gl::gl-array-pointer gl-array))))
+    (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
+      (cond
+        ((and multi-draw-indirect-p base-instance-p)
+         (cffi:with-foreign-object
+             (cmds '(:struct sgl:draw-arrays-indirect-command) layer-count)
            (dolist-enum (ix layer-pair layers)
-             (let ((draw-count (cdr layer-pair)))
-               (%gl:vertex-attrib-i1i 4 ix)
-               (gl:draw-arrays :triangles draw-start draw-count)
-               (incf draw-start draw-count))))))))
+             (let ((draw-count (cdr layer-pair))
+                   (cmd (cffi:mem-aptr
+                         cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
+               (sgl:set-draw-arrays-command cmd draw-count :first draw-start
+                                            :base-instance ix)
+               (incf draw-start draw-count)))
+           (let ((cmd-buffer (first (gl:gen-buffers 1)))
+                 (size (* (cffi:foreign-type-size
+                           '(:struct sgl:draw-arrays-indirect-command))
+                          layer-count)))
+             (gl:bind-buffer :draw-indirect-buffer cmd-buffer)
+             (%gl:buffer-data :draw-indirect-buffer size cmds :static-draw)
+             (%gl:multi-draw-arrays-indirect :triangles (cffi:null-pointer) layer-count 0)
+             (gl:bind-buffer :draw-indirect-buffer 0)
+             (gl:delete-buffers (list cmd-buffer)))))
+        (t
+         (dolist-enum (ix layer-pair layers)
+           (let ((draw-count (cdr layer-pair)))
+             (%gl:vertex-attrib-i1i 4 ix)
+             (gl:draw-arrays :triangles draw-start draw-count)
+             (incf draw-start draw-count)))))))
   (gl:bind-vertex-array 0))
 
-(defun add-surface-vertex-data (surface batch)
+(defun add-surface-vertex-data (surface mvp batch)
   (flet ((fill-buffer (byte-offset data size)
            (gl:bind-buffer :array-buffer (batch-buffer batch))
            (%gl:buffer-sub-data :array-buffer byte-offset size data)
@@ -264,6 +268,7 @@
                            (get-image-layer image tex-name))
                          -1)))
             (push (cons layer draw-count) (batch-layers batch))))
+        (setf (batch-mvp batch) mvp)
         (incf (batch-offset batch)
               (the fixnum (fill-buffer offset gl-data byte-size)))
         (incf (batch-draw-count batch) draw-count)
@@ -280,6 +285,7 @@
   (with-struct (render-system- batches prog-manager) render-system
     (declare (type (vector batch) batches))
     (let ((shader-prog (get-program prog-manager "pass" "color")))
+      (bind-program prog-manager shader-prog)
       (sgl:with-uniform-locations shader-prog (tex-albedo)
         (gl:uniformi tex-albedo-loc 0)
         (gl:active-texture :texture0)
@@ -304,8 +310,9 @@
     (aref (the (vector batch) *batches*)
           (1- (length (the (vector batch) *batches*))))))
 
-(defun render-surface (surface)
-  (declare (type smdl::surf-triangles surface))
+(defun render-surface (surface mvp)
+  (declare (type smdl::surf-triangles surface)
+           (type (mat 4) mvp))
   (with-struct (render-system- image-manager) *rs*
     (let ((current-batch (get-current-batch))
           (surface-space (smdl::surf-triangles-verts-byte-size surface))
@@ -322,13 +329,15 @@
                    (let ((free-space (- max-bytes offset)))
                      (and (> free-space surface-space)
                           (< objects +max-batch-size+)
-                          (tex-match-p batch))))))
+                          (tex-match-p batch)
+                          ;; TODO: Rethink this design
+                          (equalp mvp (batch-mvp batch)))))))
         (let ((batch
                (if (and current-batch (can-add-p current-batch))
                    current-batch
                    ;; Each batch contains 100kB of vertex data.
                    (add-new-batch (max surface-space (* 100 1024))))))
-          (add-surface-vertex-data surface batch))))))
+          (add-surface-vertex-data surface mvp batch))))))
 
 (defun draw-text (text &key x y)
   "Draw a single line of text on given window coordinates."

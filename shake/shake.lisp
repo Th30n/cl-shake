@@ -491,9 +491,14 @@
                          (clear-buffer-fv :color 0 0 0 0)
                          (clear-buffer-fv :depth 0 1)
                          (srend:with-draw-frame (render-system)
-                           (render render-system camera)
-                           (srend:render-surface
-                            (smdl::obj-model-verts (smdl:model-manager-default-model model-manager)))
+                           (render camera)
+                           (let ((mvp (m* (m* (camera-projection-matrix camera)
+                                              (camera-view-transform camera))
+                                          (m* (translation :x 17d0 :y 0.25d0 :z 51d0)
+                                              (scale :x 0.5d0 :y 0.5d0 :z 0.5d0)))))
+                             (srend:render-surface
+                              (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+                              mvp))
                            (draw-timer-stats frame-timer))))))))))))
 
 (defun set-gl-attrs ()
@@ -513,7 +518,9 @@
   (with-struct (camera- position) camera
     (let ((pos-2d (the (vec 2) (v (vx position) (vz position))))
           (frustum (list (left-frustum-plane camera) (right-frustum-plane camera)
-                         (near-frustum-plane camera) (far-frustum-plane camera))))
+                         (near-frustum-plane camera) (far-frustum-plane camera)))
+          (mvp (m* (camera-projection-matrix camera)
+                   (camera-view-transform camera))))
       (declare (dynamic-extent pos-2d frustum))
       (labels ((rec (node &optional (test-frustum-p t))
                  (declare (type (or sbsp:node sbsp:leaf) node))
@@ -524,9 +531,9 @@
                                                      (sbsp:leaf-bounds node)
                                                      (vy position)))
                        (aif (smdl:mleaf-floor-geometry node)
-                            (srend:render-surface it))
+                            (srend:render-surface it mvp))
                        (dolist (surf (sbsp:leaf-surfaces node))
-                         (srend:render-surface (smdl:surface-geometry surf))))
+                         (srend:render-surface (smdl:surface-geometry surf) mvp)))
                      ;; split node
                      (let ((front (sbsp:node-front node))
                            (back (sbsp:node-back node)))
@@ -547,18 +554,12 @@
                               (rec front test-p)))))))))
         (rec (smdl:bsp-model-nodes world-model))))))
 
-(defun render (render-system camera)
+(defun render (camera)
   (declare (special *win-width* *win-height*))
   (gl:viewport 0 0 *win-width* *win-height*)
   (gl:enable :depth-test)
   (gl:depth-func :less)
-  (let* ((progs (srend:render-system-prog-manager render-system))
-         (shader-prog (srend::get-program progs "pass" "color")))
-    (srend::bind-program progs shader-prog)
-    (uniform-mvp shader-prog
-                 (m* (camera-projection-matrix camera)
-                     (camera-view-transform camera)))
-    (render-world camera smdl:*world-model*)))
+  (render-world camera smdl:*world-model*))
 
 (defun uniform-mvp (program mvp)
   (with-uniform-locations program mvp
