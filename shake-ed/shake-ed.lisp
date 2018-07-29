@@ -283,4 +283,5 @@
     (let ((resource-pathname (merge-pathnames #p"resource.rcc" *base-dir*)))
       (unless (q+:qresource-register-resource (uiop:native-namestring resource-pathname))
         (format t "Failed to load resources from '~A'!" resource-pathname)))
-    (with-main-window (window (make-instance 'main)))))
+    (edk.data:with-change-tracker (change-tracker)
+      (with-main-window (window (make-instance 'main))))))

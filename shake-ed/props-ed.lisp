@@ -36,6 +36,8 @@
    (choose-form :initform nil)
    (name-lbl :initform (edk.forms:label "No texture"))
    (x-offset-lbl :initform (edk.forms:label "X offset"))
+   (x-offset-spinner
+    :initform (edk.forms:double-spinner nil :min -1 :max 1 :step 0.05))
    (y-offset-lbl :initform (edk.forms:label "Y offset"))))
 
 (defun choose-btn-clicked (texture-editor)
@@ -45,12 +47,14 @@
       (when (and filepath (ends-with-subseq ".bmp" filepath))
         (let ((name (file-namestring filepath)))
           (unless texinfo
-            (let ((offset (shiva:v (q+:value x-offset-spinbox)
-                                   (q+:value y-offset-spinbox)))
+            (let ((offset (shiva:v 0d0 0d0))
                   (draw-mode (combo-index->draw-mode
                               (q+:current-index draw-mode-combo))))
               (setf texinfo (sbsp:make-texinfo :name name :offset offset
-                                               :draw-mode draw-mode))))
+                                               :draw-mode draw-mode))
+              (setf (edk.forms::data x-offset-spinner)
+                    (make-instance 'edk.data:boxed-double
+                                   :value (shiva:vx offset)))))
           (setf (sbsp:texinfo-name texinfo) name
                 (edk.forms:text name-lbl) name))
         (signal! texture-editor (target-changed))))))
@@ -58,14 +62,11 @@
 (define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
   (q+:add-items draw-mode-combo (list "Tile" "Scale To Fit")))
 
-(define-subwidget (texture-editor x-offset-spinbox) (q+:make-qdoublespinbox)
-  (setf (q+:range x-offset-spinbox) (values -1d0 1d0)
-        (q+:single-step x-offset-spinbox) 0.05d0))
 (define-subwidget (texture-editor x-offset-widget) (q+:make-qwidget)
   (let ((hbox (q+:make-qhboxlayout)))
     (q+:set-layout x-offset-widget hbox)
     (q+:add-widget hbox (edk.forms:build-widget x-offset-lbl))
-    (q+:add-widget hbox x-offset-spinbox)))
+    (q+:add-widget hbox (edk.forms:build-widget x-offset-spinner))))
 
 (define-subwidget (texture-editor y-offset-spinbox) (q+:make-qdoublespinbox)
   (setf (q+:range y-offset-spinbox) (values -1d0 1d0)
@@ -86,12 +87,6 @@
       (setf (sbsp:texinfo-draw-mode texinfo) new-draw-mode)
       (signal! texture-editor (target-changed)))))
 
-(define-slot (texture-editor x-offset-changed) ((val double))
-  (declare (connected x-offset-spinbox (value-changed double)))
-  (when texinfo
-    (setf (shiva:vx (sbsp:texinfo-offset texinfo)) val)
-    (signal! texture-editor (target-changed))))
-
 (define-slot (texture-editor y-offset-changed) ((val double))
   (declare (connected y-offset-spinbox (value-changed double)))
   (when texinfo
@@ -110,12 +105,18 @@
     (q+:add-widget layout y-offset-widget)))
 
 (defmethod target ((editor texture-editor))
-  (with-slots (texinfo) editor
+  (with-slots (texinfo x-offset-spinner) editor
+    (when texinfo
+      (setf (shiva:vx (sbsp:texinfo-offset texinfo))
+            (edk.data:value (edk.forms::data x-offset-spinner))))
     texinfo))
 
 (defmethod (setf target) (target (editor texture-editor))
-  (with-slots (texinfo name-lbl draw-mode-combo
-                       x-offset-spinbox y-offset-spinbox) editor
+  ;; XXX: Hack for propagating edkit value, fix this by converting the data
+  ;; model to edkit.data.
+  (target editor)
+  (with-slots (texinfo name-lbl draw-mode-combo x-offset-spinner
+                       y-offset-spinbox) editor
     (setf texinfo target
           (edk.forms:text name-lbl) (if texinfo
                                         (sbsp:texinfo-name texinfo)
@@ -124,11 +125,14 @@
                                                  (draw-mode->combo-index
                                                   (sbsp:texinfo-draw-mode texinfo))
                                                  0))
+    (setf (edk.forms::data x-offset-spinner)
+          (if texinfo
+              (make-instance 'edk.data:boxed-double
+                             :value (shiva:vx (sbsp:texinfo-offset texinfo)))))
     (let ((offset (if texinfo
                       (sbsp:texinfo-offset texinfo)
                       (shiva:v 0 0))))
-      (setf (q+:value x-offset-spinbox) (shiva:vx offset)
-            (q+:value y-offset-spinbox) (shiva:vy offset))))
+      (setf (q+:value y-offset-spinbox) (shiva:vy offset))))
   target)
 
 (define-widget properties-editor (QWidget)

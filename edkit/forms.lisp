@@ -203,7 +203,7 @@
   ((subeditors :initform (make-hash-table) :accessor subeditors
                :documentation "Map from slot name to a subeditor responsible for editing it.")
    (top-form :initform nil :accessor top-form
-             :documentation "Top `FORM' containing all the subformss.")
+             :documentation "Top `FORM' containing all the subforms.")
    (layout-info :initform nil :accessor layout-info
                 :documentation "Information on how the subeditors should be
                 laid out in the GUI and mapped to slots of DATA."))
@@ -285,10 +285,12 @@
     line-ed))
 
 (defclass double-spinner (editor)
-  ())
+  ((minimum :initarg :min :initform nil :type (or null real))
+   (maximum :initarg :max :initform nil :type (or null real))
+   (step :initarg :step :initform 0 :type (real 0))))
 
-(defun double-spinner (&optional data)
-  (make-instance 'double-spinner :data data))
+(defun double-spinner (data &key min max (step 0))
+  (make-instance 'double-spinner :data data :min min :max max :step step))
 
 (define-widget double-spinbox (QDoubleSpinBox)
   ((spinner :initarg :spinner)))
@@ -310,6 +312,10 @@
     (if (data double-spinner)
         (setf (q+:value spinbox) (edk.data:value (data double-spinner)))
         (setf (q+:enabled spinbox) nil))
+    (with-slots (minimum maximum step) double-spinner
+      (if minimum (setf (q+:minimum spinbox) (coerce minimum 'double-float)))
+      (if maximum (setf (q+:maximum spinbox) (coerce maximum 'double-float)))
+      (if step (setf (q+:single-step spinbox) step)))
     spinbox))
 
 ;;; Selectors
