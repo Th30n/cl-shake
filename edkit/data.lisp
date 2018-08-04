@@ -205,6 +205,9 @@
 
 ;;; Concrete data types
 
+(defdata boxed-symbol ()
+  ((value :accessor value :initarg :value :type symbol :initform nil)))
+
 (defdata boxed-string ()
   ((value :accessor value :initarg :value :type string :initform "")))
 

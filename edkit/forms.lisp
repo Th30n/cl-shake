@@ -289,7 +289,7 @@
    (maximum :initarg :max :initform nil :type (or null real))
    (step :initarg :step :initform 0 :type (real 0))))
 
-(defun double-spinner (data &key min max (step 0))
+(defun double-spinner (&key data min max (step 1))
   (make-instance 'double-spinner :data data :min min :max max :step step))
 
 (define-widget double-spinbox (QDoubleSpinBox)
@@ -325,7 +325,8 @@
 
 (defun selector (data choice &rest choices)
   ;; check data
-  (setf (edk.data:value data) choice)
+  (when data
+    (setf (edk.data:value data) choice))
   (make-instance 'selector :data data :choices (cons choice choices)))
 
 (define-widget combo-box (QComboBox)

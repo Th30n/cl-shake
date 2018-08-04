@@ -21,123 +21,88 @@
 (defgeneric (setf target) (target editor)
   (:documentation "Set the editor target and update widget contents"))
 
-(defun draw-mode->combo-index (draw-mode)
-  (ecase draw-mode
-    (:tile 0)
-    (:scale-to-fit 1)))
+;; TODO: Move this to a separate data model file
+(edk.data:defdata texture ()
+  ((offset-x :type edk.data:boxed-double :initarg :offset-x
+             :reader texture-offset-x
+             :initform (make-instance 'edk.data:boxed-double))
+   (offset-y :type edk.data:boxed-double :initarg :offset-y
+             :reader texture-offset-y
+             :initform (make-instance 'edk.data:boxed-double))
+   (name :type edk.data:boxed-string :initarg :name :reader texture-name
+         :initform (make-instance 'edk.data:boxed-string))
+   (draw-mode :type edk.data::boxed-symbol :initarg :draw-mode
+              :reader texture-draw-mode
+              :initform (make-instance 'edk.data::boxed-symbol :value :tile))))
 
-(defun combo-index->draw-mode (index)
-  (ecase index
-    (0 :tile)
-    (1 :scale-to-fit)))
+(defclass texture-editor (edk.forms:compound-editor)
+  ((texinfo :initform nil)))
 
-(define-widget texture-editor (QWidget)
-  ((texinfo :initform nil)
-   (choose-form :initform nil)
-   (name-lbl :initform (edk.forms:label "No texture"))
-   (x-offset-lbl :initform (edk.forms:label "X offset"))
-   (x-offset-spinner
-    :initform (edk.forms:double-spinner nil :min -1 :max 1 :step 0.05))
-   (y-offset-lbl :initform (edk.forms:label "Y offset"))))
-
-(defun choose-btn-clicked (texture-editor)
-  (with-all-slots-bound (texture-editor texture-editor)
-    (let ((filepath (q+:qfiledialog-get-open-file-name
-                     texture-editor "Select Texture" "" "Textures (*.bmp)")))
-      (when (and filepath (ends-with-subseq ".bmp" filepath))
-        (let ((name (file-namestring filepath)))
-          (unless texinfo
-            (let ((offset (shiva:v 0d0 0d0))
-                  (draw-mode (combo-index->draw-mode
-                              (q+:current-index draw-mode-combo))))
-              (setf texinfo (sbsp:make-texinfo :name name :offset offset
-                                               :draw-mode draw-mode))
-              (setf (edk.forms::data x-offset-spinner)
-                    (make-instance 'edk.data:boxed-double
-                                   :value (shiva:vx offset)))))
-          (setf (sbsp:texinfo-name texinfo) name
-                (edk.forms:text name-lbl) name))
-        (signal! texture-editor (target-changed))))))
-
-(define-subwidget (texture-editor draw-mode-combo) (q+:make-qcombobox)
-  (q+:add-items draw-mode-combo (list "Tile" "Scale To Fit")))
-
-(define-subwidget (texture-editor x-offset-widget) (q+:make-qwidget)
-  (let ((hbox (q+:make-qhboxlayout)))
-    (q+:set-layout x-offset-widget hbox)
-    (q+:add-widget hbox (edk.forms:build-widget x-offset-lbl))
-    (q+:add-widget hbox (edk.forms:build-widget x-offset-spinner))))
-
-(define-subwidget (texture-editor y-offset-spinbox) (q+:make-qdoublespinbox)
-  (setf (q+:range y-offset-spinbox) (values -1d0 1d0)
-        (q+:single-step y-offset-spinbox) 0.05d0))
-(define-subwidget (texture-editor y-offset-widget) (q+:make-qwidget)
-  (let ((hbox (q+:make-qhboxlayout)))
-    (q+:set-layout y-offset-widget hbox)
-    (q+:add-widget hbox (edk.forms:build-widget y-offset-lbl))
-    (q+:add-widget hbox y-offset-spinbox)))
-
-(define-signal (texture-editor target-changed) ())
-
-(define-slot (texture-editor draw-mode-changed) ((index int))
-  (declare (connected draw-mode-combo (current-index-changed int)))
-  (let ((new-draw-mode (combo-index->draw-mode index)))
-    (unless (or (not texinfo)
-                (eq (sbsp:texinfo-draw-mode texinfo) new-draw-mode))
-      (setf (sbsp:texinfo-draw-mode texinfo) new-draw-mode)
-      (signal! texture-editor (target-changed)))))
-
-(define-slot (texture-editor y-offset-changed) ((val double))
-  (declare (connected y-offset-spinbox (value-changed double)))
-  (when texinfo
-    (setf (shiva:vy (sbsp:texinfo-offset texinfo)) val)
-    (signal! texture-editor (target-changed))))
-
-(define-initializer (texture-editor setup)
-  (let ((layout (q+:make-qvboxlayout))
-        (choose-btn (edk.forms:button
-                     "Texture" (lambda () (choose-btn-clicked texture-editor)))))
-    (q+:set-layout texture-editor layout)
-    (setf choose-form (edk.forms:left-right choose-btn name-lbl))
-    (q+:add-widget layout (edk.forms:build-widget choose-form))
-    (q+:add-widget layout draw-mode-combo)
-    (q+:add-widget layout x-offset-widget)
-    (q+:add-widget layout y-offset-widget)))
+(defmethod initialize-instance :after ((ed texture-editor) &key)
+  (flet ((choose-texture ()
+           (let ((filepath (q+:qfiledialog-get-open-file-name
+                            (edk.forms::widget ed)
+                            "Select Texture" "" "Textures (*.bmp)")))
+             (when (and filepath (ends-with-subseq ".bmp" filepath))
+               (let ((name (file-namestring filepath))
+                     (texture (edk.forms::data ed)))
+                 (edk.data:with-change-operation ("select texture")
+                   (setf (edk.data:value (texture-name texture)) name)))))))
+    (setf (edk.forms:layout-info ed)
+          `(edk.forms:top-down
+            (edk.forms:left-right
+             (:form choose-btn edk.forms:button "Texture" ,#'choose-texture)
+             (:edit name edk.forms:text-entry))
+            (:edit draw-mode edk.forms:selector nil :tile :scale-to-fit)
+            (edk.forms:left-right
+             (:form x-lbl edk.forms:label "X offset")
+             (:edit offset-x edk.forms:double-spinner :min -1 :max 1 :step 0.05))
+            (edk.forms:left-right
+             (:form y-lbl edk.forms:label "Y offset")
+             (:edit offset-y edk.forms:double-spinner :min -1 :max 1 :step 0.05))))))
 
 (defmethod target ((editor texture-editor))
-  (with-slots (texinfo x-offset-spinner) editor
-    (when texinfo
-      (setf (shiva:vx (sbsp:texinfo-offset texinfo))
-            (edk.data:value (edk.forms::data x-offset-spinner))))
+  (with-slots (texinfo) editor
+    (let ((texture (edk.forms::data editor)))
+      (when (and (> (length (edk.data:value (texture-name texture))) 0)
+                 (not texinfo))
+        (setf texinfo (sbsp:make-texinfo :name "")))
+      (when texinfo
+        (setf (sbsp:texinfo-name texinfo)
+              (edk.data:value (texture-name texture)))
+        (setf (shiva:vx (sbsp:texinfo-offset texinfo))
+              (edk.data:value (texture-offset-x texture)))
+        (setf (shiva:vy (sbsp:texinfo-offset texinfo))
+              (edk.data:value (texture-offset-y texture)))
+        (setf (sbsp:texinfo-draw-mode texinfo)
+              (edk.data:value (texture-draw-mode texture)))))
     texinfo))
 
 (defmethod (setf target) (target (editor texture-editor))
   ;; XXX: Hack for propagating edkit value, fix this by converting the data
   ;; model to edkit.data.
   (target editor)
-  (with-slots (texinfo name-lbl draw-mode-combo x-offset-spinner
-                       y-offset-spinbox) editor
-    (setf texinfo target
-          (edk.forms:text name-lbl) (if texinfo
-                                        (sbsp:texinfo-name texinfo)
-                                        "No texture")
-          (q+:current-index draw-mode-combo) (if texinfo
-                                                 (draw-mode->combo-index
-                                                  (sbsp:texinfo-draw-mode texinfo))
-                                                 0))
-    (setf (edk.forms::data x-offset-spinner)
-          (if texinfo
-              (make-instance 'edk.data:boxed-double
-                             :value (shiva:vx (sbsp:texinfo-offset texinfo)))))
-    (let ((offset (if texinfo
-                      (sbsp:texinfo-offset texinfo)
-                      (shiva:v 0 0))))
-      (setf (q+:value y-offset-spinbox) (shiva:vy offset))))
+  (with-slots (texinfo) editor
+    (setf texinfo target)
+    (when texinfo
+      (setf
+       (edk.forms::data editor)
+       (make-instance
+        'texture
+        :name (make-instance 'edk.data:boxed-string
+                             :value (sbsp:texinfo-name texinfo))
+        :offset-x (make-instance 'edk.data:boxed-double
+                                 :value (shiva:vx (sbsp:texinfo-offset texinfo)))
+        :offset-y (make-instance 'edk.data:boxed-double
+                                 :value (shiva:vy (sbsp:texinfo-offset texinfo)))
+        :draw-mode (make-instance 'edk.data::boxed-symbol
+                                  :value (sbsp:texinfo-draw-mode texinfo))))))
   target)
 
 (define-widget properties-editor (QWidget)
   ((sidedefs :initform nil :accessor sidedefs)
-   (color-btn :initform nil)))
+   (color-btn :initform nil)
+   (tex-ed :initform (make-instance 'texture-editor :data (make-instance 'texture)))))
 
 (defun color-btn-clicked (properties-editor)
   (when-let ((sidedef (first (sidedefs properties-editor))))
@@ -148,18 +113,6 @@
         (dolist (side (sidedefs properties-editor))
           (setf (sbsp:sidedef-color side) (qcolor->vector new-qcolor)))))))
 
-(define-subwidget (properties-editor tex-ed) (make-instance 'texture-editor))
-
-(define-slot (properties-editor texinfo-changed) ()
-  (declare (connected tex-ed (target-changed)))
-  (let ((texinfo (target tex-ed)))
-    (unless (sbsp:sidedef-texinfo (first sidedefs))
-      (setf (sbsp:sidedef-texinfo (first sidedefs)) texinfo))
-    (dolist (side (cdr sidedefs))
-      (let ((tex-copy (sbsp:copy-texinfo texinfo)))
-        (zap #'copy-seq (sbsp:texinfo-offset tex-copy))
-        (setf (sbsp:sidedef-texinfo side) tex-copy)))))
-
 (define-initializer (properties-editor setup)
   (let ((layout (q+:make-qvboxlayout)))
     (q+:set-layout properties-editor layout)
@@ -167,14 +120,26 @@
           (edk.forms:button
            "Color" (lambda () (color-btn-clicked properties-editor))))
     (q+:add-widget layout (edk.forms:build-widget color-btn))
-    (q+:add-widget layout tex-ed 0 (q+:qt.align-top)))
+    (q+:add-widget layout (edk.forms:build-widget tex-ed) 0 (q+:qt.align-top)))
   (unless sidedefs
     (q+:set-enabled properties-editor nil)))
 
 (defmethod (setf target) (target (editor properties-editor))
   (with-slots (sidedefs tex-ed) editor
+    (edk.data:unobserve (texture-name (edk.forms::data tex-ed)) :tag editor)
     (setf sidedefs target)
     (when sidedefs
+      (flet ((texture-changed ()
+               (let ((texinfo (target tex-ed)))
+                 (unless (sbsp:sidedef-texinfo (first sidedefs))
+                   (setf (sbsp:sidedef-texinfo (first sidedefs)) texinfo))
+                 (dolist (side (cdr sidedefs))
+                   (let ((tex-copy (sbsp:copy-texinfo texinfo)))
+                     (zap #'copy-seq (sbsp:texinfo-offset tex-copy))
+                     (setf (sbsp:sidedef-texinfo side) tex-copy))))))
+        ;; TODO: What about other texture slots?
+        (edk.data:observe (texture-name (edk.forms::data tex-ed))
+                          #'texture-changed :tag editor))
       (setf (target tex-ed) (sbsp:sidedef-texinfo (first sidedefs))))
     (q+:set-enabled editor (when sidedefs t)))
   target)
