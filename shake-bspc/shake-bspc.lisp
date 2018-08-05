@@ -209,14 +209,16 @@
   (make-sidedef :lineseg (linedef->lineseg line)))
 
 (defstruct leaf
-  "A leaf node in the BSP tree. The SEGS slot stores the geometry as a LIST of
-  SIDEDEFs. The CONTENTS stores the type of the leaf, used for collision
-  detection. It can be one of:
+  "A leaf node in the BSP tree. The SURFACES slot stores the geometry as a
+  LIST of SIDEDEFs. The CONTENTS stores the type of the leaf, used for
+  collision detection. It can be one of:
     * :CONTENTS-EMPTY -- free space
-    * :CONTENTS-SOLID -- solid, impassable space"
+    * :CONTENTS-SOLID -- solid, impassable space
+  The REGION is a list of LINEDEF describing the convex region of this leaf."
   (bounds nil :type (cons (vec 2) (vec 2)))
   (surfaces nil :type list)
-  (contents :contents-empty))
+  (contents :contents-empty)
+  (region nil :type list))
 
 (defstruct node
   "A node in the BSP tree. The geometry is stored in leaves. LINE is the
@@ -392,23 +394,32 @@
   (bounds-of-linedefs (mapcar (compose #'lineseg-orig-line #'sidedef-lineseg)
                               surfaces)))
 
+(defun intersect-line (line split-line)
+  "Return the intersection point if lines intersect."
+  (declare (type linedef line split-line))
+  (let ((lineseg (make-lineseg :orig-line line)))
+    (multiple-value-bind (num den)
+        (line-intersect-ratio split-line lineseg)
+      (unless (double= den 0d0)
+        (let ((t-split (/ num den)))
+          (cond
+            ((double= t-split 0d0) (linedef-start line))
+            ((double= t-split 1d0) (linedef-end line))
+            ((and (double> 1d0 t-split)
+                  (double> t-split 0d0))
+             (lineseg-end (car (split-lineseg lineseg t-split))))))))))
+
+(defun linedefs<-bounds (bounds)
+  "Return list of LINEDEF looped around the bounds in CCW order."
+  (destructuring-bind (mins . maxs) bounds
+    (make-linedef-loop maxs (v (vx mins) (vy maxs))
+                       mins (v (vx maxs) (vy mins)))))
+
 (defun divide-bounds (bounds split-line)
-  (flet ((intersect-line (line)
-           (let ((lineseg (make-lineseg :orig-line line)))
-             (multiple-value-bind (num den)
-                 (line-intersect-ratio split-line lineseg)
-               (unless (double= den 0d0)
-                 (let ((t-split (/ num den)))
-                   (cond
-                     ((double= t-split 0d0) (linedef-start line))
-                     ((double= t-split 1d0) (linedef-end line))
-                     ((and (double> 1d0 t-split)
-                           (double> t-split 0d0))
-                      (lineseg-end (car (split-lineseg lineseg t-split)))))))))))
+  (flet ((intersect (line) (intersect-line line split-line)))
     (destructuring-bind (mins . maxs) bounds
-      (let* ((rect-lines (make-linedef-loop mins (v (vx mins) (vy maxs))
-                                            maxs (v (vx maxs) (vy mins))))
-             (intersects (remove nil (mapcar #'intersect-line rect-lines)))
+      (let* ((rect-lines (linedefs<-bounds bounds))
+             (intersects (remove nil (mapcar #'intersect rect-lines)))
              ;; Treat :on-line side as :front.
              (mins-side (if (eq :back (determine-side split-line mins))
                             :back :front))
@@ -428,8 +439,36 @@
                 (cons front-bounds back-bounds)
                 (cons back-bounds front-bounds))))))))
 
+(defun divide-region (convex-region split-line)
+  "Split given CONVEX-REGION of LINEDEF by given SPLIT-LINE. The result is a
+pair of front and back regions. Degenerate regions (i.e. lines) are returned
+as NIL."
+  (let ((intersects (remove nil (mapcar (lambda (line)
+                                          (intersect-line line split-line))
+                                        convex-region)))
+        (points (mappend (lambda (line)
+                           (list (linedef-start line) (linedef-end line)))
+                         convex-region))
+        (front-points nil)
+        (back-points nil))
+    (dolist (point points)
+      (ecase (determine-side split-line point)
+        (:front (push point front-points))
+        (:back (push point back-points))
+        (:on-line (push point front-points)
+                  (push point back-points))))
+    (let ((front-convex
+           (sbrush::construct-convex-hull (append intersects front-points)))
+          (back-convex
+           (sbrush::construct-convex-hull (append intersects back-points))))
+      (cons (when (length>= 3 front-convex)
+              (apply #'make-linedef-loop front-convex))
+            (when (length>= 3 back-convex)
+              (apply #'make-linedef-loop back-convex))))))
+
 (defun build-bsp (surfaces &optional (splitters nil)
-                             (bounds (bounds-of-surfaces surfaces)))
+                             (bounds (bounds-of-surfaces surfaces))
+                             (convex-region (linedefs<-bounds bounds)))
   (if (null surfaces)
       (make-leaf :bounds bounds :contents :contents-solid)
       (multiple-value-bind
@@ -438,10 +477,11 @@
             ;; We've selected all the segments and they form a convex hull.
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
+              (assert (convex-hull-p (mapcar #'linedef->lineseg convex-region)))
               (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
                 (assert (every (curry #'equalp (car front-sectors))
                                (cdr front-sectors))))
-              (make-leaf :bounds bounds :surfaces rest))
+              (make-leaf :bounds bounds :surfaces rest :region convex-region))
             ;; Split the remaining into front and back.
             (let ((splitter (lineseg-orig-line (sidedef-lineseg splitter-surf))))
               (multiple-value-bind
@@ -449,15 +489,19 @@
                 (let ((used-splitters (append on-splitter splitters)))
                   (destructuring-bind (front-bounds . back-bounds)
                       (divide-bounds bounds splitter)
-                    (make-node :bounds bounds
-                               :line splitter
-                               ;; XXX: Other surfaces on splitter?
-                               :surface splitter-surf
-                               ;; Add the splitter itself to front.
-                               :front (build-bsp (cons splitter-surf front)
-                                                 used-splitters front-bounds)
-                               :back (build-bsp back used-splitters
-                                                back-bounds))))))))))
+                    (destructuring-bind (front-region . back-region)
+                        (divide-region convex-region splitter)
+                      (make-node :bounds bounds
+                                 :line splitter
+                                 ;; XXX: Other surfaces on splitter?
+                                 :surface splitter-surf
+                                 ;; Add the splitter itself to front.
+                                 :front (build-bsp (cons splitter-surf front)
+                                                   used-splitters front-bounds
+                                                   front-region)
+                                 :back (build-bsp back used-splitters
+                                                  back-bounds
+                                                  back-region)))))))))))
 
 (defun linedef->lineseg (linedef)
   (declare (type linedef linedef))
@@ -518,11 +562,14 @@
              (funcall back))
            (lambda (leaf)
              (format stream "~S~%" :leaf)
-             (with-struct (leaf- bounds contents surfaces) leaf
+             (with-struct (leaf- bounds contents surfaces region) leaf
                (write-bounds bounds)
                (format stream "~%~@{~S~%~}" contents (list-length surfaces))
                (dolist (surf surfaces)
-                 (write-sidedef surf stream)))))))
+                 (write-sidedef surf stream))
+               (format stream "~S~%" (list-length region))
+               (dolist (line region)
+                 (write-linedef line stream)))))))
 
 (defun read-bsp (stream)
   (let ((node-type (read stream)))
@@ -537,8 +584,11 @@
       (:leaf (let* ((bounds (cons (read-vec stream) (read-vec stream)))
                     (contents (read stream))
                     (num-surfs (read stream))
-                    (surfs (repeat num-surfs (read-sidedef stream))))
-               (make-leaf :bounds bounds :surfaces surfs :contents contents))))))
+                    (surfs (repeat num-surfs (read-sidedef stream)))
+                    (num-lines (read stream))
+                    (region (repeat num-lines (read-linedef stream))))
+               (make-leaf :bounds bounds :surfaces surfs :contents contents
+                          :region region))))))
 
 (defun back-to-front (point bsp)
   "Traverse the BSP in back to front order relative to given POINT."

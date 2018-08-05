@@ -159,7 +159,7 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
                          :verts verts
                          :tex-name tex-name)))
 
-(defun polygon->surf-triangles (polygon height)
+(defun polygon->surf-triangles (polygon height &key (color (v 1 0 0)))
   (let* ((triangles (sbsp:triangulate (mapcar #'sbsp:linedef->lineseg polygon)))
          (positions (mapcar #'sbsp:lineseg-start (apply #'append triangles)))
          (num-verts (list-length positions))
@@ -167,7 +167,7 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
     (loop for pos in positions and i from 0 do
          (setf (cffi:mem-aref verts '(:struct vertex-data) i)
                (make-l-vertex-data :position (v2->v3 pos height)
-                                   :color (v 1 0 0)
+                                   :color color
                                    :normal (v 0 1 0)
                                    :uv (v 0 0))))
     (make-surf-triangles :num-verts num-verts
@@ -207,30 +207,26 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
                 :texinfo (sbsp:sidedef-texinfo sidedef)
                 :geometry (sidedef->surf-triangles sidedef)))
 
+(defun dbg-sector-color ()
+  (v (/ (+ 15 (random 240)) 256d0)
+     (/ (+ 15 (random 240)) 256d0)
+     (/ (+ 15 (random 240)) 256d0)))
+
 (defun leaf->mleaf (leaf)
   (let* ((floor-sector (first (mapcar (lambda (surf)
                                         (sbsp:sidedef-front-sector surf))
                                       (sbsp:leaf-surfaces leaf))))
          (floor-height (if floor-sector
                            (sbsp:sector-floor-height floor-sector)
-                           0))
-         (sector-points (remove-duplicates
-                         (mappend (lambda (surf)
-                                    (let ((line (sbsp:sidedef-lineseg surf)))
-                                      (list (sbsp:lineseg-start line)
-                                            (sbsp:lineseg-end line))))
-                                  (sbsp:leaf-surfaces leaf))
-                         :test #'v=))
-         (ccw-points (when (length>= 3 sector-points)
-                       (sbrush::construct-convex-hull sector-points)))
-         (sector-poly (when (length>= 3 ccw-points)
-                        (apply #'sbsp:make-linedef-loop ccw-points))))
+                           0)))
     (make-mleaf :bounds (sbsp:leaf-bounds leaf)
                 :surfaces (sbsp:leaf-surfaces leaf)
                 :contents (sbsp:leaf-contents leaf)
-                :floor-geometry (when (and floor-sector sector-poly)
-                                  (polygon->surf-triangles sector-poly
-                                                           floor-height)))))
+                :floor-geometry (when (sbsp::leaf-region leaf)
+                                  (polygon->surf-triangles
+                                   (sbsp::leaf-region leaf)
+                                   floor-height
+                                   :color (dbg-sector-color))))))
 
 (defun nadapt-nodes (bsp)
   (sbsp:bsp-rec bsp

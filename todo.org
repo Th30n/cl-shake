@@ -1,4 +1,4 @@
-* Shake [4/17]
+* Shake [5/17]
 ** DONE Wall Textures [100%]
    - [X] Add texture info structure
    - [X] Serialize texture info in .bsp
@@ -14,6 +14,7 @@
 ** DONE Batching
    Add support for batching geometry even with differing textures using
    texture arrays.
+** DONE BSP debug view
 ** TODO Floors and Ceilings
    Add sectors which determine the floor and ceiling properties (height,
    texture...).  Collision hull is expanded for brushes of type 'stairs' in
@@ -70,7 +71,6 @@ Time to roll my own command line option parser library.
 #+END_SRC
 ** TODO Demo record/playback
 ** TODO Keybindings
-** TODO BSP debug view
 ** TODO Potentially Visible Set
    Precalculate the PVS when generating BSP and use it for further geometry
    culling.
