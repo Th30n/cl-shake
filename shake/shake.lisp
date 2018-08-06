@@ -222,7 +222,8 @@
 (defun start-game-loop ()
   "Starts the game loop by reseting the game time."
   (setf *base-time* (sdl2:get-ticks)
-        *last-time* *base-time*))
+        *last-time* *base-time*
+        *gametic* 0))
 
 (defun try-run-tics (build-ticcmd run-tic)
   (let ((new-tics (- (get-time) *last-time*)))
