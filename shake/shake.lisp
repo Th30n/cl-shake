@@ -457,7 +457,7 @@
         (load-main-resources render-system)
         (let* ((proj (make-perspective (* deg->rad 60d0)
                                        (/ *win-width* *win-height*)
-                                       0.1d0 100d0))
+                                       0.01d0 100d0))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp")))

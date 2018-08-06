@@ -16,7 +16,7 @@
 
 (in-package #:shake-bspc)
 
-(defconstant +clip-square+ 0.5
+(defconstant +clip-square+ 0.25
   "Size of the square used for expanding brushes in order to perform movement
   clipping (collision detection).")
 
