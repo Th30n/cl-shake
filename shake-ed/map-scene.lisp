@@ -52,10 +52,46 @@
    (highlighted-item :initform nil)
    (selected-items :initform nil)
    (edit-mode :initform :lines)
+   (brushes :initform (make-array 256 :element-type '(or null mbrush)
+                                  :adjustable t :fill-pointer 0))
+   ;; Maps qt graphics items to BRUSHES vector index
    (graphics-item-brush-map :initform (make-hash-table))
    (graphics-item-thing-map :initform (make-hash-table))
    (view-normals-p :initform nil)
    (grid-step :initform +initial-grid-step+)))
+
+(defun clear-map (scene)
+  (with-slots-bound (scene map-scene)
+    (q+:clear scene)
+    (setf highlighted-item nil
+          selected-items nil
+          draw-info nil)
+    (setf (fill-pointer brushes) 0)
+    (clrhash graphics-item-brush-map)
+    (clrhash graphics-item-thing-map)))
+
+(defun brush-for-graphics-item (map-scene item)
+  (declare (type map-scene map-scene))
+  (when-let ((i (gethash item (slot-value map-scene 'graphics-item-brush-map))))
+    (assert (>= i 0))
+    (when (< i (length (slot-value map-scene 'brushes)))
+      (aref (slot-value map-scene 'brushes) i))))
+
+(defun map-scene-add-brush (map-scene item brush)
+  (declare (type map-scene map-scene))
+  (declare (type mbrush brush))
+  (with-slots (brushes graphics-item-brush-map) map-scene
+    (setf (gethash item graphics-item-brush-map) (length brushes))
+    (vector-push-extend brush brushes)))
+
+(defun map-scene-remove-brush (map-scene item)
+  (declare (type map-scene map-scene))
+  (with-slots (brushes graphics-item-brush-map) map-scene
+    (let ((i (gethash item graphics-item-brush-map)))
+      (assert (>= i 0))
+      ;; TODO: What if the vector get's really large?
+      (setf (aref brushes i) nil))
+    (remhash item graphics-item-brush-map)))
 
 (define-signal (map-scene mouse-scene-pos) (double double))
 (define-signal (map-scene grid-step-changed) (int))
@@ -114,7 +150,7 @@
       (q+:set-pen painter color)
       (let ((items (q+:items map-scene)))
         (dolist (item items)
-          (when-let ((mbrush (gethash item graphics-item-brush-map)))
+          (when-let ((mbrush (brush-for-graphics-item map-scene item)))
             (dolist (line (sbrush:brush-lines (convert-brush mbrush)))
               (draw-linedef-normal line painter)))))))
   (stop-overriding))
@@ -195,7 +231,7 @@
                  (q+:add-to-group group point-item)))))))))
 
 (defun add-or-update-brush (map-scene scene-pos)
-  (with-slots (draw-info graphics-item-brush-map) map-scene
+  (with-slots (draw-info) map-scene
     (with-finalizing ((scene-point (v2->qpoint scene-pos)))
       (if draw-info
           (progn
@@ -213,10 +249,10 @@
                      (q+:add-to-group group (linedef->lineitem line)))
                    (handler-case
                        (let ((surfs (mapcar #'sbsp:linedef->sidedef linedefs)))
-                         (setf (gethash group graphics-item-brush-map)
-                               (make-mbrush :brush
-                                            (sbrush:make-brush :surfaces surfs))
-                               draw-info nil))
+                         (map-scene-add-brush
+                          map-scene group
+                          (make-mbrush :brush (sbrush:make-brush :surfaces surfs)))
+                         (setf draw-info nil))
                      (sbrush:non-convex-brush-error ()
                        (cancel-editing map-scene)))
                    (q+:update map-scene (q+:scene-rect map-scene))))
@@ -355,7 +391,7 @@
         (update-brush-drawing draw-info scene-pos)))))
 
 (defun brushes-mode-handle-mouse-move (map-scene mouse-event)
-  (with-slots (highlighted-item selected-items graphics-item-brush-map) map-scene
+  (with-slots (highlighted-item selected-items) map-scene
     (labels ((highlight-brush (group)
                (unless (member group selected-items)
                  (dolist (line (q+:child-items group))
@@ -375,7 +411,7 @@
                    (when (and (qinstancep item 'qgraphicsitemgroup)
                               (point-in-mbrush-p
                                (v (q+:x scene-pos) (q+:y scene-pos))
-                               (gethash item graphics-item-brush-map)))
+                               (brush-for-graphics-item map-scene item)))
                      (return item))))))
       (when highlighted-item
         (unhighlight-brush highlighted-item)
@@ -393,7 +429,7 @@
            (q+:y (q+:scene-pos mouse-event))))
 
 (defun remove-selected (scene)
-  (with-slots (selected-items edit-mode graphics-item-brush-map) scene
+  (with-slots (selected-items edit-mode) scene
     (case edit-mode
       (:brushes
        (dolist (group selected-items)
@@ -402,7 +438,7 @@
            (finalize line))
          (q+:remove-item scene group)
          (finalize group)
-         (remhash group graphics-item-brush-map))
+         (map-scene-remove-brush scene group))
        (setf selected-items nil)))))
 
 (define-override (map-scene key-press-event) (key-event)
@@ -418,22 +454,13 @@
     (notf view-normals-p)
     (q+:update scene (q+:scene-rect scene))))
 
-(defun clear-map (scene)
-  (with-slots-bound (scene map-scene)
-    (q+:clear scene)
-    (setf highlighted-item nil
-          selected-items nil
-          draw-info nil)
-    (clrhash graphics-item-brush-map)
-    (clrhash graphics-item-thing-map)))
-
 (defun write-map (stream scene)
-  (with-slots (graphics-item-brush-map graphics-item-thing-map) scene
-    (let ((mbrushes (hash-table-values graphics-item-brush-map))
-          (things (hash-table-values graphics-item-thing-map)))
+  (with-slots (brushes graphics-item-thing-map) scene
+    (let ((things (hash-table-values graphics-item-thing-map)))
       (flet ()
         (sbsp:write-map
-         (sbsp:make-map-file :brushes (mapcar #'convert-brush mbrushes)
+         (sbsp:make-map-file :brushes (loop for brush across brushes when brush
+                                         collect (convert-brush brush))
                              :things things)
          stream)))))
 
@@ -459,36 +486,32 @@
 
 (defun read-map (stream scene)
   (clear-map scene)
-  (with-slots (graphics-item-brush-map) scene
-    (let ((map-file (sbsp:read-map stream)))
-      (dolist (brush (sbsp:map-file-brushes map-file))
-        (let ((item (make-itemgroup-from-lines (sbrush:brush-lines brush))))
-          (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) nil)
-          (q+:add-item scene item)
-          (setf (gethash item graphics-item-brush-map)
-                (make-mbrush :brush brush))))
-      (dolist (thing (sbsp:map-file-things map-file))
-        (add-thing-to-scene scene thing)))))
+  (let ((map-file (sbsp:read-map stream)))
+    (dolist (brush (sbsp:map-file-brushes map-file))
+      (let ((item (make-itemgroup-from-lines (sbrush:brush-lines brush))))
+        (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) nil)
+        (q+:add-item scene item)
+        (map-scene-add-brush scene item (make-mbrush :brush brush))))
+    (dolist (thing (sbsp:map-file-things map-file))
+      (add-thing-to-scene scene thing))))
 
 (defun sidedef-for-lineitem (scene lineitem)
-  (with-slots (graphics-item-brush-map) scene
-    (when-let ((mbrush (gethash (q+:parent-item lineitem)
-                                graphics-item-brush-map)))
-      (with-finalizing ((qline (q+:line lineitem)))
-        (let ((p1 (v (q+:x1 qline) (q+:y1 qline)))
-              (p2 (v (q+:x2 qline) (q+:y2 qline)))
-              (surf-pairs (mapcar #'cons
-                                  (sbrush:brush-surfaces (convert-brush mbrush))
-                                  (sbrush:brush-surfaces (mbrush-brush mbrush)))))
-          (flet ((line-match-p (seg)
-                   (let ((start (sbsp:lineseg-start seg))
-                         (end (sbsp:lineseg-end seg)))
-                     (or (and (v= p1 start) (v= p2 end))
-                         (and (v= p1 end) (v= p2 start))))))
-            (dolist (surf-pair surf-pairs)
-              (destructuring-bind (rotated-surf . orig-surf) surf-pair
-                (when (line-match-p (sbsp:sidedef-lineseg rotated-surf))
-                  (return orig-surf))))))))))
+  (when-let ((mbrush (brush-for-graphics-item scene (q+:parent-item lineitem))))
+    (with-finalizing ((qline (q+:line lineitem)))
+      (let ((p1 (v (q+:x1 qline) (q+:y1 qline)))
+            (p2 (v (q+:x2 qline) (q+:y2 qline)))
+            (surf-pairs (mapcar #'cons
+                                (sbrush:brush-surfaces (convert-brush mbrush))
+                                (sbrush:brush-surfaces (mbrush-brush mbrush)))))
+        (flet ((line-match-p (seg)
+                 (let ((start (sbsp:lineseg-start seg))
+                       (end (sbsp:lineseg-end seg)))
+                   (or (and (v= p1 start) (v= p2 end))
+                       (and (v= p1 end) (v= p2 start))))))
+          (dolist (surf-pair surf-pairs)
+            (destructuring-bind (rotated-surf . orig-surf) surf-pair
+              (when (line-match-p (sbsp:sidedef-lineseg rotated-surf))
+                (return orig-surf)))))))))
 
 (defun selected-sidedefs (scene)
   (with-slots (selected-items edit-mode) scene
@@ -496,7 +519,7 @@
       (mapcar (curry #'sidedef-for-lineitem scene) selected-items))))
 
 (defun rotate-selected (scene)
-  (with-slots (graphics-item-brush-map selected-items edit-mode) scene
+  (with-slots (selected-items edit-mode) scene
     (case edit-mode
       (:brushes
        (dolist (item selected-items)
@@ -506,7 +529,7 @@
                 (clamped-deg (- new-deg (* rounds 360))))
            (q+:set-transform-origin-point item (q+:center (q+:bounding-rect item)))
            (q+:set-rotation item clamped-deg)
-           (setf (mbrush-rotation (gethash item graphics-item-brush-map))
+           (setf (mbrush-rotation (brush-for-graphics-item scene item))
                  new-deg)))))))
 
 (defun change-mode (scene mode)
