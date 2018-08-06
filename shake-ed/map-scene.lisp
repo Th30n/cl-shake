@@ -354,7 +354,7 @@
                 (with-finalizing ((pen (make-qpen (map->scene-unit 4)
                                                   (q+:qt.blue))))
                   (setf (q+:pen item) pen))))
-         (ecase edit-mode
+         (case edit-mode
            (:lines
             (if highlighted-item
                 (progn
@@ -374,6 +374,20 @@
                   (dolist (group selected-items)
                     (dolist (line (q+:child-items group))
                       (set-default-pen line)))
+                  (setf selected-items nil))))
+           (:sectors
+            (if highlighted-item
+                (progn
+                  (with-finalizing*
+                      ((color (q+:make-qcolor (q+:qt.cyan)))
+                       (brush (q+:make-qbrush color)))
+                    (q+:set-brush highlighted-item brush))
+                  (select-line highlighted-item)
+                  (push highlighted-item selected-items))
+                (progn
+                  (dolist (item selected-items)
+                    (q+:remove-item map-scene item)
+                    (finalize item))
                   (setf selected-items nil))))
            (:things nil))
          (signal! map-scene (selection-changed))))
@@ -450,8 +464,9 @@
         (setf highlighted-item hover-item)))))
 
 (defun sectors-mode-handle-mouse-move (map-scene mouse-event)
-  (with-slots (highlighted-item) map-scene
-    (when highlighted-item
+  (with-slots (highlighted-item selected-items) map-scene
+    (when (and highlighted-item
+               (not (member highlighted-item selected-items)))
       (q+:remove-item map-scene highlighted-item)
       (finalize highlighted-item)
       (setf highlighted-item nil))
@@ -591,14 +606,18 @@
                  new-deg)))))))
 
 (defun change-mode (scene mode)
-  (with-slots (edit-mode highlighted-item) scene
+  (with-slots (edit-mode highlighted-item selected-items) scene
     (unless (eq edit-mode mode)
       ;; TODO: Move this to some kind of `on-mode-exit' function.
-      (if (eq :sectors edit-mode)
-          (when highlighted-item
+      (when (eq :sectors edit-mode)
+        (when highlighted-item
+          (when (not (member highlighted-item selected-items))
             (q+:remove-item scene highlighted-item)
-            (finalize highlighted-item)
-            (setf highlighted-item nil)))
+            (finalize highlighted-item))
+          (setf highlighted-item nil))
+        (dolist (item selected-items)
+          (q+:remove-item scene item)
+          (finalize item)))
       (cancel-editing scene)
       (q+:clear-selection scene)
       (setf edit-mode mode))))
