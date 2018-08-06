@@ -216,20 +216,21 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
      (/ (+ 15 (random 240)) 256d0)))
 
 (defun leaf->mleaf (leaf)
-  (let* ((floor-sector (first (mapcar (lambda (surf)
-                                        (sbsp:sidedef-front-sector surf))
-                                      (sbsp:leaf-surfaces leaf))))
+  (let* ((subsector (sbsp::leaf-subsector leaf))
+         (floor-sector (sbsp::subsector-orig-sector subsector))
          (floor-height (if floor-sector
                            (sbsp:sector-floor-height floor-sector)
                            0)))
     (make-mleaf :bounds (sbsp:leaf-bounds leaf)
                 :surfaces (sbsp:leaf-surfaces leaf)
                 :contents (sbsp:leaf-contents leaf)
-                :floor-geometry (when (sbsp::leaf-region leaf)
-                                  (polygon->surf-triangles
-                                   (sbsp::leaf-region leaf)
-                                   floor-height
-                                   :color (dbg-sector-color))))))
+                :subsector (sbsp::leaf-subsector leaf)
+                :floor-geometry
+                (when-let ((lines (sbsp::subsector-lines subsector)))
+                  (polygon->surf-triangles
+                   lines
+                   floor-height
+                   :color (dbg-sector-color))))))
 
 (defun nadapt-nodes (bsp)
   (sbsp:bsp-rec bsp

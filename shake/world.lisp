@@ -49,11 +49,12 @@
   found, this is the case when the point is inside a solid leaf."
   (check-type hull-node (or sbsp:leaf sbsp:node))
   (check-type point (vec 2))
-  (let ((leaf (hull-point-leaf hull-node point)))
-    (aif (first (sbsp:leaf-surfaces leaf))
-         ;; TODO: Make sure all non solid leafs have a sector.
-         (or (sbsp:sidedef-front-sector it) (sbsp:make-sector))
-         (assert (eq (sbsp:leaf-contents leaf) :contents-solid)))))
+  (let* ((leaf (hull-point-leaf hull-node point))
+         (sector (sbsp::subsector-orig-sector (sbsp::leaf-subsector leaf))))
+    (or sector
+        ;; TODO: Make sure all non solid leafs have a sector.
+        (and (not (eq (sbsp:leaf-contents leaf) :contents-solid))
+             (sbsp:make-sector)))))
 
 (defun crossp (hull-node point height)
   "Return T if the POINT can cross into a non-solid space."
