@@ -247,6 +247,7 @@
                          ((string= text "Lines") :lines)
                          ((string= text "Brushes") :brushes)
                          ((string= text "Things") :things)
+                         ((string= text "Sectors") :sectors)
                          (t :invalid)))))
 
 (define-initializer (main setup)

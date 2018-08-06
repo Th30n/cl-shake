@@ -345,7 +345,7 @@
     (cond
       ((enum-equal (q+:button mouse-event) (q+:qt.right-button))
        (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
-         (ecase edit-mode
+         (case edit-mode
            (:lines
             (add-or-update-brush map-scene scene-pos))
            (:things (show-things-menu map-scene scene-pos)))))
@@ -415,29 +415,33 @@
       (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
         (update-brush-drawing draw-info scene-pos)))))
 
+(defun map-scene-hovered-brush (map-scene scene-pos)
+  (flet ((point-in-mbrush-p (point mbrush)
+           (sbsp:point-in-hull-p point
+                                 (mapcar #'sbsp:sidedef-lineseg
+                                         (sbrush:brush-surfaces
+                                          (convert-brush mbrush))))))
+    (dolist (item (items-at map-scene scene-pos))
+      (let ((mbrush (brush-for-graphics-item map-scene item)))
+      (when (and (qinstancep item 'qgraphicsitemgroup)
+                 (point-in-mbrush-p
+                  (v (q+:x scene-pos) (q+:y scene-pos))
+                  mbrush))
+        (return (values item mbrush)))))))
+
 (defun brushes-mode-handle-mouse-move (map-scene mouse-event)
   (with-slots (highlighted-item selected-items) map-scene
-    (labels ((highlight-brush (group)
-               (unless (member group selected-items)
-                 (dolist (line (q+:child-items group))
-                   (highlight-line line selected-items))))
-             (unhighlight-brush (group)
-               (unless (member group selected-items)
-                 (dolist (line (q+:child-items group))
-                   (unhighlight-line line selected-items))))
-             (point-in-mbrush-p (point mbrush)
-               (sbsp:point-in-hull-p point
-                                     (mapcar #'sbsp:sidedef-lineseg
-                                             (sbrush:brush-surfaces
-                                              (convert-brush mbrush)))))
-             (hovered-brush ()
-               (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
-                 (dolist (item (items-at map-scene scene-pos))
-                   (when (and (qinstancep item 'qgraphicsitemgroup)
-                              (point-in-mbrush-p
-                               (v (q+:x scene-pos) (q+:y scene-pos))
-                               (brush-for-graphics-item map-scene item)))
-                     (return item))))))
+    (flet ((highlight-brush (group)
+             (unless (member group selected-items)
+               (dolist (line (q+:child-items group))
+                 (highlight-line line selected-items))))
+           (unhighlight-brush (group)
+             (unless (member group selected-items)
+               (dolist (line (q+:child-items group))
+                 (unhighlight-line line selected-items))))
+           (hovered-brush ()
+             (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+               (map-scene-hovered-brush map-scene scene-pos))))
       (when highlighted-item
         (unhighlight-brush highlighted-item)
         (setf highlighted-item nil))
@@ -445,10 +449,41 @@
         (highlight-brush hover-item)
         (setf highlighted-item hover-item)))))
 
+(defun sectors-mode-handle-mouse-move (map-scene mouse-event)
+  (with-slots (highlighted-item) map-scene
+    (when highlighted-item
+      (q+:remove-item map-scene highlighted-item)
+      (finalize highlighted-item)
+      (setf highlighted-item nil))
+    (multiple-value-bind (hover-item mbrush)
+        (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+          (map-scene-hovered-brush map-scene scene-pos))
+      (when hover-item
+        (let* ((brush (mbrush-brush mbrush))
+               (brush-points (mapcar #'sbsp:linedef-end
+                                     (sbrush:brush-lines brush)))
+               (first-point (sbsp:linedef-start (car (sbrush:brush-lines brush)))))
+          (with-finalizing*
+              ((start-point (v2->qpoint first-point))
+               (shape (q+:make-qpainterpath start-point)))
+            (dolist (point brush-points)
+              (q+:line-to shape (vx point) (vy point)))
+            (with-finalizing*
+                ((polygon (q+:to-fill-polygon shape))
+                 (color (q+:make-qcolor (q+:qt.dark-cyan)))
+                 (brush (q+:make-qbrush color))
+                 (pen (make-qpen (map->scene-unit 4) (q+:qt.dark-blue))))
+              (let ((poly-item (q+:make-qgraphicspolygonitem polygon)))
+                (q+:set-pen poly-item pen)
+                (q+:set-brush poly-item brush)
+                (setf highlighted-item poly-item)
+                (q+:add-item map-scene poly-item)))))))))
+
 (define-override (map-scene mouse-move-event) (mouse-event)
   (case edit-mode
     (:lines (lines-mode-handle-mouse-move map-scene mouse-event))
-    (:brushes (brushes-mode-handle-mouse-move map-scene mouse-event)))
+    (:brushes (brushes-mode-handle-mouse-move map-scene mouse-event))
+    (:sectors (sectors-mode-handle-mouse-move map-scene mouse-event)))
   (signal! map-scene (mouse-scene-pos double double)
            (q+:x (q+:scene-pos mouse-event))
            (q+:y (q+:scene-pos mouse-event))))
@@ -556,8 +591,14 @@
                  new-deg)))))))
 
 (defun change-mode (scene mode)
-  (with-slots (edit-mode) scene
+  (with-slots (edit-mode highlighted-item) scene
     (unless (eq edit-mode mode)
+      ;; TODO: Move this to some kind of `on-mode-exit' function.
+      (if (eq :sectors edit-mode)
+          (when highlighted-item
+            (q+:remove-item scene highlighted-item)
+            (finalize highlighted-item)
+            (setf highlighted-item nil)))
       (cancel-editing scene)
       (q+:clear-selection scene)
       (setf edit-mode mode))))
