@@ -56,6 +56,9 @@
                                   :adjustable t :fill-pointer 0))
    ;; Maps qt graphics items to BRUSHES vector index
    (graphics-item-brush-map :initform (make-hash-table))
+   (things :initform (make-array 256 :element-type '(or null sbsp:map-thing)
+                                 :adjustable t :fill-pointer 0))
+   ;; Maps qt graphics items to THINGS vector index
    (graphics-item-thing-map :initform (make-hash-table))
    (view-normals-p :initform nil)
    (grid-step :initform +initial-grid-step+)))
@@ -68,14 +71,15 @@
           draw-info nil)
     (setf (fill-pointer brushes) 0)
     (clrhash graphics-item-brush-map)
+    (setf (fill-pointer things) 0)
     (clrhash graphics-item-thing-map)))
 
 (defun brush-for-graphics-item (map-scene item)
   (declare (type map-scene map-scene))
-  (when-let ((i (gethash item (slot-value map-scene 'graphics-item-brush-map))))
-    (assert (>= i 0))
-    (when (< i (length (slot-value map-scene 'brushes)))
-      (aref (slot-value map-scene 'brushes) i))))
+  (with-slots (graphics-item-brush-map brushes) map-scene
+    (when-let ((i (gethash item graphics-item-brush-map)))
+      (assert (and (>= i 0) (< i (length brushes))))
+      (aref brushes i))))
 
 (defun map-scene-add-brush (map-scene item brush)
   (declare (type map-scene map-scene))
@@ -88,7 +92,7 @@
   (declare (type map-scene map-scene))
   (with-slots (brushes graphics-item-brush-map) map-scene
     (let ((i (gethash item graphics-item-brush-map)))
-      (assert (>= i 0))
+      (assert (and (>= i 0) (< i (length brushes))))
       ;; TODO: What if the vector get's really large?
       (setf (aref brushes i) nil))
     (remhash item graphics-item-brush-map)))
@@ -285,21 +289,42 @@
         (v (snap-scene-to-grid x grid-step) (snap-scene-to-grid y grid-step))
         (v (snap-scene-to-map-unit x) (snap-scene-to-map-unit y)))))
 
+(defun thing-for-graphics-item (map-scene item)
+  (declare (type map-scene map-scene))
+  (with-slots (graphics-item-thing-map things) map-scene
+    (when-let ((i (gethash item graphics-item-thing-map)))
+      (assert (and (>= i 0) (< i (length things))))
+      (aref things i))))
+
 (defun add-thing-to-scene (scene thing)
-  (with-slots (graphics-item-thing-map) scene
+  (declare (type map-scene scene))
+  (declare (type sbsp:map-thing thing))
+  (with-slots (graphics-item-thing-map things) scene
     (let ((item (make-thing-graphics-item thing)))
       (q+:add-item scene item)
-      (setf (gethash item graphics-item-thing-map) thing))))
+      (setf (gethash item graphics-item-thing-map) (length things))
+      (vector-push-extend thing things))))
+
+(defun remove-thing-from-scene (map-scene item)
+  (declare (type map-scene map-scene))
+  (with-slots (graphics-item-thing-map things) map-scene
+    (let ((i (gethash item graphics-item-thing-map)))
+      (assert (and (>= i 0) (< i (length things))))
+      (setf (aref things i) nil)
+      (remhash item graphics-item-thing-map))))
 
 (defun insert-player-spawn (scene scene-pos)
-  (with-slots (graphics-item-thing-map) scene
-    (flet ((remove-player-spawn (item thing)
-             (when (eq :player-spawn (sbsp:map-thing-type thing))
-                 ;; The function is allowed to remove/modify *currently*
-                 ;; processed hash entry according to CLHS.
-                 (remhash item graphics-item-thing-map)
-                 (q+:remove-item scene item)
-                 (finalize item))))
+  (with-slots (graphics-item-thing-map things) scene
+    (flet ((remove-player-spawn (item thing-i)
+             (when (eq :player-spawn
+                       (sbsp:map-thing-type (thing-for-graphics-item scene item)))
+               (assert (and (>= thing-i 0) (< thing-i (length things))))
+               (setf (aref things thing-i) nil)
+               ;; The function is allowed to remove/modify *currently*
+               ;; processed hash entry according to CLHS.
+               (remhash item graphics-item-thing-map)
+               (q+:remove-item scene item)
+               (finalize item))))
       (maphash #'remove-player-spawn graphics-item-thing-map)))
   (add-thing-to-scene scene (sbsp:make-map-thing :type :player-spawn
                                                  :pos scene-pos)))
@@ -455,14 +480,12 @@
     (q+:update scene (q+:scene-rect scene))))
 
 (defun write-map (stream scene)
-  (with-slots (brushes graphics-item-thing-map) scene
-    (let ((things (hash-table-values graphics-item-thing-map)))
-      (flet ()
-        (sbsp:write-map
-         (sbsp:make-map-file :brushes (loop for brush across brushes when brush
-                                         collect (convert-brush brush))
-                             :things things)
-         stream)))))
+  (with-slots (brushes things) scene
+    (sbsp:write-map
+     (sbsp:make-map-file :brushes (loop for brush across brushes when brush
+                                     collect (convert-brush brush))
+                         :things (loop for thing across things when thing collect it))
+     stream)))
 
 (defun make-thing-graphics-item (thing)
   (flet ((set-item-pos (item)
