@@ -31,6 +31,7 @@
            #:mbrush-rotation
            #:sector
            #:sector-floor-height
+           #:sector-ceiling-height
            #:texture
            #:texture-draw-mode
            #:texture-name

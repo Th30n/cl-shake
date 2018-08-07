@@ -287,7 +287,7 @@
   (let ((change (vscale (vdot velocity normal) normal)))
     (v- velocity change)))
 
-(defconstant +step-height+ 0.2d0 "Height of a stair step.")
+(defconstant +step-height+ 0.375d0 "Height of a stair step.")
 
 (defun player-climb-move (origin velocity hull)
   (let ((step-origin (v+ origin (v 0d0 +step-height+ 0d0))))

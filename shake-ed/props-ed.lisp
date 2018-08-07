@@ -107,13 +107,18 @@
 
 (defmethod initialize-instance :after ((ed sector-editor) &key)
   (setf (edk.forms:layout-info ed)
-        '(edk.forms:left-right
-          (:form floor-height-lbl edk.forms:label "Floor height")
-          (:edit floor-height edk.forms:double-spinner
-           :min -4 :max 4 :step 0.01))))
+        '(edk.forms:top-down
+          (edk.forms:left-right
+           (:form floor-height-lbl edk.forms:label "Floor height")
+           (:edit floor-height edk.forms:double-spinner
+            :min -5 :max 5 :step 0.125))
+          (edk.forms:left-right
+           (:form ceiling-height-lbl edk.forms:label "Ceiling height")
+           (:edit ceiling-height edk.forms:double-spinner
+            :min -5 :max 5 :step 0.125)))))
 
 (defmethod (setf sector-editor-brushes) (new-brushes (ed sector-editor))
-  (let ((sector-accessors (list #'sector-floor-height)))
+  (let ((sector-accessors (list #'sector-floor-height #'sector-ceiling-height)))
     (unobserve-slots (edk.forms:editor-data ed) sector-accessors :tag ed)
     (with-slots (brushes) ed
       (setf brushes new-brushes)
@@ -129,7 +134,12 @@
                    (make-instance 'edk.data:boxed-double
                                   :value (if back-sector
                                              (sbsp:sector-floor-height back-sector)
-                                             0d0)))))))
+                                             0d0))
+                   :ceiling-height
+                   (make-instance 'edk.data:boxed-double
+                                  :value (if back-sector
+                                             (sbsp:sector-ceiling-height back-sector)
+                                             1d0)))))))
     (flet ((sector-changed ()
              (with-slots (brushes) ed
                (when brushes
@@ -139,12 +149,14 @@
                    (dolist (sidedef sidedefs)
                      (let* ((back-sector (sbsp:sidedef-back-sector sidedef))
                             (sector (edk.forms:editor-data ed))
-                            (floor-height (edk.data:value (sector-floor-height sector))))
+                            (floor-height (edk.data:value (sector-floor-height sector)))
+                            (ceiling-height (edk.data:value (sector-ceiling-height sector))))
                        (if back-sector
-                           (setf (sbsp:sector-floor-height back-sector)
-                                 floor-height)
+                           (setf (sbsp:sector-floor-height back-sector) floor-height
+                                 (sbsp:sector-ceiling-height back-sector) ceiling-height)
                            (setf (sbsp:sidedef-back-sector sidedef)
-                                 (sbsp:make-sector :floor-height floor-height))))))))))
+                                 (sbsp:make-sector :floor-height floor-height
+                                                   :ceiling-height ceiling-height))))))))))
       (observe-slots (edk.forms:editor-data ed) sector-accessors
                      #'sector-changed :tag ed)))
   new-brushes)
