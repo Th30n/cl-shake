@@ -365,6 +365,8 @@
                (cons (cdr splitted) (car splitted)))))))))
 
 (defun partition-surfaces (splitter surfaces)
+  "Partition SURFACES by given SPLITTER and return front, back surfaces and on
+splitter lines. This process may create additional surfaces."
   (declare (type linedef splitter) (type list surfaces))
   (let (front
         back
@@ -490,8 +492,7 @@ as NIL."
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
               (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
-                ;; TODO: Hmm, this doesn't have to hold
-                ;; (assert (every (curry #'equalp sector) front-sectors))
+                (assert (every (curry #'equalp sector) front-sectors))
                 (make-leaf :bounds bounds :surfaces rest
                            :subsector
                            (make-subsector :lines convex-region

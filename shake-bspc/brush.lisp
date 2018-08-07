@@ -36,6 +36,10 @@
   ((lines :initarg :lines :reader lines)))
 
 (defun make-brush (&key surfaces (contents :contents-solid))
+  (when surfaces
+    (let ((sector (sidedef-back-sector (car surfaces)))
+          (back-sectors (mapcar #'sidedef-back-sector (cdr surfaces))))
+      (assert (every (curry #'equalp sector) back-sectors))))
   (if-let (side (sbsp:convex-hull-p (mapcar #'sidedef-lineseg surfaces)))
     (flet ((flip-line (surf)
              (zap (lambda (line)
@@ -113,7 +117,7 @@
                 :contents (brush-contents brush))))
 
 (defun brush-lower-p (b1 b2)
-  "Returns BRUSH B1 if its floor height is lower of B2. If brush B2 has no
+  "Return BRUSH B1 if its floor height is lower of B2. If brush B2 has no
   floor, it is always higher than B1 unless B1 also has no floor."
   (flet ((brush-sectors (brush)
            (mapcar #'sidedef-back-sector (brush-surfaces brush))))
@@ -127,6 +131,25 @@
                 (and s1 s2 (double> (sector-floor-height s2)
                                     (sector-floor-height s1))))
         b1))))
+
+(defun brush-consume-p (b1 b2)
+  "Return T if BRUSH B2 can be merged into B1, i.e. B1 consumes B2. Note, the
+relation is not symmetrical, because certain properties allow consuming in one
+direction."
+  (flet ((brush-sectors (brush)
+           (mapcar #'sidedef-back-sector (brush-surfaces brush))))
+    (let* ((s1 (first (brush-sectors b1)))
+           (s2 (first (brush-sectors b2))))
+      ;;(when (and s1 s2) (break))
+      (or
+       ;; Nil sector consumes all
+       (not s1)
+       ;; Consume all lower sectors
+       (brush-lower-p b2 b1)
+       ;; Consume if s2 has same contents as s1
+       (and s1 s2
+            (double= (sector-ceiling-height s1) (sector-ceiling-height s2))
+            (double= (sector-floor-height s1) (sector-floor-height s2)))))))
 
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
@@ -148,12 +171,15 @@
                   (unionf outside new-outside :test #'equalp)
                   (setf inside new-inside))))
             ;; Keep the inside surfaces if we can't continue in another brush.
-            (when (brush-lower-p b2 b1)
+            (when (not (brush-consume-p b2 b1))
               (unionf outside
                       (mapcar (lambda (surf)
                                 (let ((front-sector (sidedef-front-sector surf))
                                       (back-sector (sidedef-back-sector
                                                     (first (brush-surfaces b2)))))
+                                  ;; Due to comparison ordering, we may set
+                                  ;; front-sector multiple times, so take the
+                                  ;; one with the highest priorty.
                                   (when (or (not front-sector)
                                             (double> (sector-floor-height
                                                       back-sector)
