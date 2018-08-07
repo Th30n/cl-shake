@@ -28,6 +28,7 @@
            #:top-down
            #:editor
            #:compound-editor
+           #:editor-data
            #:layout-info
            #:text-entry
            #:button

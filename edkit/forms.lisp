@@ -141,7 +141,8 @@
 ;;; changes to the data are propagated to the editor and its widgets.
 
 (defclass editor (form)
-  ((data :initform nil :initarg :data :reader data :type (or null edk.data:data))
+  ((data :initform nil :initarg :data :reader editor-data
+         :type (or null edk.data:data))
    (updating-data-p :initform nil :accessor updating-data-p :type boolean)))
 
 (defgeneric set-data-from-widget (editor)
@@ -171,14 +172,14 @@
                                  (set-widget-from-data editor)))
                         :tag editor))))
 
-(defgeneric (setf data) (data editor))
+(defgeneric (setf editor-data) (editor-data editor))
 
-(defmethod (setf data) (data (editor editor))
+(defmethod (setf editor-data) (data (editor editor))
   (check-type data (or null edk.data:data))
   (assert (not (updating-data-p editor)) (editor)
           "Unexpected data change while updating!")
-  (when (data editor)
-    (edk.data:unobserve (data editor) :tag editor))
+  (when (editor-data editor)
+    (edk.data:unobserve (editor-data editor) :tag editor))
   (setf (slot-value editor 'data) data)
   (when data
         (edk.data:observe data
@@ -229,10 +230,11 @@
            (build-editor (edit-info)
              (let ((form (build-form edit-info))
                    (slot-name (car edit-info)))
-               (when (data ed)
-                 (setf (data form)
-                       (slot-value (data ed)
-                                   (find-slot-by-name (data ed) slot-name))))
+               (when (editor-data ed)
+                 (setf (editor-data form)
+                       (slot-value (editor-data ed)
+                                   (find-slot-by-name (editor-data ed)
+                                                      slot-name))))
                (setf (gethash slot-name (subeditors ed)) form)
                form))
            (build-layout (layout-info)
@@ -261,9 +263,10 @@
 
 (defmethod set-widget-from-data ((editor compound-editor))
   (maphash (lambda (slot-name subeditor)
-             (setf (data subeditor)
-                   (slot-value (data editor)
-                               (find-slot-by-name (data editor) slot-name))))
+             (setf (editor-data subeditor)
+                   (slot-value (editor-data editor)
+                               (find-slot-by-name (editor-data editor)
+                                                  slot-name))))
            (subeditors editor)))
 
 ;;; Various editor implementations
@@ -273,10 +276,11 @@
 
 (defmethod set-data-from-widget ((text-entry text-entry))
   (edk.data:with-change-operation ("Change text")
-    (setf (edk.data:value (data text-entry)) (q+:text (widget text-entry)))))
+    (setf (edk.data:value (editor-data text-entry))
+          (q+:text (widget text-entry)))))
 
 (defmethod set-widget-from-data ((text-entry text-entry))
-  (q+:set-text (widget text-entry) (edk.data:value (data text-entry))))
+  (q+:set-text (widget text-entry) (edk.data:value (editor-data text-entry))))
 
 (defun text-entry (&optional data)
   (let ((text-entry (make-instance 'text-entry :data data)))
@@ -287,14 +291,15 @@
 
 (define-slot (line-edit on-editing-finished) ()
   (declare (connected line-edit (editing-finished)))
-  (unless (or (not (data text-entry))
-              (string= (edk.data:value (data text-entry)) (q+:text line-edit)))
+  (unless (or (not (editor-data text-entry))
+              (string= (edk.data:value (editor-data text-entry))
+                       (q+:text line-edit)))
     (set-data-from-widget text-entry)))
 
 (defmethod create-widget ((form text-entry))
   (let ((line-ed (make-instance 'line-edit :text-entry form)))
-    (if (data form)
-        (setf (q+:text line-ed) (edk.data:value (data form)))
+    (if (editor-data form)
+        (setf (q+:text line-ed) (edk.data:value (editor-data form)))
         (setf (q+:enabled line-ed) nil))
     line-ed))
 
@@ -315,16 +320,17 @@
 
 (defmethod set-data-from-widget ((double-spinner double-spinner))
   (edk.data:with-change-operation ("change double")
-    (setf (edk.data:value (data double-spinner))
+    (setf (edk.data:value (editor-data double-spinner))
           (q+:value (widget double-spinner)))))
 
 (defmethod set-widget-from-data ((double-spinner double-spinner))
-  (setf (q+:value (widget double-spinner)) (edk.data:value (data double-spinner))))
+  (setf (q+:value (widget double-spinner))
+        (edk.data:value (editor-data double-spinner))))
 
 (defmethod create-widget ((double-spinner double-spinner))
   (let ((spinbox (make-instance 'double-spinbox :spinner double-spinner)))
-    (if (data double-spinner)
-        (setf (q+:value spinbox) (edk.data:value (data double-spinner)))
+    (if (editor-data double-spinner)
+        (setf (q+:value spinbox) (edk.data:value (editor-data double-spinner)))
         (setf (q+:enabled spinbox) nil))
     (with-slots (minimum maximum step) double-spinner
       (if minimum (setf (q+:minimum spinbox) (coerce minimum 'double-float)))
@@ -352,13 +358,13 @@
 
 (defmethod set-data-from-widget ((selector selector))
   (edk.data:with-change-operation ("select")
-    (setf (edk.data:value (data selector))
+    (setf (edk.data:value (editor-data selector))
           (nth (q+:current-index (widget selector)) (choices selector)))))
 
 (defmethod set-widget-from-data ((selector selector))
   (setf (q+:current-index (widget selector))
         ;; TODO: Maybe specify test predicate?
-        (position (edk.data:value (data selector)) (choices selector))))
+        (position (edk.data:value (editor-data selector)) (choices selector))))
 
 (defmethod create-widget ((form selector))
   (let ((widget (make-instance 'combo-box :selector form)))

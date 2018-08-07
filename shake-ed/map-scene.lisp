@@ -51,7 +51,7 @@
   ((draw-info :initform nil)
    (highlighted-item :initform nil)
    (selected-items :initform nil)
-   (edit-mode :initform :lines)
+   (edit-mode :initform :lines :reader map-scene-edit-mode)
    (brushes :initform (make-array 256 :element-type '(or null mbrush)
                                   :adjustable t :fill-pointer 0))
    ;; Maps qt graphics items to BRUSHES vector index

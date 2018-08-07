@@ -48,6 +48,7 @@
                 #:when-let)
   (:export #:+initial-grid-step+
            #:map-scene
+           #:map-scene-edit-mode
            #:scene->map-unit
            #:clear-map
            #:write-map

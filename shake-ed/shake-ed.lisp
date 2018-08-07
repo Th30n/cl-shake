@@ -98,7 +98,8 @@
 (define-widget main (QMainWindow)
   ((map-file :initform nil)
    (status-info :initform (make-status-info))
-   (mode-action-group :initform nil)))
+   (mode-action-group :initform nil)
+   (sector-ed :initform (make-instance 'shake-ed.props-ed::sector-editor))))
 
 (defun show-status-info (main)
   (with-slots (status-info) main
@@ -242,13 +243,24 @@
     action))
 
 (define-slot (main mode-changed) ((checked bool))
-  (let ((text (q+:text (q+:checked-action mode-action-group))))
-    (change-mode scene (cond
-                         ((string= text "Lines") :lines)
-                         ((string= text "Brushes") :brushes)
-                         ((string= text "Things") :things)
-                         ((string= text "Sectors") :sectors)
-                         (t :invalid)))))
+  (let* ((text (q+:text (q+:checked-action mode-action-group)))
+         (edit-mode (cond
+                      ((string= text "Lines") :lines)
+                      ((string= text "Brushes") :brushes)
+                      ((string= text "Things") :things)
+                      ((string= text "Sectors") :sectors)
+                      (t :invalid)))
+         (prev-edit-mode (map-scene-edit-mode scene)))
+    (when (not (eq prev-edit-mode edit-mode))
+      (change-mode scene edit-mode)
+      (case edit-mode
+        (:sectors
+         (q+:set-widget props-dock (edk.forms:build-widget sector-ed)))
+        (t
+         (when (eq :sectors prev-edit-mode)
+           (finalize (q+:widget props-dock))
+           (edk.forms::destroy-widget sector-ed))
+         (q+:set-widget props-dock props-ed))))))
 
 (define-initializer (main setup)
   (setf (q+:window-title main) "ShakeEd"
