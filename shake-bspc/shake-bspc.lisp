@@ -490,7 +490,8 @@ as NIL."
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
               (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
-                (assert (every (curry #'equalp sector) front-sectors))
+                ;; TODO: Hmm, this doesn't have to hold
+                ;; (assert (every (curry #'equalp sector) front-sectors))
                 (make-leaf :bounds bounds :surfaces rest
                            :subsector
                            (make-subsector :lines convex-region
