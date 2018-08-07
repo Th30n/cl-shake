@@ -38,11 +38,6 @@
     (map->scene-unit (* grid-step (round map-x grid-step)))))
 
 
-(defstruct mbrush
-  "Map representation of SBRUSH:BRUSH."
-  (brush nil :type sbrush:brush)
-  (rotation 0d0 :type double-float))
-
 (defun convert-brush (mbrush)
   (sbrush:brush-rotate (mbrush-brush mbrush)
                        (* deg->rad (mbrush-rotation mbrush))))
@@ -50,7 +45,10 @@
 (define-widget map-scene (QGraphicsScene)
   ((draw-info :initform nil)
    (highlighted-item :initform nil)
+   ;; Selected graphics items.
    (selected-items :initform nil)
+   ;; Selected map data types corresponding to graphics items.
+   (selection :initform nil)
    (edit-mode :initform :lines :reader map-scene-edit-mode)
    (brushes :initform (make-array 256 :element-type '(or null mbrush)
                                   :adjustable t :fill-pointer 0))
@@ -63,12 +61,25 @@
    (view-normals-p :initform nil)
    (grid-step :initform +initial-grid-step+)))
 
+(defun push-selection (map-scene graphics-item data-item)
+  (assert (not (null data-item)))
+  (assert (qinstancep graphics-item 'qgraphicsitem))
+  (with-slots (selected-items selection) map-scene
+    (push graphics-item selected-items)
+    (push data-item selection)))
+
+(defun clear-selection (map-scene)
+  (with-slots (selected-items selection) map-scene
+    (q+:clear-selection map-scene)
+    (setf selected-items nil)
+    (setf selection nil)))
+
 (defun clear-map (scene)
   (with-slots-bound (scene map-scene)
+    (clear-selection scene)
     (q+:clear scene)
-    (setf highlighted-item nil
-          selected-items nil
-          draw-info nil)
+    (setf highlighted-item nil)
+    (setf draw-info nil)
     (setf (fill-pointer brushes) 0)
     (clrhash graphics-item-brush-map)
     (setf (fill-pointer things) 0)
@@ -359,22 +370,26 @@
             (if highlighted-item
                 (progn
                   (select-line highlighted-item)
-                  (push highlighted-item selected-items))
+                  (push-selection
+                   map-scene highlighted-item
+                   (sidedef-for-lineitem map-scene highlighted-item)))
                 (progn
                   (dolist (item selected-items)
                     (set-default-pen item))
-                  (setf selected-items nil))))
+                  (clear-selection map-scene))))
            (:brushes
             (if highlighted-item
                 (progn
                   (dolist (line (q+:child-items highlighted-item))
                     (select-line line))
-                  (push highlighted-item selected-items))
+                  (push-selection
+                   map-scene highlighted-item
+                   (brush-for-graphics-item map-scene highlighted-item)))
                 (progn
                   (dolist (group selected-items)
                     (dolist (line (q+:child-items group))
                       (set-default-pen line)))
-                  (setf selected-items nil))))
+                  (clear-selection map-scene))))
            (:sectors
             (if highlighted-item
                 (progn
@@ -383,12 +398,16 @@
                        (brush (q+:make-qbrush color)))
                     (q+:set-brush highlighted-item brush))
                   (select-line highlighted-item)
-                  (push highlighted-item selected-items))
+                  (push-selection
+                   map-scene highlighted-item
+                   (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+                     (nth-value
+                      1 (map-scene-hovered-brush map-scene scene-pos)))))
                 (progn
                   (dolist (item selected-items)
                     (q+:remove-item map-scene item)
                     (finalize item))
-                  (setf selected-items nil))))
+                  (clear-selection map-scene))))
            (:things nil))
          (signal! map-scene (selection-changed))))
       (t (stop-overriding)))))
@@ -430,6 +449,7 @@
         (update-brush-drawing draw-info scene-pos)))))
 
 (defun map-scene-hovered-brush (map-scene scene-pos)
+  "Return graphics item and its `MBRUSH' under the given SCENE-POS."
   (flet ((point-in-mbrush-p (point mbrush)
            (sbsp:point-in-hull-p point
                                  (mapcar #'sbsp:sidedef-lineseg
@@ -514,7 +534,7 @@
          (q+:remove-item scene group)
          (finalize group)
          (map-scene-remove-brush scene group))
-       (setf selected-items nil)))))
+       (clear-selection scene)))))
 
 (define-override (map-scene key-press-event) (key-event)
   (cond
@@ -586,10 +606,15 @@
               (when (line-match-p (sbsp:sidedef-lineseg rotated-surf))
                 (return orig-surf)))))))))
 
+(defun map-scene-selected-brushes (scene)
+  (with-slots (selection edit-mode) scene
+    (when (member edit-mode '(:brushes :sectors))
+      selection)))
+
 (defun selected-sidedefs (scene)
-  (with-slots (selected-items edit-mode) scene
+  (with-slots (selection edit-mode) scene
     (when (eq edit-mode :lines)
-      (mapcar (curry #'sidedef-for-lineitem scene) selected-items))))
+      selection)))
 
 (defun rotate-selected (scene)
   (with-slots (selected-items edit-mode) scene

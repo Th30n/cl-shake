@@ -25,7 +25,11 @@
 
 (defpackage #:shake-ed.model
   (:use #:cl #:shake-utils)
-  (:export #:sector
+  (:export #:mbrush
+           #:copy-mbrush #:make-mbrush #:mbrush-p
+           #:mbrush-brush
+           #:mbrush-rotation
+           #:sector
            #:sector-floor-height
            #:texture
            #:texture-draw-mode
@@ -34,7 +38,7 @@
            #:texture-offset-y))
 
 (defpackage #:shake-ed.map-scene
-  (:use #:cl+qt #:shake-utils)
+  (:use #:cl+qt #:shake-utils #:shake-ed.model)
   (:import-from #:shiva
                 #:deg->rad
                 #:v #:vx #:vy #:v=
@@ -49,11 +53,11 @@
   (:export #:+initial-grid-step+
            #:map-scene
            #:map-scene-edit-mode
+           #:map-scene-selected-brushes
            #:scene->map-unit
            #:clear-map
            #:write-map
            #:read-map
-           #:mbrush
            #:convert-brush
            #:remove-selected
            #:rotate-selected
@@ -70,6 +74,8 @@
                 #:length=
                 #:when-let)
   (:export #:properties-editor
+           #:sector-editor
+           #:sector-editor-brushes
            #:target))
 
 (defpackage #:shake-ed

@@ -17,6 +17,16 @@
 (in-package #:shake-ed.props-ed)
 (in-readtable :qtools)
 
+(defun unobserve-slots (data accessors &key tag)
+  (when data
+    (dolist (accessor accessors)
+      (edk.data:unobserve (funcall accessor data) :tag tag))))
+
+(defun observe-slots (data accessors observer &key tag)
+  (when data
+    (dolist (accessor accessors)
+      (edk.data:observe (funcall accessor data) observer :tag tag))))
+
 (defgeneric target (editor) (:documentation "Read the editor target"))
 (defgeneric (setf target) (target editor)
   (:documentation "Set the editor target and update widget contents"))
@@ -93,14 +103,51 @@
 ;;; `sector-editor'
 
 (defclass sector-editor (edk.forms:compound-editor)
-  ())
+  ((brushes :initform nil :reader sector-editor-brushes)))
 
 (defmethod initialize-instance :after ((ed sector-editor) &key)
   (setf (edk.forms:layout-info ed)
         '(edk.forms:left-right
           (:form floor-height-lbl edk.forms:label "Floor height")
           (:edit floor-height edk.forms:double-spinner
-           :min -4 :max 4 :step 0.05))))
+           :min -4 :max 4 :step 0.01))))
+
+(defmethod (setf sector-editor-brushes) (new-brushes (ed sector-editor))
+  (let ((sector-accessors (list #'sector-floor-height)))
+    (unobserve-slots (edk.forms:editor-data ed) sector-accessors :tag ed)
+    (with-slots (brushes) ed
+      (setf brushes new-brushes)
+      (if (not brushes)
+          (setf (edk.forms:editor-data ed) nil)
+          (let ((back-sector
+                 (and brushes
+                      (sbsp:sidedef-back-sector
+                       (car (sbrush:brush-surfaces (mbrush-brush (car brushes))))))))
+            (setf (edk.forms:editor-data ed)
+                  (make-instance
+                   'sector :floor-height
+                   (make-instance 'edk.data:boxed-double
+                                  :value (if back-sector
+                                             (sbsp:sector-floor-height back-sector)
+                                             0d0)))))))
+    (flet ((sector-changed ()
+             (with-slots (brushes) ed
+               (when brushes
+                 (let ((sidedefs
+                        (loop for mbrush in brushes appending
+                             (sbrush:brush-surfaces (mbrush-brush mbrush)))))
+                   (dolist (sidedef sidedefs)
+                     (let* ((back-sector (sbsp:sidedef-back-sector sidedef))
+                            (sector (edk.forms:editor-data ed))
+                            (floor-height (edk.data:value (sector-floor-height sector))))
+                       (if back-sector
+                           (setf (sbsp:sector-floor-height back-sector)
+                                 floor-height)
+                           (setf (sbsp:sidedef-back-sector sidedef)
+                                 (sbsp:make-sector :floor-height floor-height))))))))))
+      (observe-slots (edk.forms:editor-data ed) sector-accessors
+                     #'sector-changed :tag ed)))
+  new-brushes)
 
 ;;; End `sector-editor'
 
@@ -135,25 +182,21 @@
   (with-slots (sidedefs tex-ed) editor
     (let ((texture-accessors (list #'texture-name #'texture-draw-mode
                                    #'texture-offset-x #'texture-offset-y)))
-      (when-let ((tex-ed-data (edk.forms:editor-data tex-ed)))
-        (dolist (texture-accessor texture-accessors)
-          (edk.data:unobserve (funcall texture-accessor tex-ed-data)
-                              :tag editor)))
+      (unobserve-slots (edk.forms:editor-data tex-ed) texture-accessors
+                       :tag editor)
       (setf sidedefs target)
       (when sidedefs
         (setf (target tex-ed) (sbsp:sidedef-texinfo (first sidedefs)))
         (flet ((texture-changed ()
-                 (let ((texinfo (target tex-ed)))
+                 (when-let ((texinfo (target tex-ed)))
                    (unless (sbsp:sidedef-texinfo (first sidedefs))
                      (setf (sbsp:sidedef-texinfo (first sidedefs)) texinfo))
                    (dolist (side (cdr sidedefs))
                      (let ((tex-copy (sbsp:copy-texinfo texinfo)))
                        (zap #'copy-seq (sbsp:texinfo-offset tex-copy))
                        (setf (sbsp:sidedef-texinfo side) tex-copy))))))
-          (dolist (texture-accessor texture-accessors)
-            (edk.data:observe (funcall texture-accessor
-                                       (edk.forms:editor-data tex-ed))
-                              #'texture-changed :tag editor)))))
+          (observe-slots (edk.forms:editor-data tex-ed) texture-accessors
+                         #'texture-changed :tag editor))))
     (q+:set-enabled editor (when sidedefs t)))
   target)
 

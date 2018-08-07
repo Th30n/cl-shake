@@ -329,6 +329,7 @@
 
 (defmethod create-widget ((double-spinner double-spinner))
   (let ((spinbox (make-instance 'double-spinbox :spinner double-spinner)))
+    (q+:set-decimals spinbox 3)
     (if (editor-data double-spinner)
         (setf (q+:value spinbox) (edk.data:value (editor-data double-spinner)))
         (setf (q+:enabled spinbox) nil))

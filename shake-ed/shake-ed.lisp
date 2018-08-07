@@ -99,7 +99,7 @@
   ((map-file :initform nil)
    (status-info :initform (make-status-info))
    (mode-action-group :initform nil)
-   (sector-ed :initform (make-instance 'shake-ed.props-ed::sector-editor))))
+   (sector-ed :initform (make-instance 'shake-ed.props-ed:sector-editor))))
 
 (defun show-status-info (main)
   (with-slots (status-info) main
@@ -117,7 +117,12 @@
 
 (define-slot (main scene-selection-changed) ()
   (declare (connected scene (selection-changed)))
-  (setf (target props-ed) (selected-sidedefs scene)))
+  (case (map-scene-edit-mode scene)
+    (:sectors
+     (setf (sector-editor-brushes sector-ed)
+           (map-scene-selected-brushes scene)))
+    (t
+     (setf (target props-ed) (selected-sidedefs scene)))))
 
 (define-slot (main mouse-scene-pos) ((x double) (y double))
   (declare (connected scene (mouse-scene-pos double double)))
@@ -259,7 +264,7 @@
         (t
          (when (eq :sectors prev-edit-mode)
            (finalize (q+:widget props-dock))
-           (edk.forms::destroy-widget sector-ed))
+           (edk.forms:destroy-widget sector-ed))
          (q+:set-widget props-dock props-ed))))))
 
 (define-initializer (main setup)

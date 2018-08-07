@@ -89,7 +89,8 @@
 (defun write-vec (vec stream)
   (format stream "(v")
   (dotimes (i (length vec))
-    (format stream " ~S" (aref vec i)))
+    (write-string (string-upcase (format nil " ~S" (aref vec i)))
+                  stream))
   (format stream ")"))
 
 (defun read-vec-form (form)
@@ -126,6 +127,9 @@
                        (format stream " ")
                        ;; This will not work if write-slot-type is not imported.
                        (,(symbolicate 'write- slot-type) ,slot-name stream)))
+                   ((eq 'float64 slot-type)
+                    `(write-string (string-upcase (format nil " ~S" ,slot-name))
+                                   stream))
                    (t
                     `(format stream " ~S" ,slot-name)))))
              (read-nullable-slot (slot-name slot-type)
@@ -172,7 +176,7 @@
 
 (defstruct sector
   "A sector surrounded by lines. Stores information about floor and ceiling."
-  (lines nil :type list)
+  ;; (lines nil :type list) ;; Unused?
   (floor-height 0d0 :type double-float)
   (floor-texinfo nil :type (or null texinfo))
   (ceiling-height 1d0 :type double-float)

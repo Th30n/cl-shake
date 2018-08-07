@@ -22,6 +22,7 @@
   (:nicknames #:edk.forms)
   (:use #:cl+qt)
   (:export #:build-widget
+           #:destroy-widget
            #:label
            #:text
            #:left-right

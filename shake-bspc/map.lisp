@@ -38,7 +38,9 @@
 (defun write-map-thing (thing stream)
   (with-struct (map-thing- type pos angle brushes) thing
     (format stream ":THING~%")
-    (format stream "~S~%~S ~S~%~S~%" type (vx pos) (vy pos) angle)
+    (write-string (string-upcase
+                   (format nil "~S~%~S ~S~%~S~%" type (vx pos) (vy pos) angle))
+                  stream)
     (format stream "~S~%" (length brushes))
     (dolist (brush brushes)
       (sbrush:write-brush brush stream))))
