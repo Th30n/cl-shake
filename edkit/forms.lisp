@@ -209,6 +209,15 @@
                 laid out in the GUI and mapped to slots of DATA."))
   (:documentation "Base class for editors of compound `EDK.DATA:DATA' types."))
 
+(defun find-slot-by-name (data name)
+  "Find the full slot name by providing a symbol NAME regardless of package."
+  (declare (type edk.data:data data))
+  (declare (type symbol name))
+  (find (symbol-name name)
+        (mapcar #'c2mop:slot-definition-name
+                (c2mop:class-slots (class-of data)))
+        :key #'symbol-name :test #'string=))
+
 (defmethod create-widget :before ((ed compound-editor))
   (labels ((build-form (form-info)
              (let ((form-name (car form-info))
@@ -220,8 +229,10 @@
            (build-editor (edit-info)
              (let ((form (build-form edit-info))
                    (slot-name (car edit-info)))
-               (setf (data form) (slot-value (data ed) slot-name)
-                     (gethash slot-name (subeditors ed)) form)
+               (setf (data form)
+                     (slot-value (data ed)
+                                 (find-slot-by-name (data ed) slot-name)))
+               (setf (gethash slot-name (subeditors ed)) form)
                form))
            (build-layout (layout-info)
              (if (atom layout-info)
@@ -249,7 +260,9 @@
 
 (defmethod set-widget-from-data ((editor compound-editor))
   (maphash (lambda (slot-name subeditor)
-             (setf (data subeditor) (slot-value (data editor) slot-name)))
+             (setf (data subeditor)
+                   (slot-value (data editor)
+                               (find-slot-by-name (data editor) slot-name))))
            (subeditors editor)))
 
 ;;; Various editor implementations
