@@ -101,21 +101,40 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
 
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
-    (let ((floor-bottom (aif (sbsp:sidedef-front-sector sidedef)
-                             (sbsp:sector-floor-height it)
-                             0))
-          (floor-top (aif (sbsp:sidedef-back-sector sidedef)
-                          (sbsp:sector-floor-height it)
-                          1)))
+    (let* ((front-sector (sbsp:sidedef-front-sector sidedef))
+           (back-sector (sbsp:sidedef-back-sector sidedef))
+           (floor-bottom (aif front-sector
+                              (sbsp:sector-floor-height it)
+                              0))
+           (floor-top (aif back-sector
+                           (sbsp:sector-floor-height it)
+                           1))
+           (ceiling-top (aif back-sector
+                             (sbsp:sector-ceiling-height it)
+                             1))
+           (ceiling-bottom (aif front-sector
+                                (sbsp:sector-ceiling-height it)
+                                ceiling-top)))
       (when (double< (coerce floor-top 'double-float)
                      (coerce floor-bottom 'double-float))
         (rotatef floor-bottom floor-top))
-      (let ((start-3d-bot (v2->v3 start floor-bottom))
-            (end-3d-bot (v2->v3 end floor-bottom))
-            (start-3d-top (v2->v3 start floor-top))
-            (end-3d-top (v2->v3 end floor-top)))
-        (list start-3d-top end-3d-top start-3d-bot
-              start-3d-bot end-3d-top end-3d-bot)))))
+      (when (double< (coerce ceiling-top 'double-float)
+                     (coerce ceiling-bottom 'double-float))
+        (rotatef ceiling-bottom ceiling-top))
+      (append
+       (let ((start-3d-bot (v2->v3 start floor-bottom))
+             (end-3d-bot (v2->v3 end floor-bottom))
+             (start-3d-top (v2->v3 start floor-top))
+             (end-3d-top (v2->v3 end floor-top)))
+         (list start-3d-top end-3d-top start-3d-bot
+               start-3d-bot end-3d-top end-3d-bot))
+       (when (or front-sector back-sector)
+         (let ((start-3d-bot (v2->v3 start ceiling-bottom))
+               (end-3d-bot (v2->v3 end ceiling-bottom))
+               (start-3d-top (v2->v3 start ceiling-top))
+               (end-3d-top (v2->v3 end ceiling-top)))
+           (list start-3d-top end-3d-top start-3d-bot
+                 start-3d-bot end-3d-top end-3d-bot)))))))
 
 (defun make-texcoords (sidedef)
   (let ((texinfo (sbsp:sidedef-texinfo sidedef)))
@@ -144,10 +163,14 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
          (tex-name (aif (sbsp:sidedef-texinfo sidedef)
                         (string-downcase (sbsp:texinfo-name it))))
          (num-verts (list-length positions))
-         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts))
+         (texcoords (or (make-texcoords sidedef)
+                        (make-list 6 :initial-element (v 0 0)))))
+    (when (or (sbsp:sidedef-front-sector sidedef)
+              (sbsp:sidedef-back-sector sidedef))
+      (setf texcoords (append texcoords (copy-list texcoords))))
     (loop for pos in positions
-       and uv in (or (make-texcoords sidedef)
-                     (make-list 6 :initial-element (v 0 0)))
+       and uv in texcoords
        and i from 0 do
          (setf (cffi:mem-aref verts '(:struct vertex-data) i)
                (make-l-vertex-data
