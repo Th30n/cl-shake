@@ -3,17 +3,15 @@
 (defpackage #:edkit.data
   (:nicknames #:edk.data)
   (:use #:closer-common-lisp)
-  (:export #:ref
-           #:get-val
-           #:set-val
-           #:data
+  (:export #:data
            #:data-class
            #:defdata
            #:notify
            #:observe
            #:unobserve
-           #:boxed-string
            #:boxed-double
+           #:boxed-string
+           #:boxed-symbol
            #:value
            #:with-change-tracker
            #:with-change-operation

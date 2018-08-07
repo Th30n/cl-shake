@@ -23,6 +23,16 @@
   (:export #:vector->qcolor
            #:qcolor->vector))
 
+(defpackage #:shake-ed.model
+  (:use #:cl #:shake-utils)
+  (:export #:sector
+           #:sector-floor-height
+           #:texture
+           #:texture-draw-mode
+           #:texture-name
+           #:texture-offset-x
+           #:texture-offset-y))
+
 (defpackage #:shake-ed.map-scene
   (:use #:cl+qt #:shake-utils)
   (:import-from #:shiva
@@ -53,7 +63,7 @@
            #:toggle-view-normals))
 
 (defpackage #:shake-ed.props-ed
-  (:use #:cl+qt #:shake-utils #:shake-ed.utils)
+  (:use #:cl+qt #:shake-utils #:shake-ed.utils #:shake-ed.model)
   (:import-from #:alexandria
                 #:ends-with-subseq
                 #:length=

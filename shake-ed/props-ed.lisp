@@ -21,19 +21,7 @@
 (defgeneric (setf target) (target editor)
   (:documentation "Set the editor target and update widget contents"))
 
-;; TODO: Move this to a separate data model file
-(edk.data:defdata texture ()
-  ((offset-x :type edk.data:boxed-double :initarg :offset-x
-             :reader texture-offset-x
-             :initform (make-instance 'edk.data:boxed-double))
-   (offset-y :type edk.data:boxed-double :initarg :offset-y
-             :reader texture-offset-y
-             :initform (make-instance 'edk.data:boxed-double))
-   (name :type edk.data:boxed-string :initarg :name :reader texture-name
-         :initform (make-instance 'edk.data:boxed-string))
-   (draw-mode :type edk.data::boxed-symbol :initarg :draw-mode
-              :reader texture-draw-mode
-              :initform (make-instance 'edk.data::boxed-symbol :value :tile))))
+;; `texture-editor'
 
 (defclass texture-editor (edk.forms:compound-editor)
   ((texinfo :initform nil)))
@@ -99,10 +87,30 @@
                                   :value (sbsp:texinfo-draw-mode texinfo))))))
   target)
 
+;;; End `texture-editor'
+
+;;; `sector-editor'
+
+(defclass sector-editor (edk.forms:compound-editor)
+  ())
+
+(defmethod initialize-instance :after ((ed sector-editor) &key)
+  (setf (edk.forms:layout-info ed)
+        '(edk.forms:left-right
+          (:form floor-height-lbl edk.forms:label "Floor height")
+          (:edit floor-height edk.forms:double-spinner
+           :min -4 :max 4 :step 0.05))))
+
+;;; End `sector-editor'
+
+;;; `properties-editor'
+
 (define-widget properties-editor (QWidget)
   ((sidedefs :initform nil :accessor sidedefs)
    (color-btn :initform nil)
-   (tex-ed :initform (make-instance 'texture-editor :data (make-instance 'texture)))))
+   (tex-ed :initform (make-instance 'texture-editor
+                                    :data (make-instance 'texture)))
+   (sector-ed :initform (make-instance 'sector-editor))))
 
 (defun color-btn-clicked (properties-editor)
   (when-let ((sidedef (first (sidedefs properties-editor))))
@@ -120,7 +128,8 @@
           (edk.forms:button
            "Color" (lambda () (color-btn-clicked properties-editor))))
     (q+:add-widget layout (edk.forms:build-widget color-btn))
-    (q+:add-widget layout (edk.forms:build-widget tex-ed) 0 (q+:qt.align-top)))
+    (q+:add-widget layout (edk.forms:build-widget tex-ed) 0 (q+:qt.align-top))
+    (q+:add-widget layout (edk.forms:build-widget sector-ed) 0 (q+:qt.align-top)))
   (unless sidedefs
     (q+:set-enabled properties-editor nil)))
 
@@ -147,3 +156,5 @@
         (setf (target tex-ed) (sbsp:sidedef-texinfo (first sidedefs)))))
     (q+:set-enabled editor (when sidedefs t)))
   target)
+
+;;; End `properties-editor'

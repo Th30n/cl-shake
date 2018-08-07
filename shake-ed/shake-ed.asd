@@ -26,6 +26,7 @@
   :serial t
   :components ((:file "package")
                (:file "utils")
+               (:file "model")
                (:file "map-scene")
                (:file "props-ed")
                (:file "shake-ed")))
