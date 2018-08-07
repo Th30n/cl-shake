@@ -82,7 +82,8 @@
 
 (defstruct (mleaf (:include sbsp:leaf))
   "In memory, model leaf node of model BSP."
-  floor-geometry)
+  floor-geometry
+  ceiling-geometry)
 
 (declaim (inline make-bsp-model))
 (defstruct bsp-model
@@ -109,12 +110,12 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
            (floor-top (aif back-sector
                            (sbsp:sector-floor-height it)
                            1))
-           (ceiling-top (aif back-sector
+           (ceiling-top (aif front-sector
                              (sbsp:sector-ceiling-height it)
                              1))
-           (ceiling-bottom (aif front-sector
+           (ceiling-bottom (aif back-sector
                                 (sbsp:sector-ceiling-height it)
-                                ceiling-top)))
+                                1)))
       (when (double< (coerce floor-top 'double-float)
                      (coerce floor-bottom 'double-float))
         (rotatef floor-bottom floor-top))
@@ -240,10 +241,13 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
 
 (defun leaf->mleaf (leaf)
   (let* ((subsector (sbsp::leaf-subsector leaf))
-         (floor-sector (sbsp::subsector-orig-sector subsector))
-         (floor-height (if floor-sector
-                           (sbsp:sector-floor-height floor-sector)
-                           0)))
+         (sector (sbsp::subsector-orig-sector subsector))
+         (floor-height (if sector
+                           (sbsp:sector-floor-height sector)
+                           0))
+         (ceiling-height (if sector
+                           (sbsp:sector-ceiling-height sector)
+                           1)))
     (make-mleaf :bounds (sbsp:leaf-bounds leaf)
                 :surfaces (sbsp:leaf-surfaces leaf)
                 :contents (sbsp:leaf-contents leaf)
@@ -253,7 +257,13 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
                   (polygon->surf-triangles
                    lines
                    floor-height
-                   :color (dbg-sector-color))))))
+                   :color (dbg-sector-color)))
+                :ceiling-geometry
+                (when-let ((lines (sbsp::subsector-lines subsector)))
+                  (polygon->surf-triangles
+                   lines
+                   ceiling-height
+                   :color (v 0.1 0.1 0.1))))))
 
 (defun nadapt-nodes (bsp)
   (sbsp:bsp-rec bsp
@@ -289,9 +299,11 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
      (with-struct (bsp-model- nodes) model
        (sbsp:bsp-trav nodes (constantly nil)
                       (lambda (leaf)
-                        (with-struct (mleaf- surfaces floor-geometry) leaf
+                        (with-struct (mleaf- surfaces floor-geometry ceiling-geometry) leaf
                           (when floor-geometry
                             (free-surf-triangles floor-geometry))
+                          (when ceiling-geometry
+                            (free-surf-triangles ceiling-geometry))
                           (dolist (surf surfaces)
                             (free-surf-triangles (surface-geometry surf))))))))))
 

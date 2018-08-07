@@ -53,6 +53,7 @@
            #:bsp-model-hull
            #:bsp-model-things
            #:mleaf-floor-geometry
+           #:mleaf-ceiling-geometry
            #:surface
            #:surface-geometry
            #:with-model-manager

@@ -533,6 +533,8 @@
                                                      (vy position)))
                        (aif (smdl:mleaf-floor-geometry node)
                             (srend:render-surface it mvp))
+                       (aif (smdl:mleaf-ceiling-geometry node)
+                            (srend:render-surface it mvp))
                        (dolist (surf (sbsp:leaf-surfaces node))
                          (srend:render-surface (smdl:surface-geometry surf) mvp)))
                      ;; split node
