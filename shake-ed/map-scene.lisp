@@ -455,13 +455,23 @@
                                  (mapcar #'sbsp:sidedef-lineseg
                                          (sbrush:brush-surfaces
                                           (convert-brush mbrush))))))
-    (dolist (item (items-at map-scene scene-pos))
-      (let ((mbrush (brush-for-graphics-item map-scene item)))
-      (when (and (qinstancep item 'qgraphicsitemgroup)
-                 (point-in-mbrush-p
-                  (v (q+:x scene-pos) (q+:y scene-pos))
-                  mbrush))
-        (return (values item mbrush)))))))
+    (let (hovered-brush)
+      (dolist (item (items-at map-scene scene-pos))
+        (let ((mbrush (brush-for-graphics-item map-scene item)))
+          (when (and (qinstancep item 'qgraphicsitemgroup)
+                     (point-in-mbrush-p
+                      (v (q+:x scene-pos) (q+:y scene-pos))
+                      mbrush))
+            (if (not hovered-brush)
+                (setf hovered-brush (list item mbrush))
+                (let ((hovered-bounds (sbrush::brush-bounds
+                                       (mbrush-brush (second hovered-brush))))
+                      (bounds (sbrush::brush-bounds (mbrush-brush mbrush))))
+                  (when (shiva:double<
+                         (shiva:vdistsq (car bounds) (cdr bounds))
+                         (shiva:vdistsq (car hovered-bounds) (cdr hovered-bounds)))
+                    (setf hovered-brush (list item mbrush))))))))
+      (values-list hovered-brush))))
 
 (defun brushes-mode-handle-mouse-move (map-scene mouse-event)
   (with-slots (highlighted-item selected-items) map-scene
