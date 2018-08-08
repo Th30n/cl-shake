@@ -185,6 +185,8 @@ direction."
                                                       back-sector)
                                                      (sector-floor-height
                                                       front-sector)))
+                                    ;; TODO: What about same floor, but
+                                    ;; different ceiling or other?
                                     (setf (sidedef-front-sector surf)
                                           back-sector)))
                                 surf)
