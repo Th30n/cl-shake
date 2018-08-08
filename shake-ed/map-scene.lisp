@@ -351,6 +351,43 @@
           ((string= (q+:text player-spawn-action) (q+:text res))
            (insert-player-spawn scene scene-pos)))))))
 
+(defun select-line (item)
+  (with-finalizing ((pen (make-qpen (map->scene-unit 4)
+                                    (q+:qt.blue))))
+    (setf (q+:pen item) pen)))
+
+(defun select-sidedef (map-scene highlighted-items)
+  (declare (type map-scene map-scene))
+  (declare (type list highlighted-items))
+  (labels ((lineitem-name (item)
+             (let* ((mbrush (brush-for-graphics-item map-scene
+                                                     (q+:parent-item item)))
+                    (center (sbrush::brush-center (mbrush-brush mbrush))))
+               (format nil "Line for brush at (~A, ~A)"
+                       (scene->map-unit (vx center))
+                       (scene->map-unit (vy center)))))
+           (show-choices-menu ()
+             (with-finalizing* ((pos (q+:qcursor-pos))
+                                (menu (q+:make-qmenu "Lines")))
+               (let* ((line-names (mapcar #'lineitem-name highlighted-items))
+                      (actions (mapcar (lambda (name)
+                                         (q+:add-action menu name))
+                                       line-names)))
+                 (with-finalizing ((res (q+:exec menu pos)))
+                   (unless (null-qobject-p res)
+                     (position (q+:text res) actions
+                               :key #'q+:text :test #'string=)))))))
+    (let (chosen-item)
+      (if (null (cdr highlighted-items))
+          (setf chosen-item (car highlighted-items))
+          (when-let ((item-index (show-choices-menu)))
+            (setf chosen-item (nth item-index highlighted-items))))
+      (when chosen-item
+        (select-line chosen-item)
+        (push-selection
+         map-scene chosen-item
+         (sidedef-for-lineitem map-scene chosen-item))))))
+
 (define-override (map-scene mouse-press-event) (mouse-event)
   (when (within-scene-p map-scene (q+:scene-pos mouse-event))
     (cond
@@ -361,55 +398,47 @@
             (add-or-update-brush map-scene scene-pos))
            (:things (show-things-menu map-scene scene-pos)))))
       ((enum-equal (q+:button mouse-event) (q+:qt.left-button))
-       (flet ((select-line (item)
-                (with-finalizing ((pen (make-qpen (map->scene-unit 4)
-                                                  (q+:qt.blue))))
-                  (setf (q+:pen item) pen))))
-         (case edit-mode
-           (:lines
-            (if highlighted-item
-                (progn
-                  (select-line highlighted-item)
-                  (push-selection
-                   map-scene highlighted-item
-                   (sidedef-for-lineitem map-scene highlighted-item)))
-                (progn
-                  (dolist (item selected-items)
-                    (set-default-pen item))
-                  (clear-selection map-scene))))
-           (:brushes
-            (if highlighted-item
-                (progn
-                  (dolist (line (q+:child-items highlighted-item))
-                    (select-line line))
-                  (push-selection
-                   map-scene highlighted-item
-                   (brush-for-graphics-item map-scene highlighted-item)))
-                (progn
-                  (dolist (group selected-items)
-                    (dolist (line (q+:child-items group))
-                      (set-default-pen line)))
-                  (clear-selection map-scene))))
-           (:sectors
-            (if highlighted-item
-                (progn
-                  (with-finalizing*
-                      ((color (q+:make-qcolor (q+:qt.cyan)))
-                       (brush (q+:make-qbrush color)))
-                    (q+:set-brush highlighted-item brush))
-                  (select-line highlighted-item)
-                  (push-selection
-                   map-scene highlighted-item
-                   (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
-                     (nth-value
-                      1 (map-scene-hovered-brush map-scene scene-pos)))))
-                (progn
-                  (dolist (item selected-items)
-                    (q+:remove-item map-scene item)
-                    (finalize item))
-                  (clear-selection map-scene))))
-           (:things nil))
-         (signal! map-scene (selection-changed))))
+       (case edit-mode
+         (:lines
+          (if highlighted-item
+              (select-sidedef map-scene highlighted-item)
+              (progn
+                (dolist (item selected-items)
+                  (set-default-pen item))
+                (clear-selection map-scene))))
+         (:brushes
+          (if highlighted-item
+              (progn
+                (dolist (line (q+:child-items highlighted-item))
+                  (select-line line))
+                (push-selection
+                 map-scene highlighted-item
+                 (brush-for-graphics-item map-scene highlighted-item)))
+              (progn
+                (dolist (group selected-items)
+                  (dolist (line (q+:child-items group))
+                    (set-default-pen line)))
+                (clear-selection map-scene))))
+         (:sectors
+          (if highlighted-item
+              (progn
+                (with-finalizing*
+                    ((color (q+:make-qcolor (q+:qt.cyan)))
+                     (brush (q+:make-qbrush color)))
+                  (q+:set-brush highlighted-item brush))
+                (select-line highlighted-item)
+                (push-selection
+                 map-scene highlighted-item
+                 (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
+                   (nth-value
+                    1 (map-scene-hovered-brush map-scene scene-pos)))))
+              (progn
+                (dolist (item selected-items)
+                  (q+:remove-item map-scene item)
+                  (finalize item))
+                (clear-selection map-scene))))
+         (:things nil))
+       (signal! map-scene (selection-changed)))
       (t (stop-overriding)))))
 
 (defun items-at (map-scene scene-pos)
@@ -420,30 +449,38 @@
     (q+:items map-scene center-x center-y size size
               (q+:qt.intersects-item-shape) (q+:qt.descending-order))))
 
-(defun highlight-line (item selected-items)
-  (unless (member item selected-items)
-    (with-finalizing ((pen (make-qpen (map->scene-unit 4)
-                                      (q+:qt.dark-blue))))
-      (setf (q+:pen item) pen))))
+(defun highlight-line (item-or-items selected-items)
+  (flet ((set-pen (item)
+           (unless (member item selected-items)
+             (with-finalizing ((pen (make-qpen (map->scene-unit 4)
+                                               (q+:qt.dark-blue))))
+               (setf (q+:pen item) pen)))))
+    (if (listp item-or-items)
+        (dolist (item item-or-items) (set-pen item))
+        (set-pen item-or-items))))
 
-(defun unhighlight-line (item selected-items)
-  (unless (member item selected-items)
-    (set-default-pen item)))
+(defun unhighlight-line (item-or-items selected-items)
+  (flet ((set-pen (item)
+           (unless (member item selected-items)
+             (set-default-pen item))))
+    (if (listp item-or-items)
+        (dolist (item item-or-items) (set-pen item))
+        (set-pen item-or-items))))
 
 (defun lines-mode-handle-mouse-move (map-scene mouse-event)
   (with-slots (highlighted-item selected-items draw-info grid-step) map-scene
-    (flet ((hovered-lineitem ()
+    (flet ((hovered-lineitems ()
              (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
-               (dolist (item (items-at map-scene scene-pos))
-                 (when (qinstancep item 'qgraphicslineitem)
-                   (return item))))))
+               (loop for item in (items-at map-scene scene-pos)
+                  when (qinstancep item 'qgraphicslineitem)
+                  collect item))))
       (when highlighted-item
         (unhighlight-line highlighted-item selected-items)
         (setf highlighted-item nil))
       (unless draw-info
-        (when-let ((hover-item (hovered-lineitem)))
-          (highlight-line hover-item selected-items)
-          (setf highlighted-item hover-item))))
+        (when-let ((hover-items (hovered-lineitems)))
+          (highlight-line hover-items selected-items)
+          (setf highlighted-item hover-items))))
     (when (and draw-info (within-scene-p map-scene (q+:scene-pos mouse-event)))
       (let ((scene-pos (scene-pos-from-mouse mouse-event grid-step)))
         (update-brush-drawing draw-info scene-pos)))))
@@ -473,21 +510,22 @@
                     (setf hovered-brush (list item mbrush))))))))
       (values-list hovered-brush))))
 
+(defun unhighlight-brush (group selected-items)
+  (unless (member group selected-items)
+    (dolist (line (q+:child-items group))
+      (unhighlight-line line selected-items))))
+
 (defun brushes-mode-handle-mouse-move (map-scene mouse-event)
   (with-slots (highlighted-item selected-items) map-scene
     (flet ((highlight-brush (group)
              (unless (member group selected-items)
                (dolist (line (q+:child-items group))
                  (highlight-line line selected-items))))
-           (unhighlight-brush (group)
-             (unless (member group selected-items)
-               (dolist (line (q+:child-items group))
-                 (unhighlight-line line selected-items))))
            (hovered-brush ()
              (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
                (map-scene-hovered-brush map-scene scene-pos))))
       (when highlighted-item
-        (unhighlight-brush highlighted-item)
+        (unhighlight-brush highlighted-item selected-items)
         (setf highlighted-item nil))
       (when-let ((hover-item (hovered-brush)))
         (highlight-brush hover-item)
@@ -644,15 +682,24 @@
   (with-slots (edit-mode highlighted-item selected-items) scene
     (unless (eq edit-mode mode)
       ;; TODO: Move this to some kind of `on-mode-exit' function.
-      (when (eq :sectors edit-mode)
-        (when highlighted-item
-          (when (not (member highlighted-item selected-items))
-            (q+:remove-item scene highlighted-item)
-            (finalize highlighted-item))
-          (setf highlighted-item nil))
-        (dolist (item selected-items)
-          (q+:remove-item scene item)
-          (finalize item)))
+      (case edit-mode
+        (:sectors
+         (when highlighted-item
+           (when (not (member highlighted-item selected-items))
+             (q+:remove-item scene highlighted-item)
+             (finalize highlighted-item))
+           (setf highlighted-item nil))
+         (dolist (item selected-items)
+           (q+:remove-item scene item)
+           (finalize item)))
+        (:brushes
+         (when highlighted-item
+           (unhighlight-brush highlighted-item selected-items)
+           (setf highlighted-item nil)))
+        (:lines
+         (when highlighted-item
+           (unhighlight-line highlighted-item selected-items)
+           (setf highlighted-item nil))))
       (cancel-editing scene)
       (q+:clear-selection scene)
       (setf edit-mode mode))))
