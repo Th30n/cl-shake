@@ -73,47 +73,56 @@
 (define-extract-frustum-plane near v+ 2)
 (define-extract-frustum-plane far v- 2)
 
+(defun intersect-plane (plane mins maxs bound-y)
+  "Intersect a PLANE with AABB defined MINS and MAXS.  BOUND-Y is used to lift
+  the bounds to 3D.  Based on the algorithm from Real-Time Rendering 3rd
+  edition, 16.10.1 AABB"
+  (declare (optimize (speed 3)))
+  (declare (type plane plane)
+           (type (vec 2) mins maxs)
+           (type double-float bound-y))
+  (declare (inline vscale))
+  (with-struct (plane- normal dist) plane
+    (let ((center (make-array 3 :element-type 'double-float))
+          (h (make-array 2 :element-type 'double-float))
+          (bound-sum (v+ mins maxs))
+          (bound-diff (v- maxs mins)))
+      (declare (dynamic-extent center h bound-sum bound-diff))
+      (setf
+       ;; (setf center (vscale 0.5d0 bound-sum))
+       (vx center) (* 0.5d0 (vx bound-sum))
+       (vy center) bound-y  ; v2->v3
+       (vz center) (* 0.5d0 (vy bound-sum))
+       ;; NOTE: Using LET* and DYNAMIC-EXTENT breaks for some reason
+       ;; (setf h (vscale 0.5d0 bound-diff))
+       (vx h) (* 0.5d0 (vx bound-diff))
+       (vy h) (* 0.5d0 (vy bound-diff)))
+      (let ((s (+ (v3dot center normal) dist))
+            (e (+ (* (vx h) (abs (vx normal)))
+                  (* bound-y (abs (vy normal)))
+                  ;; Note 2D vy iz vz in 3D.
+                  (* (vy h) (abs (vz normal))))))
+        (cond
+          ((double> (- s e) 0d0) nil) ;; outside
+          ((double> 0d0 (+ s e)) :inside)
+          (t :intersect))))))
+
 (defun intersect-frustum-2d (frustum-planes bounds bound-y)
   "Intersect the frustum with axis aligned bounding rectangle. Returns NIL if
   bounds are outside, :INTERSECT if they intersect and :INSIDE if bounds are
   completely inside the frustum. BOUND-Y is used to lift the bounds from 2D
   into 3D."
-  (declare (type (cons (vec 2) (vec 2)) bounds)
-           (optimize (speed 3)))
-  (destructuring-bind (mins . maxs) bounds
-    (declare (type (vec 2) mins maxs) (type double-float bound-y))
-    (flet ((intersect-plane (plane)
-             "Intersect a plane with AABB. Based on the algorithm from
-            Real-Time Rendering 3rd edition, 16.10.1 AABB"
-             (with-struct (plane- normal dist) plane
-               (let ((center (make-array 2 :element-type 'double-float))
-                     (h (make-array 2 :element-type 'double-float)))
-                 (declare (dynamic-extent center h))
-                 (setf
-                  ;; (setf center (vscale 0.5d0 (v+ mins maxs)))
-                  (aref center 0) (* 0.5d0 (aref (v+ mins maxs) 0))
-                  (aref center 1) (* 0.5d0 (aref (v+ mins maxs) 1))
-                  ;; (setf h (vscale 0.5d0 (v- mins maxs)))
-                  (aref h 0) (* 0.5d0 (aref (v- maxs mins) 0))
-                  (aref h 1) (* 0.5d0 (aref (v- maxs mins) 1)))
-                 (let ((s (+ (v3dot (v2->v3 center bound-y) normal)
-                             dist))
-                       (e (+ (* (vx h) (abs (vx normal)))
-                             (* bound-y (abs (vy normal)))
-                             ;; Note 2D vy iz vz in 3D.
-                             (* (vy h) (abs (vz normal))))))
-                   (declare (dynamic-extent s e)
-                            (type double-float s e))
-                   (cond
-                     ((double> (- s e) 0d0) nil) ;; outside
-                     ((double> 0d0 (+ s e)) :inside)
-                     (t :intersect)))))))
-      (let (intersect-type)
-        (dolist (plane frustum-planes intersect-type)
-          (if-let ((intersect (intersect-plane plane)))
-            (when (or (not intersect-type) (eq :intersect intersect))
-              (setf intersect-type intersect))
-            (return)))))))
+  (declare (optimize (speed 3)))
+  (declare (type list frustum-planes))
+  (declare (type (cons (vec 2) (vec 2)) bounds))
+  (declare (type double-float bound-y))
+  (let ((mins (car bounds)) (maxs (cdr bounds))
+        (intersect-type nil))
+    (dolist (plane frustum-planes intersect-type)
+      (if-let ((intersect (intersect-plane plane mins maxs bound-y)))
+        (when (or (not intersect-type) (eq :intersect intersect))
+          (setf intersect-type intersect))
+        (return)))))
 
 (defun nrotate-camera (xrel yrel camera)
   "Rotate the CAMERA for XREL degrees around the world Y axis and YREL degrees

@@ -117,6 +117,7 @@
 	  ($ i ($ k (setf (out i k) (sum j (* (m1 i j) (m2 j k))))))
 	  out))
 
+(declaim (inline v3dot))
 (declaim (ftype (function ((vec 3) (vec 3)) double-float) v3dot))
 (defun v3dot (v1 v2)
   (declare (type (vec 3) v1 v2))
@@ -353,29 +354,33 @@ with ROWS."
          (list 0d0 0d0 (- (/ fpn fmn)) (/ (* -2d0 far near) fmn))
          (list 0d0 0d0 -1d0 0d0))))
 
+(declaim (inline double=))
 (defun double= (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
   "Compare floating points using epsilon difference and fallback to relative
 epsilon. Doesn't handle infinities."
   (declare (type double-float a b epsilon rel-epsilon))
   (let ((diff (abs (- a b)))
         (max (max (abs a) (abs b))))
-    (declare (type double-float diff max)
-             (dynamic-extent diff max))
+    (declare (type double-float diff max))
     (or (<= diff epsilon) ;; Needed when near zero.
         (<= diff (* max rel-epsilon)))))
 
+(declaim (inline double>))
 (defun double> (a b)
   (declare (type double-float a b))
   (and (not (double= a b)) (> a b)))
 
+(declaim (inline double>=))
 (defun double>= (a b)
   (declare (type double-float a b))
   (or (double= a b) (> a b)))
 
+(declaim (inline double<))
 (defun double< (a b)
   (declare (type double-float a b))
   (and (not (double= a b)) (< a b)))
 
+(declaim (inline double<=))
 (defun double<= (a b)
   (declare (type double-float a b))
   (or (double= a b) (< a b)))
