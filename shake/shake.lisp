@@ -73,15 +73,17 @@
 (define-extract-frustum-plane near v+ 2)
 (define-extract-frustum-plane far v- 2)
 
+;; NOTE: This and `INTERSECT-FRUSTUM-2D' are on a hot path, they should be be
+;; fast and perform 0 consing.  Tuned for SBCL.
 (defun intersect-plane (plane mins maxs bound-y)
   "Intersect a PLANE with AABB defined MINS and MAXS.  BOUND-Y is used to lift
   the bounds to 3D.  Based on the algorithm from Real-Time Rendering 3rd
   edition, 16.10.1 AABB"
   (declare (optimize (speed 3)))
-  (declare (type plane plane)
-           (type (vec 2) mins maxs)
-           (type double-float bound-y))
-  (declare (inline vscale))
+  (check-type plane plane)
+  (check-type mins (vec 2))
+  (check-type maxs (vec 2))
+  (check-type bound-y double-float)
   (with-struct (plane- normal dist) plane
     (let ((center (make-array 3 :element-type 'double-float))
           (h (make-array 2 :element-type 'double-float))
@@ -107,15 +109,17 @@
           ((double> 0d0 (+ s e)) :inside)
           (t :intersect))))))
 
+;; NOTE: This and `INTERSECT-PLANE' are on a hot path, they should be be fast
+;; and perform 0 consing.  Tuned for SBCL.
 (defun intersect-frustum-2d (frustum-planes bounds bound-y)
   "Intersect the frustum with axis aligned bounding rectangle. Returns NIL if
   bounds are outside, :INTERSECT if they intersect and :INSIDE if bounds are
   completely inside the frustum. BOUND-Y is used to lift the bounds from 2D
   into 3D."
   (declare (optimize (speed 3)))
-  (declare (type list frustum-planes))
-  (declare (type (cons (vec 2) (vec 2)) bounds))
-  (declare (type double-float bound-y))
+  (check-type frustum-planes list)
+  (check-type bounds (cons (vec 2) (vec 2)))
+  (check-type bound-y double-float)
   (let ((mins (car bounds)) (maxs (cdr bounds))
         (intersect-type nil))
     (dolist (plane frustum-planes intersect-type)
