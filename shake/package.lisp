@@ -16,6 +16,15 @@
 
 (in-package #:cl-user)
 
+(defpackage #:shake.debug
+  (:use #:cl #:alexandria #:shake-utils)
+  (:export #:timer
+           #:timer-name
+           #:timer-max
+           #:timer-avg
+           #:make-timer
+           #:with-timer))
+
 (defpackage #:shake.data
   (:nicknames #:sdata)
   (:use #:cl #:alexandria #:shake-utils)
@@ -69,7 +78,7 @@
 
 (defpackage #:shake.render
   (:nicknames #:srend)
-  (:use #:cl #:alexandria #:shiva #:shake-utils)
+  (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.debug)
   (:export #:load-map-images
            #:gl-config
            #:print-gl-info
@@ -82,7 +91,8 @@
            #:with-draw-frame))
 
 (defpackage #:shake
-  (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data)
+  (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data
+        #:shake.debug)
   (:export #:main
            #:recursive-hull-check
            #:hull-point-contents

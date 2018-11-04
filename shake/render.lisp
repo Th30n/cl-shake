@@ -1,4 +1,4 @@
-;;;; Defines `render-system' and functions for rendering to screen.
+;;;; Defines `RENDER-SYSTEM' and functions for rendering to screen.
 
 (in-package #:shake.render)
 
@@ -92,7 +92,8 @@
   ;; List of `debug-text' to render on the next frame.
   (debug-text-list nil)
   (image-manager nil :type image-manager)
-  (prog-manager nil :type prog-manager))
+  (prog-manager nil :type prog-manager)
+  (swap-timer (shake::make-timer :name "Draw & Swap") :type shake::timer))
 
 (defun init-render-system (window)
   (multiple-value-bind (width height) (sdl2:get-window-size window)
@@ -388,11 +389,12 @@
   (let ((*batches* (init-draw-frame render-system))
         (*rs* render-system))
     (multiple-value-prog1 (funcall fun)
-      (finish-draw-frame render-system)
-      (gl:disable :depth-test)
-      (show-debug-text render-system)
-      (setf (render-system-debug-text-list render-system) nil)
-      (sdl2:gl-swap-window (render-system-window render-system)))))
+      (shake::with-timer ((render-system-swap-timer render-system))
+        (finish-draw-frame render-system)
+        (gl:disable :depth-test)
+        (show-debug-text render-system)
+        (setf (render-system-debug-text-list render-system) nil)
+        (sdl2:gl-swap-window (render-system-window render-system))))))
 
 (defmacro with-draw-frame ((render-system) &body body)
   "Establishes the environment where SHAKE.RENDER package functions can be

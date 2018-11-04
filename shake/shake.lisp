@@ -151,48 +151,6 @@
                (:left (v -1 0 0)))))
     (vrotate (camera-rotation camera) dir)))
 
-(defun performance-delta (start stop)
-  "Return the delta in seconds between two performance counters."
-  (coerce (/ (- stop start) (sdl2:get-performance-frequency)) 'double-float))
-
-(defstruct timer
-  (start 0)
-  (count 0 :type fixnum)
-  (total 0d0 :type double-float)
-  (new-max 0d0 :type double-float)
-  (max 0d0 :type double-float)
-  (avg 0d0 :type double-float))
-
-(defun nupdate-timer (timer dt)
-  (incf (timer-count timer))
-  (incf (timer-total timer) dt)
-  (zap #'max (timer-new-max timer) dt)
-  timer)
-
-(defun nreset-timer (timer)
-  "Reset the maximum and average calculations of a TIMER."
-  (with-struct (timer- total count new-max) timer
-    (setf (timer-avg timer) (/ total count)
-          (timer-max timer) new-max
-          (timer-count timer) 0
-          (timer-total timer) 0d0
-          (timer-new-max timer) 0d0))
-  timer)
-
-(defun call-with-timer (timer function &key (reset-every 1d0))
-  "Upate the TIMER with the execution time of FUNCTION. If the TIMER TOTAL
-  exceeds RESET-EVERY seconds, TIMER is reset."
-  (let ((start (sdl2:get-performance-counter)))
-    (multiple-value-prog1 (funcall function)
-      (let* ((end (sdl2:get-performance-counter))
-             (delta (performance-delta start end)))
-        (nupdate-timer timer delta)
-        (when (>= (timer-total timer) reset-every)
-          (nreset-timer timer))))))
-
-(defmacro with-timer ((timer &key (reset-every 1d0)) &body body)
-  `(call-with-timer ,timer (lambda () ,@body) :reset-every ,reset-every))
-
 ;; TODO: Move these to shake.render, or remove entirely.
 (defun make-point-renderer ()
   "Creates a function which draws a single point. The function takes keywords
@@ -213,10 +171,11 @@
 (defun renderer-draw (renderer) (funcall renderer :draw))
 (defun renderer-delete (renderer) (funcall renderer :delete))
 
-(defun draw-timer-stats (timer &key (x -200) (y -20))
-  (with-struct (timer- max avg) timer
-    (srend::draw-text (format nil "CPU time: ~,2Fms (max)" (* 1d3 max)) :x x :y y)
-    (srend::draw-text (format nil "CPU time: ~,2Fms (avg)" (* 1d3 avg)) :x x :y (- y 16))))
+(defun draw-timer-stats (timer &key (x 0) (y -20))
+  (with-struct (timer- name max avg) timer
+    (srend::draw-text (format nil "~A: ~,2Fms (avg) ~,2Fms (max)"
+                              name (* 1d3 avg) (* 1d3 max))
+                      :x x :y y)))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
                *last-time* *base-time* *gametic*))
@@ -472,7 +431,7 @@
                                        (/ *win-width* *win-height*)
                                        0.01d0 100d0))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
-               (frame-timer (make-timer))
+               (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp")))
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
@@ -513,7 +472,10 @@
                              (srend:render-surface
                               (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
                               mvp))
-                           (draw-timer-stats frame-timer))))))))))))
+                           (draw-timer-stats frame-timer)
+                           (draw-timer-stats
+                            (srend::render-system-swap-timer render-system) :y -36)
+                           )))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window

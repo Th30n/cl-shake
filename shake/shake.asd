@@ -24,6 +24,7 @@
   :depends-on ("sdl2" "alexandria" "shiva" "shake-bspc" "shake-gl" "shake-utils")
   :serial t
   :components ((:file "package")
+               (:file "debug")
                (:file "data")
                (:file "render-progs")
                (:file "obj")
