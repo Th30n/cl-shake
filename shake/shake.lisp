@@ -9,6 +9,8 @@
 
 (defvar *win-width* nil "Current window width in pixels")
 (defvar *win-height* nil "Current window height in pixels")
+(defvar *rend-width* nil "Current rendering width in pixels")
+(defvar *rend-height* nil "Current rendering height in pixels")
 
 (declaim (inline make-plane))
 (defstruct plane
@@ -410,11 +412,12 @@
     (reset-game-keys)
     (with-data-dirs *base-dir*
       (set-gl-attrs)
-      (let ((*win-width* 800)
-            (*win-height* 600))
+      (let ((*win-width* 800) (*win-height* 600)
+            (*rend-width* 800) (*rend-height* 600))
         (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
                                   :flags '(:opengl))
-          (srend:with-render-system (render-system window)
+          (srend:with-render-system
+              (render-system window *rend-width* *rend-height*)
             (sdl2:set-relative-mouse-mode 1)
             (srend:print-gl-info (srend:render-system-gl-config render-system))
             (funcall function render-system window)))))))
@@ -461,8 +464,6 @@
                        (try-run-tics #'build-ticcmd
                                      (lambda (tic) (run-tic camera tic)))
                        (unless minimized-p
-                         (clear-buffer-fv :color 0 0 0 0)
-                         (clear-buffer-fv :depth 0 1)
                          (srend:with-draw-frame (render-system)
                            (render camera)
                            (let ((mvp (m* (m* (camera-projection-matrix camera)
@@ -533,8 +534,6 @@
         (rec (smdl:bsp-model-nodes world-model))))))
 
 (defun render (camera)
-  (declare (special *win-width* *win-height*))
-  (gl:viewport 0 0 *win-width* *win-height*)
   (gl:enable :depth-test)
   (gl:depth-func :less)
   (render-world camera smdl:*world-model*))

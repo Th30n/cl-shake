@@ -82,10 +82,55 @@
   (x 0 :type fixnum :read-only t)
   (y 0 :type fixnum :read-only t))
 
+(defstruct gl-framebuffer
+  (id nil :type integer :read-only t)
+  (color-texture nil :type integer :read-only t)
+  (depth-texture nil :type integer :read-only t))
+
+(defun init-gl-framebuffer (width height)
+  (let ((id (gl:gen-framebuffer))
+        (color-texture (gl:gen-texture))
+        (depth-texture (gl:gen-texture)))
+    (gl:bind-framebuffer :framebuffer id)
+    (gl:bind-texture :texture-2d color-texture)
+    (gl:tex-image-2d :texture-2d 0 :rgba8 width height 0
+                     :rgba :unsigned-byte (cffi:null-pointer))
+    (gl:tex-parameter :texture-2d :texture-min-filter :linear)
+    (gl:tex-parameter :texture-2d :texture-mag-filter :linear)
+    (gl:bind-texture :texture-2d depth-texture)
+    (gl:tex-image-2d :texture-2d 0 :depth-component width height 0
+                     :depth-component :unsigned-byte (cffi:null-pointer))
+    (gl:tex-parameter :texture-2d :texture-min-filter :linear)
+    (gl:tex-parameter :texture-2d :texture-mag-filter :linear)
+    (gl:bind-texture :texture-2d 0)
+    (gl:framebuffer-texture-2d
+     :framebuffer :color-attachment0 :texture-2d color-texture 0)
+    (gl:framebuffer-texture-2d
+     :framebuffer :depth-attachment :texture-2d depth-texture 0)
+    (let ((status (gl:check-framebuffer-status :framebuffer)))
+      (unless (in status :framebuffer-complete
+                  :framebuffer-complete-ext :framebuffer-complete-oes)
+        (error "Framebuffer status ~A" status)))
+    (gl:draw-buffers '(:color-attachment0))
+    (gl:bind-framebuffer :framebuffer 0)
+    (make-gl-framebuffer :id id
+                         :color-texture color-texture
+                         :depth-texture depth-texture)))
+
+(defun free-framebuffer (framebuffer)
+  (gl:delete-textures (list (gl-framebuffer-color-texture framebuffer)
+                            (gl-framebuffer-depth-texture framebuffer)))
+  (gl:delete-framebuffers (list (gl-framebuffer-id framebuffer))))
+
+(defun bind-framebuffer (target framebuffer)
+  (gl:bind-framebuffer target (gl-framebuffer-id framebuffer)))
+
 (defstruct render-system
   "Rendering related global variables and constants."
-  (width nil :type fixnum)
-  (height nil :type fixnum)
+  (win-width nil :type fixnum)
+  (win-height nil :type fixnum)
+  (rend-width nil :type fixnum)
+  (rend-height nil :type fixnum)
   window
   (gl-config nil :type gl-config :read-only t)
   batches
@@ -93,30 +138,38 @@
   (debug-text-list nil)
   (image-manager nil :type image-manager)
   (prog-manager nil :type prog-manager)
+  (framebuffer nil :type gl-framebuffer)
   (swap-timer (shake::make-timer :name "Draw & Swap") :type shake::timer))
 
-(defun init-render-system (window)
+(defun init-render-system (window render-width render-height)
   (multiple-value-bind (width height) (sdl2:get-window-size window)
     (make-render-system :gl-config (init-gl-config)
                         :image-manager (init-image-manager)
                         :prog-manager (init-prog-manager)
+                        :framebuffer (init-gl-framebuffer render-width render-height)
                         :window window
-                        :width width
-                        :height height)))
+                        :win-width width
+                        :win-height height
+                        :rend-width render-width
+                        :rend-height render-height)))
 
 (defun shutdown-render-system (render-system)
-  (with-struct (render-system- image-manager prog-manager) render-system
+  (with-struct (render-system- image-manager prog-manager framebuffer)
+      render-system
+    (free-framebuffer framebuffer)
     (shutdown-image-manager image-manager)
     (shutdown-prog-manager prog-manager)))
 
-(defmacro with-render-system ((render-system window) &body body)
+(defmacro with-render-system ((render-system window render-width render-height)
+                              &body body)
   (with-gensyms (context)
     `(sdl2:with-gl-context (,context ,window)
        (handler-case
            (sdl2:gl-set-swap-interval 0)
          (error () ;; sdl2 doesn't export sdl-error
            (format t "Setting swap interval not supported~%")))
-       (bracket (,render-system (init-render-system ,window)
+       (bracket (,render-system (init-render-system
+                                 ,window ,render-width ,render-height)
                                 shutdown-render-system)
          ,@body))))
 
@@ -343,8 +396,9 @@
 
 (defun draw-text (text &key x y)
   "Draw a single line of text on given window coordinates."
-  (let ((pos-x (if (minusp x) (+ (render-system-width *rs*) x) x))
-        (pos-y (if (minusp y) (+ (render-system-height *rs*) y) y)))
+  ;; TODO: Do we want window or render dimensions?
+  (let ((pos-x (if (minusp x) (+ (render-system-win-width *rs*) x) x))
+        (pos-y (if (minusp y) (+ (render-system-win-height *rs*) y) y)))
     (push (make-debug-text :char-string text :x pos-x :y pos-y)
           (render-system-debug-text-list *rs*))))
 
@@ -358,12 +412,13 @@
 (defun renderer-draw (renderer) (funcall renderer :draw))
 
 (defun show-debug-text (render-system)
-  (with-struct (render-system- debug-text-list width height) render-system
+  ;; TODO: Do we want window or render dimensions?
+  (with-struct (render-system- debug-text-list win-width win-height) render-system
     (dolist (debug-text debug-text-list)
       (sdata:res-let (point-renderer font)
         (let ((progs (render-system-prog-manager render-system)))
           (with-struct (font- texture cell-size) font
-            (let ((ortho (ortho 0d0 width 0d0 height -1d0 1d0))
+            (let ((ortho (ortho 0d0 win-width 0d0 win-height -1d0 1d0))
                   (half-cell (* 0.5 cell-size))
                   (text-shader (get-program progs "billboard" "text" "billboard")))
               (gl:active-texture :texture0)
@@ -386,14 +441,42 @@
                          (renderer-draw point-renderer))))))))))))
 
 (defun call-with-draw-frame (render-system fun)
+  (check-type render-system render-system)
+  (check-type fun function)
+  (bind-framebuffer :framebuffer (render-system-framebuffer render-system))
+  (gl:viewport 0 0
+               (render-system-rend-width render-system)
+               (render-system-rend-height render-system))
+  (sgl:clear-buffer-fv :color 0 0 0 0)
+  (sgl:clear-buffer-fv :depth 0 1)
   (let ((*batches* (init-draw-frame render-system))
-        (*rs* render-system))
+        (*rs* render-system)
+        (prog-manager (render-system-prog-manager render-system)))
     (multiple-value-prog1 (funcall fun)
       (shake::with-timer ((render-system-swap-timer render-system))
         (finish-draw-frame render-system)
         (gl:disable :depth-test)
         (show-debug-text render-system)
         (setf (render-system-debug-text-list render-system) nil)
+        ;; Draw our framebuffer to window
+        (gl:bind-framebuffer :framebuffer 0)
+        (gl:viewport 0 0
+                     (render-system-win-width render-system)
+                     (render-system-win-height render-system))
+        (sgl:clear-buffer-fv :color 0 0 0 0)
+        (sgl:clear-buffer-fv :depth 0 1)
+        (let ((shader-prog
+               (get-program prog-manager "billboard" "billboard" "billboard")))
+          (bind-program prog-manager shader-prog)
+          (sgl:with-uniform-locations shader-prog (tex-sprite)
+            (gl:uniformi tex-sprite-loc 0)
+            (gl:active-texture :texture0)
+            (gl:bind-texture :texture-2d
+                             (gl-framebuffer-color-texture
+                              (render-system-framebuffer render-system)))
+            (sdata:res-let (point-renderer)
+              (renderer-draw point-renderer))))
+        (gl:bind-texture :texture-2d 0)
         (sdl2:gl-swap-window (render-system-window render-system))))))
 
 (defmacro with-draw-frame ((render-system) &body body)
