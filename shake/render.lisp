@@ -125,6 +125,7 @@
 (defun bind-framebuffer (target framebuffer)
   (gl:bind-framebuffer target (gl-framebuffer-id framebuffer)))
 
+(declaim (inline make-render-system))
 (defstruct render-system
   "Rendering related global variables and constants."
   (win-width nil :type fixnum)
@@ -141,6 +142,8 @@
   (framebuffer nil :type gl-framebuffer)
   (swap-timer (shake::make-timer :name "Draw & Swap") :type shake::timer))
 
+(declaim (inline init-render-system))
+(declaim (ftype (function (t fixnum fixnum) render-system) init-render-system))
 (defun init-render-system (window render-width render-height)
   (multiple-value-bind (width height) (sdl2:get-window-size window)
     (make-render-system :gl-config (init-gl-config)
@@ -160,18 +163,24 @@
     (shutdown-image-manager image-manager)
     (shutdown-prog-manager prog-manager)))
 
+(defun call-with-render-system (window render-width render-height fun)
+  (check-type render-width fixnum)
+  (check-type render-height fixnum)
+  (check-type fun function)
+  (sdl2:with-gl-context (context window)
+    (handler-case
+        ;; Turn off V-Sync
+        (sdl2:gl-set-swap-interval 0)
+      (error () ;; sdl2 doesn't export sdl-error
+        (format t "Setting swap interval not supported~%")))
+    (bracket (render-system (init-render-system window render-width render-height)
+                            shutdown-render-system)
+      (funcall fun render-system))))
+
 (defmacro with-render-system ((render-system window render-width render-height)
                               &body body)
-  (with-gensyms (context)
-    `(sdl2:with-gl-context (,context ,window)
-       (handler-case
-           (sdl2:gl-set-swap-interval 0)
-         (error () ;; sdl2 doesn't export sdl-error
-           (format t "Setting swap interval not supported~%")))
-       (bracket (,render-system (init-render-system
-                                 ,window ,render-width ,render-height)
-                                shutdown-render-system)
-         ,@body))))
+  `(call-with-render-system ,window ,render-width ,render-height
+                            (lambda (,render-system) ,@body)))
 
 ;; Currently active RENDER-SYSTEM.
 (defvar *rs*)
