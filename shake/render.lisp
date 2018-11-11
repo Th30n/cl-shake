@@ -214,9 +214,18 @@
                 :max-bytes byte-size)))
 
 (defun free-batch (batch)
+  (declare (optimize (speed 3) (space 3)))
+  (check-type batch batch)
   (with-struct (batch- vertex-array buffer id-buffer) batch
-    (gl:delete-buffers (list buffer id-buffer))
-    (gl:delete-vertex-arrays (list vertex-array))
+    (let ((buffers (list buffer id-buffer))
+          (vertex-arrays (list vertex-array)))
+      (declare (dynamic-extent buffers vertex-arrays))
+      ;; NOTE: gl:delete-* functions don't perform stack allocation since they
+      ;; cannot know the total size of arguments up front.  If this becomes an
+      ;; issue, we should add our own wrappers which handle statically known
+      ;; number of arguments.
+      (gl:delete-buffers buffers)
+      (gl:delete-vertex-arrays vertex-arrays))
     (setf (batch-free-p batch) t
           (batch-ready-p batch) nil)))
 
@@ -258,6 +267,9 @@
   (setf (batch-ready-p batch) t))
 
 (defun draw-batch (batch shader-prog gl-config)
+  (check-type batch batch)
+  (check-type shader-prog (unsigned-byte))
+  (check-type gl-config gl-config)
   (assert (not (batch-free-p batch)))
   (unless (batch-ready-p batch)
     (finish-batch batch gl-config))
