@@ -491,14 +491,18 @@
 
 (defun render-world (camera world-model)
   "Send geometry for rendering, front to back."
-  (declare (optimize (speed 3)))
+  (declare (optimize (speed 3) (space 3)))
+  (check-type camera camera)
+  (check-type world-model smdl:bsp-model)
   (with-struct (camera- position) camera
-    (let ((pos-2d (the (vec 2) (v (vx position) (vz position))))
+    (let ((pos-2d (make-array 2 :element-type 'double-float))
           (frustum (list (left-frustum-plane camera) (right-frustum-plane camera)
                          (near-frustum-plane camera) (far-frustum-plane camera)))
           (mvp (m* (camera-projection-matrix camera)
                    (camera-view-transform camera))))
       (declare (dynamic-extent pos-2d frustum))
+      (setf (vx pos-2d) (vx position))
+      (setf (vy pos-2d) (vz position))
       (labels ((rec (node &optional (test-frustum-p t))
                  (declare (type (or sbsp:node sbsp:leaf) node))
                  (declare (type boolean test-frustum-p))

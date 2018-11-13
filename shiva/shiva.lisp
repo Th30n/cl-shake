@@ -210,7 +210,7 @@
    out))
 
 (defun v (&rest elements)
-  "Create a vector of double-float and will it with ELEMENTS."
+  "Create a vector of double-float and fill it with ELEMENTS."
   (declare (dynamic-extent elements))
   (let* ((n (length elements))
 	 (vector (make-array n :element-type 'double-float)))

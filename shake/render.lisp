@@ -199,12 +199,13 @@
   shaders.")
 
 (defstruct batch
-  vertex-array
-  buffer
-  id-buffer
+  (vertex-array nil :type (unsigned-byte 64) :read-only t)
+  (buffer nil :type (unsigned-byte 64) :read-only t)
+  (id-buffer nil :type (unsigned-byte 64) :read-only t)
   (offset 0 :type fixnum)
-  texture
-  mvp
+  (texture nil :type (or null image))
+  ;; TODO: Change MVP and LAYERS to vector.
+  (mvp nil :type list)
   (layers nil :type list)
   (objects 0 :type fixnum)
   (draw-count 0 :type fixnum)
@@ -239,6 +240,7 @@
           (batch-ready-p batch) nil)))
 
 (defun finish-batch (batch gl-config)
+  (declare (optimize (speed 3) (speed 3)))
   (assert (not (batch-free-p batch)))
   (gl:bind-vertex-array (batch-vertex-array batch))
   (let ((stride (* 4 (+ 3 3 3 2)))
@@ -263,11 +265,15 @@
       (when (and multi-draw-indirect-p base-instance-p)
         (let ((id-buffer (batch-id-buffer batch))
               (id-count (list-length (batch-layers batch))))
-          (gl:with-gl-array (id-array :int :count id-count)
+          (assert (<= id-count +max-batch-size+))
+          (cffi:with-foreign-object (array-ptr :int +max-batch-size+)
             (dotimes (ix id-count)
-              (setf (gl:glaref id-array ix) ix))
+              (setf (cffi:mem-aref array-ptr :int ix) ix))
             (gl:bind-buffer :array-buffer id-buffer)
-            (gl:buffer-data :array-buffer :static-draw id-array)
+            (%gl:buffer-data :array-buffer
+                             ;; NOTE: (cffi:foreign-type-size :int) conses
+                             (* 4 id-count)
+                             array-ptr :static-draw)
             (gl:vertex-attrib-ipointer 4 1 :int 0 (cffi:null-pointer))
             (%gl:vertex-attrib-divisor 4 1)
             (gl:enable-vertex-attrib-array 4))))))
@@ -276,8 +282,9 @@
   (setf (batch-ready-p batch) t))
 
 (defun draw-batch (batch shader-prog gl-config)
+  (declare (optimize (speed 3) (space 3)))
   (check-type batch batch)
-  (check-type shader-prog (unsigned-byte))
+  (check-type shader-prog (unsigned-byte 32))
   (check-type gl-config gl-config)
   (assert (not (batch-free-p batch)))
   (unless (batch-ready-p batch)
@@ -328,6 +335,10 @@
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface mvp batch)
+  (declare (optimize (speed 3) (space 3)))
+  (declare (type smdl::surf-triangles surface))
+  (declare (type (mat 4) mvp))
+  (declare (type batch batch))
   (flet ((fill-buffer (byte-offset data size)
            (gl:bind-buffer :array-buffer (batch-buffer batch))
            (%gl:buffer-sub-data :array-buffer byte-offset size data)
@@ -347,8 +358,7 @@
                          -1)))
             (push (cons layer draw-count) (batch-layers batch))))
         (push mvp (batch-mvp batch))
-        (incf (batch-offset batch)
-              (the fixnum (fill-buffer offset gl-data byte-size)))
+        (incf (batch-offset batch) (fill-buffer offset gl-data byte-size))
         (incf (batch-draw-count batch) draw-count)
         (incf (batch-objects batch))))))
 
@@ -389,8 +399,10 @@
           (1- (length (the (vector batch) *batches*))))))
 
 (defun render-surface (surface mvp)
-  (declare (type smdl::surf-triangles surface)
-           (type (mat 4) mvp))
+  (declare (optimize (speed 3) (space 3)))
+  (check-type surface smdl::surf-triangles)
+  (check-type mvp (mat 4))
+  (check-type *rs* render-system)
   (with-struct (render-system- image-manager) *rs*
     (let ((current-batch (get-current-batch))
           (surface-space (smdl::surf-triangles-verts-byte-size surface))
@@ -399,10 +411,12 @@
                 (get-image image-manager it))))
       (declare (type fixnum surface-space))
       (labels ((tex-match-p (batch)
+                 (declare (type batch batch))
                  (with-struct (batch- texture) batch
                    (or (not texture) (not surface-image)
                        (eq texture surface-image))))
                (can-add-p (batch)
+                 (declare (type batch batch))
                  (with-struct (batch- offset max-bytes objects) batch
                    (let ((free-space (- max-bytes offset)))
                      (and (> free-space surface-space)
