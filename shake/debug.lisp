@@ -31,13 +31,12 @@
           (timer-new-max timer) 0d0))
   timer)
 
-(declaim (inline performance-delta))
 (defun performance-delta (start stop)
   "Return the delta in seconds between two performance counters."
   (declare (optimize (speed 3)))
   (declare (type (unsigned-byte 64) start))
   (declare (type (unsigned-byte 64) stop))
-  (/ (coerce (- stop start) 'double-float)
+  (/ (coerce (the (unsigned-byte 64) (- stop start)) 'double-float)
      (coerce (the (unsigned-byte 64) (sdl2:get-performance-frequency))
              'double-float)))
 

@@ -431,6 +431,10 @@
 
 (defun draw-text (text &key x y)
   "Draw a single line of text on given window coordinates."
+  (check-type *rs* render-system)
+  (check-type text string)
+  (check-type x fixnum)
+  (check-type y fixnum)
   ;; TODO: Do we want window or render dimensions?
   (let ((pos-x (if (minusp x) (+ (render-system-win-width *rs*) x) x))
         (pos-y (if (minusp y) (+ (render-system-win-height *rs*) y) y)))
