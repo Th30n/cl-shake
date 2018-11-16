@@ -541,7 +541,3 @@
   (gl:enable :depth-test)
   (gl:depth-func :less)
   (render-world camera smdl:*world-model*))
-
-(defun uniform-mvp (program mvp)
-  (with-uniform-locations program mvp
-    (uniform-matrix-4f mvp-loc (list mvp))))

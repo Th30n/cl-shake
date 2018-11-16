@@ -31,7 +31,7 @@ and is implementation dependant."
             (,ltype ,(if (constantp ftype)
                          `(quote ,(foreign-type->lisp-type ftype))
                          `(foreign-type->lisp-type ftype)))
-            (,total-size (reduce #'+ (mapcar #'array-total-size ,garrays))))
+            (,total-size (reduce #'+ ,garrays :key #'array-total-size)))
        ;; For some reason, gl:with-gl-array and gl:glaref slow things down.
        (cffi:with-foreign-object (,ptr ,ftype ,total-size)
          ;; No need for genysms here as the body is outside the loop.
@@ -168,7 +168,16 @@ Example usage:
       `(let ,locations
          ,@body))))
 
-(defun uniform-matrix-4f (location matrices &key (transpose t))
-  (with-gl-array (gl-array :float matrices)
-    (%gl:uniform-matrix-4fv location (length matrices) transpose
-                            (gl::gl-array-pointer gl-array))))
+(defun uniform-matrix-4f (location matrix &key (transpose t))
+  (declare (optimize (speed 3) (space 3)))
+  (check-type location (signed-byte 64))
+  (check-type matrix (simple-array double-float (4 4)))
+  (check-type transpose boolean)
+  ;; Keep this small and optimized.  Unfortunately, sb-profile says this
+  ;; performs a lot of allocations.  I cannot tell why, everything should be
+  ;; stack allocated inside.
+  (cffi:with-foreign-object (ptr :float 16)
+    (dotimes (i 16)
+      (setf (cffi:mem-aref ptr :float i)
+            (coerce (row-major-aref matrix i) 'single-float)))
+    (%gl:uniform-matrix-4fv location 1 transpose ptr)))
