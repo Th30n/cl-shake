@@ -451,32 +451,41 @@
 (defun renderer-draw (renderer) (funcall renderer :draw))
 
 (defun show-debug-text (render-system)
+  (declare (optimize (speed 3) (space 3)))
   ;; TODO: Do we want window or render dimensions?
   (with-struct (render-system- debug-text-list win-width win-height) render-system
-    (dolist (debug-text debug-text-list)
+    (let ((progs (render-system-prog-manager render-system))
+          (ortho (ortho 0d0 win-width 0d0 win-height -1d0 1d0)))
+      (declare (dynamic-extent ortho))
       (sdata:res-let (point-renderer font)
-        (let ((progs (render-system-prog-manager render-system)))
-          (with-struct (font- texture cell-size) font
-            (let ((ortho (ortho 0d0 win-width 0d0 win-height -1d0 1d0))
-                  (half-cell (* 0.5 cell-size))
-                  (text-shader (get-program progs "billboard" "text" "billboard")))
-              (gl:active-texture :texture0)
-              (gl:bind-texture :texture-2d texture)
-              (bind-program progs text-shader)
-              (sgl:with-uniform-locations text-shader (tex-font proj size cell mv char-pos)
-                (gl:uniformi tex-font-loc 0)
-                (sgl:uniform-matrix-4f proj-loc (list ortho))
-                (gl:uniformf size-loc half-cell)
-                (gl:uniformi cell-loc cell-size cell-size)
+        (with-struct (font- texture cell-size) font
+          (let ((half-cell (* 0.5d0 cell-size))
+                (text-shader (get-program progs "billboard" "text" "billboard"))
+                (proj-value (list ortho)))
+            (declare (dynamic-extent proj-value))
+            (gl:active-texture :texture0)
+            (gl:bind-texture :texture-2d texture)
+            (bind-program progs text-shader)
+            (sgl:with-uniform-locations text-shader
+                (tex-font proj size cell mv char-pos)
+              (gl:uniformi tex-font-loc 0)
+              (sgl:uniform-matrix-4f proj-loc proj-value)
+              (gl:uniformf size-loc half-cell)
+              (gl:uniformi cell-loc cell-size cell-size)
+              (dolist (debug-text debug-text-list)
                 (let ((text (debug-text-char-string debug-text))
                       (pos-x (debug-text-x debug-text))
                       (pos-y (debug-text-y debug-text)))
-                  (loop for char across text and offset from half-cell by half-cell do
+                  (loop for char across text
+                     and offset of-type double-float from half-cell by half-cell do
                        (destructuring-bind (x . y) (char->font-cell-pos char font)
                          (gl:uniformi char-pos-loc x y)
-                         (sgl:uniform-matrix-4f mv-loc
-                                                (list (translation :x (+ offset pos-x)
-                                                                   :y (+ pos-y half-cell))))
+                         (let* ((translation
+                                 (translation :x (+ offset pos-x)
+                                              :y (+ pos-y half-cell)))
+                                (mv (list translation)))
+                           (declare (dynamic-extent translation mv))
+                           (sgl:uniform-matrix-4f mv-loc mv))
                          (renderer-draw point-renderer))))))))))))
 
 (defun call-with-draw-frame (render-system fun)

@@ -265,7 +265,8 @@
 (defun mat (&rest rows)
   "Construct a row major matrix as a 2D vector of double-float and fill it
 with ROWS."
-  (let* ((n (length rows))
+  (declare (dynamic-extent rows))
+  (let* ((n (list-length rows))
          (m (length (car rows)))
          (matrix (make-array (list n m) :element-type 'double-float)))
     (iter (for i from 0)
@@ -291,27 +292,33 @@ with ROWS."
            (iter (for row-index below rows)
                  (collect (aref matrix row-index col-index))))))
 
-(defun midentity (n)
-  "Construct a square identity matrix of dimensions N."
-  (let ((out (make-array (list n n) :element-type 'double-float
+(declaim (inline midentity4))
+(defun midentity4 ()
+  "Construct a 4x4 identity matrix."
+  (let ((out (make-array '(4 4) :element-type 'double-float
                          :initial-element 0d0)))
-    (dotimes (i n out)
-      (setf (aref out i i) 1d0))))
+    (setf (aref out 0 0) 1d0)
+    (setf (aref out 1 1) 1d0)
+    (setf (aref out 2 2) 1d0)
+    (setf (aref out 3 3) 1d0)
+    out))
 
 (defmacro deftransform (row-index values col-index)
   "Iterate over first three rows and set given VALUES on given COL-INDEX."
   (with-gensyms (out)
-    `(let ((,out (midentity 4)))
+    `(let ((,out (midentity4)))
        ,@(iter (for i below 3) (for val in values)
                (collect `(let ((,row-index ,i))
                            (setf (aref ,out ,row-index ,col-index)
                                  (coerce ,val 'double-float)))))
        ,out)))
 
+(declaim (inline translation))
 (defun translation (&key (x 0d0) (y 0d0) (z 0d0))
   "Construct a translation matrix."
   (deftransform i (x y z) 3))
 
+(declaim (inline scale))
 (defun scale (&key (x 1d0) (y 1d0) (z 1d0))
   "Construct a scale matrix."
   (deftransform i (x y z) i))
