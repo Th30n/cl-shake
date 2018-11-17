@@ -205,9 +205,12 @@
   (id-buffer nil :type (unsigned-byte 64) :read-only t)
   (offset 0 :type fixnum)
   (texture nil :type (or null image))
-  ;; TODO: Change MVP and LAYERS to vector.
-  (mvp nil :type list)
-  (layers nil :type list)
+  ;; MVP for each drawn object
+  (mvp nil :type (vector (mat 4) #.+max-batch-size+))
+  ;; Indices into texture array image layer for each object.  The 2nd value is
+  ;; the draw-count for object vertices.
+  (layers nil :type (vector (cons fixnum fixnum) #.+max-batch-size+))
+  ;; TODO: objects should always be equal to (length layers), redundant?
   (objects 0 :type fixnum)
   (draw-count 0 :type fixnum)
   (max-bytes 0 :type fixnum)
@@ -222,6 +225,12 @@
     (make-batch :vertex-array vertex-array
                 :buffer (first buffers)
                 :id-buffer (second buffers)
+                :mvp (make-array +max-batch-size+
+                                 :element-type '(mat 4)
+                                 :fill-pointer 0)
+                :layers (make-array +max-batch-size+
+                                    :element-type '(cons fixnum fixnum)
+                                    :fill-pointer 0)
                 :max-bytes byte-size)))
 
 (defun free-batch (batch)
@@ -265,7 +274,7 @@
     (with-struct (gl-config- base-instance-p multi-draw-indirect-p) gl-config
       (when (and multi-draw-indirect-p base-instance-p)
         (let ((id-buffer (batch-id-buffer batch))
-              (id-count (list-length (batch-layers batch))))
+              (id-count (length (batch-layers batch))))
           (assert (<= id-count +max-batch-size+))
           (cffi:with-foreign-object (array-ptr :int +max-batch-size+)
             (dotimes (ix id-count)
@@ -291,33 +300,37 @@
   (unless (batch-ready-p batch)
     (finish-batch batch gl-config))
   (gl:bind-vertex-array (batch-vertex-array batch))
-  (let ((layers (reverse (batch-layers batch)))
-        (layer-count (list-length (batch-layers batch)))
+  (let ((layers (batch-layers batch))
+        (layer-count (length (batch-layers batch)))
         (draw-start 0))
     (assert (< 0 layer-count))
     (assert (= layer-count (batch-objects batch)))
     (sgl:with-uniform-locations shader-prog (tex-layer mvp)
       (cffi:with-foreign-object (layer-array :int layer-count)
-        (dolist-enum (ix layer-pair layers)
-          (let ((layer (car layer-pair)))
-            (setf (cffi:mem-aref layer-array :int ix) layer)))
+        (loop for layer-pair across layers and ix fixnum from 0 do
+             (let ((layer (car layer-pair)))
+               (setf (cffi:mem-aref layer-array :int ix) layer)))
         (%gl:uniform-1iv tex-layer-loc layer-count layer-array))
-      (sgl:with-gl-array (gl-array :float (reverse (batch-mvp batch)))
-        (assert (= layer-count (list-length (batch-mvp batch))))
-        (%gl:uniform-matrix-4fv mvp-loc layer-count t
-                                (gl::gl-array-pointer gl-array))))
+      (let ((mvps (batch-mvp batch)))
+        (cffi:with-foreign-object (ptr :float (* #.+max-batch-size+ 4 4))
+          (loop for mvp across mvps and offset fixnum from 0 by (* 4 4) do
+               (dotimes (ix (* 4 4))
+                 (setf (cffi:mem-aref ptr :float (+ offset ix))
+                       (coerce (row-major-aref mvp ix) 'single-float))))
+          (assert (= layer-count (length (batch-mvp batch))))
+          (%gl:uniform-matrix-4fv mvp-loc layer-count t ptr))))
     (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
       (cond
         ((and multi-draw-indirect-p base-instance-p)
          (cffi:with-foreign-object
              (cmds '(:struct sgl:draw-arrays-indirect-command) layer-count)
-           (dolist-enum (ix layer-pair layers)
-             (let ((draw-count (cdr layer-pair))
-                   (cmd (cffi:mem-aptr
-                         cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
-               (sgl:set-draw-arrays-command cmd draw-count :first draw-start
-                                            :base-instance ix)
-               (incf draw-start draw-count)))
+           (loop for layer-pair across layers and ix fixnum from 0 do
+                (let ((draw-count (cdr layer-pair))
+                      (cmd (cffi:mem-aptr
+                            cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
+                  (sgl:set-draw-arrays-command cmd draw-count :first draw-start
+                                               :base-instance ix)
+                  (incf draw-start draw-count)))
            (let ((cmd-buffer (first (gl:gen-buffers 1)))
                  (size (* (cffi:foreign-type-size
                            '(:struct sgl:draw-arrays-indirect-command))
@@ -328,11 +341,11 @@
              (gl:bind-buffer :draw-indirect-buffer 0)
              (gl:delete-buffers (list cmd-buffer)))))
         (t
-         (dolist-enum (ix layer-pair layers)
-           (let ((draw-count (cdr layer-pair)))
-             (%gl:vertex-attrib-i1i 4 ix)
-             (gl:draw-arrays :triangles draw-start draw-count)
-             (incf draw-start draw-count)))))))
+         (loop for layer-pair across layers and ix fixnum from 0 do
+              (let ((draw-count (cdr layer-pair)))
+                (%gl:vertex-attrib-i1i 4 ix)
+                (gl:draw-arrays :triangles draw-start draw-count)
+                (incf draw-start draw-count)))))))
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface mvp batch)
@@ -357,8 +370,8 @@
                              (setf (batch-texture batch) image))
                            (get-image-layer image tex-name))
                          -1)))
-            (push (cons layer draw-count) (batch-layers batch))))
-        (push mvp (batch-mvp batch))
+            (vector-push (cons layer draw-count) (batch-layers batch))))
+        (vector-push mvp (batch-mvp batch))
         (incf (batch-offset batch) (fill-buffer offset gl-data byte-size))
         (incf (batch-draw-count batch) draw-count)
         (incf (batch-objects batch))))))
@@ -389,6 +402,7 @@
   (declare (optimize (speed 3) (space 3)))
   (aif (get-current-batch)
        (finish-batch it (render-system-gl-config *rs*)))
+  ;; TODO: Reuse already allocated batches, instead of allocating new ones.
   (let ((batch (init-batch byte-size)))
     (vector-push-extend batch *batches*)
     batch))
