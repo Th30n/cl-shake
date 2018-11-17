@@ -47,10 +47,12 @@
            #:obj
            #:obj-geometric-vertices
            #:obj-normal-vertices
+           #:obj-texture-vertices
            #:obj-element-data
            #:element-points
            #:vref-geometric
            #:vref-normal
+           #:vref-texture
            #:vertex-val))
 
 (defpackage #:shake.model

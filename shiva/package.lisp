@@ -34,7 +34,8 @@
            #:translation #:scale #:rotation
            #:ortho #:perspective)
   ;; swizzle operators
-  (:export #:vxxx #:vxxy #:vxxz #:vxyx #:vxyy #:vxyz #:vxzx #:vxzy #:vxzz
+  (:export #:vxx #:vxy #:vyx #:vyy
+           #:vxxx #:vxxy #:vxxz #:vxyx #:vxyy #:vxyz #:vxzx #:vxzy #:vxzz
            #:vyxx :vyxy :vyxz :vyyx :vyyy :vyyz :vyzx :vyzy :vyzz :vzxx :vzxy
            #:vzxz :vzyx :vzyy :vzyz :vzzx :vzzy :vzzz)
   (:export #:vrrr #:vrrg #:vrrb #:vrgr #:vrgg #:vrgb #:vrbr #:vrbg #:vrbb

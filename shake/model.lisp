@@ -96,9 +96,8 @@
 
 (declaim (inline make-obj-model))
 (defstruct obj-model
-  "A 3D model obtained from Wavefront OBJ file.
-The VERTS slot is a pointer to `C-VERTEX-DATA'."
-  (verts nil :read-only t))
+  "A 3D model obtained from Wavefront OBJ file."
+  (verts nil :type surf-triangles :read-only t))
 
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
@@ -213,19 +212,22 @@ The VERTS slot is a pointer to `C-VERTEX-DATA'."
                                                   (sobj:vref-geometric point)))
             for normal = (sobj:vertex-val (aref (sobj:obj-normal-vertices obj)
                                                 (sobj:vref-normal point)))
+            for uv = (sobj:vertex-val (aref (sobj:obj-texture-vertices obj)
+                                            (sobj:vref-texture point)))
             do (progn
                  (setf (cffi:mem-aref verts '(:struct vertex-data) i)
                        (make-l-vertex-data :position (vxyz position)
                                            :color (v 1 1 1)
                                            :normal (vxyz normal)
-                                           :uv (v 0 0)))
+                                           :uv (vxy uv)))
                  (incf i))))
     (make-obj-model
      :verts
      (make-surf-triangles :num-verts num-verts
                           :verts-byte-size (* num-verts (cffi:foreign-type-size
                                                          '(:struct vertex-data)))
-                          :verts verts))))
+                          :verts verts
+                          :tex-name "missing.bmp"))))
 
 (defun sidedef->surface (sidedef)
   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)

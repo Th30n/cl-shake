@@ -246,6 +246,7 @@
                               `(define-swizzle ,@components))
               component-lists)))
 
+(define-swizzles (x y) (x y))
 (define-swizzles (x y z) (x y z) (x y z))
 (define-swizzles (r g b) (r g b) (r g b))
 

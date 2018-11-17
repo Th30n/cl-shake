@@ -539,5 +539,9 @@
 
 (defun render (camera)
   (gl:enable :depth-test)
+  ;; TODO: Enable this when we correctly generate CCW faces for .bsp models.
+  ;; (gl:enable :cull-face)
+  ;; (gl:cull-face :back)
+  ;; (gl:front-face :ccw)
   (gl:depth-func :less)
   (render-world camera smdl:*world-model*))

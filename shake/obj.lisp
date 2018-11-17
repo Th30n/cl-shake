@@ -4,32 +4,48 @@
 
 (alexandria:define-constant +cube+
 "
+# Bottom vertices
 v 1 -1 -1
 v 1 -1 1
 v -1 -1 1
 v -1 -1 -1
+
+# Top vertices
 v 1 1 -1
 v 1 1 1
 v -1 1 1
 v -1 1 -1
+
 vn 0 -1 0
 vn 0 1 0
 vn 1 -0 0
 vn 0 -0 1
 vn -1 -0 -0
 vn 0 0 -1
-f 2//1 4//1 1//1
-f 8//2 6//2 5//2
-f 5//3 2//3 1//3
-f 6//4 3//4 2//4
-f 3//5 8//5 4//5
-f 1//6 8//6 5//6
-f 2//1 3//1 4//1
-f 8//2 7//2 6//2
-f 5//3 6//3 2//3
-f 6//4 7//4 3//4
-f 3//5 7//5 8//5
-f 1//6 4//6 8//6
+
+vt 0 0
+vt 1 0
+vt 1 1
+vt 0 1
+
+# Front face (+Z towards camera)
+f 6/2/4 3/4/4 2/3/4
+f 6/2/4 7/1/4 3/4/4
+# Back face
+f 1/3/6 8/1/6 5/4/6
+f 1/3/6 4/2/6 8/1/6
+# Top face (+Y)
+f 8/2/2 6/4/2 5/3/2
+f 8/2/2 7/1/2 6/4/2
+# Bottom face
+f 2/2/1 4/4/1 1/3/1
+f 2/2/1 3/1/1 4/4/1
+# Right face (+X)
+f 5/3/3 2/1/3 1/4/3
+f 5/3/3 6/2/3 2/1/3
+# Left face
+f 3/1/5 8/3/5 4/2/5
+f 3/1/5 7/4/5 8/3/5
 "
   :test #'string=
   :documentation "OBJ string defining a cube, counter clockwise.")
