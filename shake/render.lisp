@@ -302,23 +302,25 @@
   (gl:bind-vertex-array (batch-vertex-array batch))
   (let ((layers (batch-layers batch))
         (layer-count (length (batch-layers batch)))
+        (mvps (batch-mvp batch))
         (draw-start 0))
     (assert (< 0 layer-count))
     (assert (= layer-count (batch-objects batch)))
+    (assert (= layer-count (length mvps)))
     (sgl:with-uniform-locations shader-prog (tex-layer mvp)
-      (cffi:with-foreign-object (layer-array :int layer-count)
-        (loop for layer-pair across layers and ix fixnum from 0 do
-             (let ((layer (car layer-pair)))
-               (setf (cffi:mem-aref layer-array :int ix) layer)))
-        (%gl:uniform-1iv tex-layer-loc layer-count layer-array))
-      (let ((mvps (batch-mvp batch)))
-        (cffi:with-foreign-object (ptr :float (* #.+max-batch-size+ 4 4))
-          (loop for mvp across mvps and offset fixnum from 0 by (* 4 4) do
+      (cffi:with-foreign-object (layer-array :int (* #.+max-batch-size+ 4))
+        (cffi:with-foreign-object (mvp-array :float (* #.+max-batch-size+ 4 4))
+          (loop for layer-pair across layers and object-ix fixnum from 0
+             and mvp across mvps and mvp-offset fixnum from 0 by (* 4 4) do
+             ;; Set the layer
+               (let ((layer (car layer-pair)))
+                 (setf (cffi:mem-aref layer-array :int object-ix) layer))
+             ;; Set the mvp
                (dotimes (ix (* 4 4))
-                 (setf (cffi:mem-aref ptr :float (+ offset ix))
+                 (setf (cffi:mem-aref mvp-array :float (+ mvp-offset ix))
                        (coerce (row-major-aref mvp ix) 'single-float))))
-          (assert (= layer-count (length (batch-mvp batch))))
-          (%gl:uniform-matrix-4fv mvp-loc layer-count t ptr))))
+          (%gl:uniform-1iv tex-layer-loc layer-count layer-array)
+          (%gl:uniform-matrix-4fv mvp-loc layer-count t mvp-array))))
     (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
       (cond
         ((and multi-draw-indirect-p base-instance-p)
