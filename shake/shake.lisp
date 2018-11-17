@@ -412,8 +412,8 @@
     (reset-game-keys)
     (with-data-dirs *base-dir*
       (set-gl-attrs)
-      (let ((*win-width* 800) (*win-height* 600)
-            (*rend-width* 800) (*rend-height* 600))
+      (let* ((*win-width* 1024) (*win-height* 768)
+             (*rend-width* *win-width*) (*rend-height* *win-height*))
         (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
                                   :flags '(:opengl))
           (srend:with-render-system
@@ -544,4 +544,7 @@
   ;; (gl:cull-face :back)
   ;; (gl:front-face :ccw)
   (gl:depth-func :less)
-  (render-world camera smdl:*world-model*))
+  (render-world camera smdl:*world-model*)
+  ;; Draw "crosshair"
+  (srend::draw-text "+" :x (floor *win-width* 2) :y (floor *win-height* 2)
+                    :scale 2.0s0))

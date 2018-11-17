@@ -80,7 +80,8 @@
 (defstruct debug-text
   (char-string nil :type string :read-only t)
   (x 0 :type fixnum :read-only t)
-  (y 0 :type fixnum :read-only t))
+  (y 0 :type fixnum :read-only t)
+  (scale 1.0s0 :type single-float :read-only t))
 
 (defstruct gl-framebuffer
   (id nil :type integer :read-only t)
@@ -429,16 +430,17 @@
                    (add-new-batch (max surface-space (* 100 1024))))))
           (add-surface-vertex-data surface mvp batch))))))
 
-(defun draw-text (text &key x y)
+(defun draw-text (text &key x y (scale 1.0s0))
   "Draw a single line of text on given window coordinates."
   (check-type *rs* render-system)
   (check-type text string)
   (check-type x fixnum)
   (check-type y fixnum)
+  (check-type scale single-float)
   ;; TODO: Do we want window or render dimensions?
   (let ((pos-x (if (minusp x) (+ (render-system-win-width *rs*) x) x))
         (pos-y (if (minusp y) (+ (render-system-win-height *rs*) y) y)))
-    (push (make-debug-text :char-string text :x pos-x :y pos-y)
+    (push (make-debug-text :char-string text :x pos-x :y pos-y :scale scale)
           (render-system-debug-text-list *rs*))))
 
 (defun char->font-cell-pos (char font)
@@ -468,12 +470,13 @@
                 (tex-font proj size cell mv char-pos)
               (gl:uniformi tex-font-loc 0)
               (sgl:uniform-matrix-4f proj-loc ortho)
-              (gl:uniformf size-loc half-cell)
               (gl:uniformi cell-loc cell-size cell-size)
               (dolist (debug-text debug-text-list)
                 (let ((text (debug-text-char-string debug-text))
                       (pos-x (debug-text-x debug-text))
-                      (pos-y (debug-text-y debug-text)))
+                      (pos-y (debug-text-y debug-text))
+                      (size (* half-cell (debug-text-scale debug-text))))
+                  (gl:uniformf size-loc size)
                   (loop for char across text
                      and offset of-type double-float from half-cell by half-cell do
                        (destructuring-bind (x . y) (char->font-cell-pos char font)
