@@ -366,7 +366,7 @@
             (draw-count (smdl::surf-triangles-num-verts surface))
             (tex-name (smdl::surf-triangles-tex-name surface)))
         (with-struct (render-system- image-manager) *rs*
-          (let ((layer (if-let ((image (get-image image-manager tex-name)))
+          (let ((layer (if-let ((image (and tex-name (get-image image-manager tex-name))))
                          (progn
                            (unless (batch-texture batch)
                              (setf (batch-texture batch) image))

@@ -70,7 +70,7 @@
    (search-paths :initarg :search-paths :reader data-file-error-search-paths)
    (message :initarg :message :reader data-file-error-message))
   (:report (lambda (e stream)
-             (format stream "Error opening file '~A'. ~A~%Looked for in: ~{~%  ~A~}"
+             (format stream "Error opening file '~A'. ~A~%Looked for in: ~{~%  '~A'~}~%"
                      (data-file-error-filename e) (data-file-error-message e)
                      (data-file-error-search-paths e)))))
 

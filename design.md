@@ -114,6 +114,14 @@ there is no in-fighting.
 
 ## Graphics & Animation
 
+### Textures
+
+All regular textures should be 1024x1024 pixels in size. The rendered uses
+top-left as origin of texture (UV) coordinates. Note, that Blender's origin is
+bottom-left, so the image should be flipped.
+
+Currently supported format is .BMP RGB only.
+
 Todo: Style?
 
 ### 3D Models

@@ -18,13 +18,21 @@
   (layer-map (make-hash-table :test #'equal)))
 
 (defun image-path (name)
-  (sdata:data-path (concatenate 'string "share/textures/" name)))
+  (sdata:data-path (concatenate 'string "share/textures/" name)
+                   :if-does-not-exist :error))
 
 (defun get-image-layer (image name)
   (with-struct (image- tex-type layer-map) image
     (assert (eq tex-type :texture-2d-array))
     (assert (image-loaded-p image))
-    (gethash name layer-map)))
+    (let ((layer (gethash name layer-map)))
+      (if layer
+          layer
+          (progn
+            ;; We need to have a valid LAYER-MAP, otherwise we are using a
+            ;; defaulted image.
+            (assert (string= "missing.bmp" (image-name image)))
+            0)))))
 
 (defun read-image-from-file (fname)
   (sdl2:load-bmp (image-path fname)))
@@ -110,11 +118,13 @@
   (image-map (make-hash-table :test #'equal) :type hash-table)
   ;; Maps image-opts to a list of images.
   (image-opts-map (make-hash-table :test #'equalp) :type hash-table)
-  missing-image)
+  (missing-image nil :type (or null image)))
 
-(defun get-image (image-manager name)
+(defun get-image (image-manager name &key (default (image-manager-missing-image image-manager)))
+  "Return a loaded image called NAME.  If the image is not loaded (either it
+failed to load or no load was requested), returns DEFAULT."
   (with-struct (image-manager- image-map) image-manager
-    (gethash name image-map)))
+    (gethash name image-map default)))
 
 (defun get-images-with-opts (image-manager opts)
   (gethash opts (image-manager-image-opts-map image-manager)))
@@ -148,28 +158,38 @@
         image-array)))
 
 (defun load-image-from-file (image-manager fname)
-  (or (get-image image-manager fname)
-      (let ((binary-image (read-image-from-file fname)))
-        (unwind-protect
-             (let* ((opts (make-image-opts
-                           :width (sdl2:surface-width binary-image)
-                           :height (sdl2:surface-height binary-image)
-                           :depth 10))
-                    (image-array (get-or-create-image-array image-manager fname
-                                                            opts)))
-               (push fname (image-files image-array))
-               (setf (gethash fname (image-manager-image-map image-manager))
-                     image-array)
-               (load-image-to-array fname binary-image image-array))
-          (sdl2:free-surface binary-image)))))
+  "Load image from file FNAME.  If the image was already loaded, return the
+existing one.  In case of any loading errors, return default image for missing
+textures."
+  (or (get-image image-manager fname :default nil)
+      (handler-case
+          (let ((binary-image (read-image-from-file fname)))
+            (unwind-protect
+                 (let* ((opts (make-image-opts
+                               :width (sdl2:surface-width binary-image)
+                               :height (sdl2:surface-height binary-image)
+                               :depth 10))
+                        (image-array (get-or-create-image-array image-manager fname
+                                                                opts)))
+                   (push fname (image-files image-array))
+                   (setf (gethash fname (image-manager-image-map image-manager))
+                         image-array)
+                   (load-image-to-array fname binary-image image-array)
+                   image-array)
+              (sdl2:free-surface binary-image)))
+        ;; TODO: Other errors?
+        (sdata:data-file-error (c)
+          (princ c)
+          (image-manager-missing-image image-manager)))))
 
 (defun load-map-images (image-manager image-names)
   (dolist (name image-names)
-    (when (image-path name)
-      (load-image-from-file image-manager name))))
+    (load-image-from-file image-manager name)))
 
 (defun init-image-manager ()
   (let ((im (make-image-manager)))
+    ;; TODO: Replace missing image with a programmatic image, so we don't
+    ;; depend on potentially missing file.
     (setf (image-manager-missing-image im)
           (load-image-from-file im "missing.bmp"))
     im))
