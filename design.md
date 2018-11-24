@@ -116,7 +116,7 @@ there is no in-fighting.
 
 ### Textures
 
-All regular textures should be 1024x1024 pixels in size. The rendered uses
+All regular textures should be 1024x1024 pixels in size. The renderer uses
 top-left as origin of texture (UV) coordinates. Note, that Blender's origin is
 bottom-left, so the image should be flipped.
 
@@ -125,6 +125,10 @@ Currently supported format is .BMP RGB only.
 Todo: Style?
 
 ### 3D Models
+
+All models should be scaled so that they fit into a cube of size 2,
+coordinates from -1 to 1. This is the default model in renderer and the
+initial size of cube model in Blender.
 
 Static models:
 

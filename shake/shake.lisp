@@ -398,6 +398,12 @@
              (srend::load-font (data-path "share/font-16.bmp") 16 #\Space))
            #'srend::delete-font))
 
+(defun load-weapons (render-system model-manager)
+  (srend::load-image-from-file (srend::render-system-image-manager render-system) "shotgun.bmp")
+  (let ((shotgun-model (smdl:get-model model-manager "../shotgun.obj")))
+    ;; TODO: This should be more generic and injected in a better way.
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts shotgun-model)) "shotgun.bmp")))
+
 (defun load-map-textures (render-system bsp)
   (labels ((texture-name (surf)
              (aif (sbsp:sidedef-texinfo surf)
@@ -408,8 +414,7 @@
                                                        #'leaf-textures)
                                         :test #'string=)))
       (srend:load-map-images (srend::render-system-image-manager render-system)
-                             textures)
-      (srend:print-memory-usage render-system))))
+                             textures))))
 
 (defun spawn-player (things camera)
   (dolist (thing things)
@@ -418,6 +423,33 @@
             (angle (sbsp:map-thing-angle thing)))
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
         (return (nrotate-camera angle #.(shiva-float 0.0) camera))))))
+
+(defun render-weapon (camera model-manager)
+  (let ((mvp (m* (camera-projection-matrix camera)
+                 (m* (m* (translation :x 0.5 :y -0.5 :z #.(shiva-float -1.4d0))
+                         (rotation (v 0 1 0) (* deg->rad 182)))
+                     (rotation (v 1 0 0) (* deg->rad -3))))))
+    ;; Hack the projected Z so that we keep the depth of FP weapon small, thus
+    ;; drawing over almost everything.
+    (zap (lambda (x) (* 0.25 x)) (aref mvp 2 0))
+    (zap (lambda (x) (* 0.25 x)) (aref mvp 2 1))
+    (zap (lambda (x) (* 0.25 x)) (aref mvp 2 2))
+    (zap (lambda (x) (* 0.25 x)) (aref mvp 2 3))
+    (srend:render-surface
+     (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
+     mvp)))
+
+(defun render-weapon-pickup (camera model-manager)
+  ;; Render weapon pickup
+  (let ((mvp (m* (m* (camera-projection-matrix camera)
+                     (camera-view-transform camera))
+                 (m*
+                  (m* (translation :x 17 :y 0.125 :z 51)
+                      (scale :x 0.125 :y 0.125 :z 0.125))
+                  (rotation (v 0 1 0) (* deg->rad (mod (get-time) 360)))))))
+    (srend:render-surface
+     (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
+     mvp)))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
@@ -452,7 +484,9 @@
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp")))
+          (load-weapons render-system model-manager)
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
+          (srend:print-memory-usage render-system)
           (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
@@ -482,17 +516,15 @@
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
                            (render camera)
-                           (let ((mvp (m* (m* (camera-projection-matrix camera)
-                                              (camera-view-transform camera))
-                                          (m* (translation :x 17 :y 0.25 :z 51)
-                                              (scale :x 0.5 :y 0.5 :z 0.5)))))
-                             (srend:render-surface
-                              (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
-                              mvp))
+                           ;; TODO: This should be part of `RENDER', and
+                           ;; should use currently equipped weapon.
+                           (render-weapon camera model-manager)
+                           ;; TODO: This should go through a generic loop for
+                           ;; rendering all things on the map.
+                           (render-weapon-pickup camera model-manager)
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
-                            (srend::render-system-swap-timer render-system) :y -36)
-                           )))))))))))
+                            (srend::render-system-swap-timer render-system) :y -36))))))))))))
 
 (defun set-gl-attrs ()
   "Set OpenGL context attributes. This needs to be called before window

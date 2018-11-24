@@ -17,7 +17,8 @@
   (num-verts 0 :type fixnum :read-only t)
   (verts-byte-size 0 :type fixnum :read-only t)
   (verts nil :read-only t)
-  (tex-name nil :type (or null string) :read-only t))
+  ;; TODO: Texture should be wired differently
+  (tex-name nil :type (or null string)))
 
 (defstruct l-vertex-data
   (position (v 0 0 0) :type (vec 3) :read-only t)
@@ -226,8 +227,7 @@
      (make-surf-triangles :num-verts num-verts
                           :verts-byte-size (* num-verts (cffi:foreign-type-size
                                                          '(:struct vertex-data)))
-                          :verts verts
-                          :tex-name "missing.bmp"))))
+                          :verts verts))))
 
 (defun sidedef->surface (sidedef)
   (make-surface :lineseg (sbsp:sidedef-lineseg sidedef)
@@ -327,8 +327,10 @@ and return the default model."
 
 (defun make-default-model ()
   "Return the default cube model, size is 2 (-1, 1)."
-  (with-input-from-string (s sobj::+cube+)
-    (obj->model (sobj:read-obj s))))
+  (let ((model (with-input-from-string (s sobj::+cube+)
+                 (obj->model (sobj:read-obj s)))))
+    (setf (surf-triangles-tex-name (obj-model-verts model)) "missing.bmp")
+    model))
 
 (defun init-model-manager ()
   (make-model-manager
