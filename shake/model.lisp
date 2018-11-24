@@ -284,14 +284,22 @@
                   :things (sbsp:bspfile-things bspfile)))
 
 (defun load-model (model-fname)
-  (with-data-file (file model-fname)
-    (let ((ext (pathname-type model-fname)))
-      (cond
-        ((string= "obj" ext)
-         (obj->model (sobj:read-obj file)))
-        ((string= "bsp" ext)
-         (bspfile->model (sbsp:read-bspfile file)))
-        (t (error "Unknown model format ~S" model-fname))))))
+  "Try to load a 3D model from MODEL-FNAME.  In case of error, print the error
+and return the default model."
+  (handler-case
+      (with-data-file (file model-fname)
+        (let ((ext (pathname-type model-fname)))
+          (cond
+            ((string= "obj" ext)
+             (obj->model (sobj:read-obj file)))
+            ((string= "bsp" ext)
+             (bspfile->model (sbsp:read-bspfile file)))
+            (t
+             (format t "Unknown model format ~S" model-fname)
+             (make-default-model)))))
+    (sdata:data-file-error (c)
+      (princ c)
+      (make-default-model))))
 
 (defun free-model (model)
   (declare (type (or obj-model bsp-model) model))
@@ -317,10 +325,14 @@
   ;; Default model is the cube
   (default-model nil :type obj-model :read-only t))
 
+(defun make-default-model ()
+  "Return the default cube model, size is 2 (-1, 1)."
+  (with-input-from-string (s sobj::+cube+)
+    (obj->model (sobj:read-obj s))))
+
 (defun init-model-manager ()
   (make-model-manager
-   :default-model (with-input-from-string (s sobj::+cube+)
-                    (obj->model (sobj:read-obj s)))))
+   :default-model (make-default-model)))
 
 (defun shutdown-model-manager (model-manager)
   (declare (type model-manager model-manager))
@@ -341,5 +353,4 @@
   (declare (type model-manager model-manager)
            (type string name))
   (or (gethash name (model-manager-models model-manager))
-      (add-model model-manager (load-model name)
-                 :name name)))
+      (add-model model-manager (load-model name) :name name)))

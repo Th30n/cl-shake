@@ -66,12 +66,13 @@
      ,@body))
 
 (define-condition data-file-error (error)
-  ((filename :initarg :filename :reader filename)
-   (search-paths :initarg :search-paths :reader search-paths)
-   (message :initarg :message :reader message))
+  ((filename :initarg :filename :reader data-file-error-filename)
+   (search-paths :initarg :search-paths :reader data-file-error-search-paths)
+   (message :initarg :message :reader data-file-error-message))
   (:report (lambda (e stream)
              (format stream "Error opening file '~A'. ~A~%Looked for in: ~{~%  ~A~}"
-                     (filename e) (message e) (search-paths e)))))
+                     (data-file-error-filename e) (data-file-error-message e)
+                     (data-file-error-search-paths e)))))
 
 (defun data-path (filename &key (if-does-not-exist nil))
   "Construct a path to FILENAME by looking for it in *SEARCH-PATHS*. When
