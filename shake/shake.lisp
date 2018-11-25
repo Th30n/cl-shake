@@ -239,6 +239,16 @@
 (defun game-key-down-p (key)
   (gethash key *game-keys*))
 
+(defun press-mouse-button (button-id)
+  (check-type button-id (unsigned-byte 8))
+  (let ((button-key (make-keyword (format nil "~A~A" :mouse button-id))))
+    (press-game-key button-key)))
+
+(defun release-mouse-button (button-id)
+  (check-type button-id (unsigned-byte 8))
+  (let ((button-key (make-keyword (format nil "~A~A" :mouse button-id))))
+    (release-game-key button-key)))
+
 (defstruct ticcmd
   (forward-move #.(shiva-float 0.0) :type shiva-float)
   (side-move #.(shiva-float 0.0) :type shiva-float)
@@ -509,6 +519,12 @@
                (:xrel xrel :yrel yrel)
                (when input-focus-p
                  (update-mouse-relative xrel yrel)))
+              (:mousebuttondown
+               (:button button)
+               (press-mouse-button button))
+              (:mousebuttonup
+               (:button button)
+               (release-mouse-button button))
               (:idle ()
                      (with-timer (frame-timer)
                        (try-run-tics #'build-ticcmd
