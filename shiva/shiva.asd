@@ -24,4 +24,11 @@
   :depends-on ("iterate" "metabang-bind" "alexandria")
   :components ((:file "package")
                (:file "shiva" :depends-on ("package")))
-  :in-order-to ((test-op (test-op shiva-test))))
+  :in-order-to ((test-op (test-op shiva/test))))
+
+(defsystem "shiva/test"
+  :depends-on ("shiva" "prove")
+  :defsystem-depends-on ("prove-asdf")
+  :components ((:test-file "shiva-test"))
+  :perform (test-op :after (op c)
+                    (funcall (intern #.(string :run) :prove) c)))
