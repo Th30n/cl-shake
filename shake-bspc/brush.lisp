@@ -128,8 +128,8 @@
       (dolist (sectors (list sectors1 sectors2))
         (assert (every (curry #'equalp (car sectors)) (cdr sectors))))
       (when (or (and (not s2) s1)
-                (and s1 s2 (double> (sector-floor-height s2)
-                                    (sector-floor-height s1))))
+                (and s1 s2 (float> (sector-floor-height s2)
+                                   (sector-floor-height s1))))
         b1))))
 
 (defun brush-consume-p (b1 b2)
@@ -148,8 +148,8 @@ direction."
        (brush-lower-p b2 b1)
        ;; Consume if s2 has same contents as s1
        (and s1 s2
-            (double= (sector-ceiling-height s1) (sector-ceiling-height s2))
-            (double= (sector-floor-height s1) (sector-floor-height s2)))))))
+            (float= (sector-ceiling-height s1) (sector-ceiling-height s2))
+            (float= (sector-floor-height s1) (sector-floor-height s2)))))))
 
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
@@ -181,10 +181,10 @@ direction."
                                   ;; front-sector multiple times, so take the
                                   ;; one with the highest priorty.
                                   (when (or (not front-sector)
-                                            (double> (sector-floor-height
-                                                      back-sector)
-                                                     (sector-floor-height
-                                                      front-sector)))
+                                            (float> (sector-floor-height
+                                                     back-sector)
+                                                    (sector-floor-height
+                                                     front-sector)))
                                     ;; TODO: What about same floor, but
                                     ;; different ceiling or other?
                                     (setf (sidedef-front-sector surf)
@@ -200,14 +200,14 @@ direction."
   which is O(nh) where n is the number of points and h the resulting convex
   hull points. Points are returned in counter clockwise order."
   (let ((min-point (reduce (lambda (a b)
-                             (if (double= (vx a) (vx b))
+                             (if (float= (vx a) (vx b))
                                  (if (< (vy a) (vy b)) a b)
                                  (if (< (vx a) (vx b)) a b))) points)))
     (flet ((in-front-p (line point)
              (let ((side (determine-side line point)))
                (if (eq :on-line side)
                    (with-struct (linedef- start end) line
-                     (double> (vdistsq start point) (vdistsq start end)))
+                     (float> (vdistsq start point) (vdistsq start end)))
                    (eq :front side)))))
       (loop with hull-point = min-point and endpoint = min-point collect
            (progn

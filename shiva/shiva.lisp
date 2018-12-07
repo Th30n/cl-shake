@@ -17,7 +17,18 @@
 (in-package #:shiva)
 (declaim (optimize (speed 3)))
 
+;; TODO: Remove this defaulting to double-float after the transition period.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (pushnew :shiva-double-float *features*))
+
+#-shiva-double-float
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (pushnew :shiva-single-float *features*))
+
+#+shiva-double-float
 (deftype shiva-float (&optional min max) `(double-float ,min ,max))
+#-shiva-double-float
+(deftype shiva-float (&optional min max) `(single-float ,min ,max))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (declaim (inline shiva-float))
@@ -400,7 +411,67 @@ epsilon. Doesn't handle infinities."
   (declare (type double-float a b))
   (or (double= a b) (< a b)))
 
-(defun v= (v1 v2 &key (test #'double=))
+(declaim (inline single=))
+(defun single= (a b &key (epsilon 1s-6) (rel-epsilon single-float-epsilon))
+  "Compare floating points using epsilon difference and fallback to relative
+epsilon. Doesn't handle infinities."
+  (declare (type single-float a b epsilon rel-epsilon))
+  (let ((diff (abs (- a b)))
+        (max (max (abs a) (abs b))))
+    (declare (type single-float diff max))
+    (or (<= diff epsilon) ;; Needed when near zero.
+        (<= diff (* max rel-epsilon)))))
+
+(declaim (inline single>))
+(defun single> (a b)
+  (declare (type single-float a b))
+  (and (not (single= a b)) (> a b)))
+
+(declaim (inline single>=))
+(defun single>= (a b)
+  (declare (type single-float a b))
+  (or (single= a b) (> a b)))
+
+(declaim (inline single<))
+(defun single< (a b)
+  (declare (type single-float a b))
+  (and (not (single= a b)) (< a b)))
+
+(declaim (inline single<=))
+(defun single<= (a b)
+  (declare (type single-float a b))
+  (or (single= a b) (< a b)))
+
+(declaim (inline float=))
+(defun float= (a b)
+  #+shiva-double-float(double= a b)
+  #+shiva-single-float(single= a b)
+  )
+
+(declaim (inline float>))
+(defun float> (a b)
+  #+shiva-double-float(double> a b)
+  #+shiva-single-float(single> a b)
+  )
+
+(declaim (inline float>=))
+(defun float>= (a b)
+  #+shiva-double-float(double>= a b)
+  #+shiva-single-float(single>= a b)
+  )
+
+(declaim (inline float<))
+(defun float< (a b)
+  #+shiva-double-float(double< a b)
+  #+shiva-single-float(single< a b)
+  )
+
+(declaim (inline float<=))
+(defun float<= (a b)
+  #+shiva-double-float(double<= a b)
+  #+shiva-single-float(single<= a b))
+
+(defun v= (v1 v2 &key (test #'float=))
   "Perform a comparison of two vectors."
   (let ((n1 (array-dimension v1 0))
         (n2 (array-dimension v2 0)))

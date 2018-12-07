@@ -504,7 +504,7 @@
                 (let ((hovered-bounds (sbrush::brush-bounds
                                        (mbrush-brush (second hovered-brush))))
                       (bounds (sbrush::brush-bounds (mbrush-brush mbrush))))
-                  (when (shiva:double<
+                  (when (shiva:float<
                          (shiva:vdistsq (car bounds) (cdr bounds))
                          (shiva:vdistsq (car hovered-bounds) (cdr hovered-bounds)))
                     (setf hovered-brush (list item mbrush))))))))

@@ -255,13 +255,13 @@
   LINESEG. Returns NIL if T-SPLIT does not split the line segment. When
   RELATIVE-T is not NIL, T-SPLIT parameter is treated relative to the
   segment."
-  (declare (type lineseg lineseg) (type double-float t-split))
+  (declare (type lineseg lineseg) (type shiva-float t-split))
   (with-struct (lineseg- t-start t-end) lineseg
     (when relative-t
       (let ((t-diff (- t-end t-start)))
         (setf t-split (+ t-start (* t-split t-diff)))))
-    (when (and (double> t-end t-split)
-               (double> t-split t-start))
+    (when (and (float> t-end t-split)
+               (float> t-split t-start))
       (let ((l1 (copy-lineseg lineseg))
             (l2 (copy-lineseg lineseg)))
         (setf (lineseg-t-end l1) t-split)
@@ -279,7 +279,7 @@
   :BACK, :FRONT or :ON-LINE as the primary value and distance as the second."
   (let ((d (dist-line-point line point)))
     (values (cond
-              ((double= d 0d0) :on-line)
+              ((float= d (shiva-float 0.0)) :on-line)
               ((plusp d) :front)
               ((minusp d) :back))
             d)))
@@ -336,13 +336,13 @@
 
 (defun split-partition (splitter surface num den)
   (declare (type linedef splitter) (type sidedef surface)
-           (type double-float num den))
+           (type shiva-float num den))
   (with-struct (sidedef- lineseg) surface
     (let ((splitted (split-lineseg lineseg (/ num den))))
       (if (null splitted)
           ;; no split
           (progn
-            (when (double= num 0d0)
+            (when (float= num (shiva-float 0.0))
               ;; Points are collinear, use other end for numerator.
               (let ((n (linedef-normal splitter))
                     (sl-vec (v- (lineseg-end lineseg) (linedef-start splitter))))
@@ -374,10 +374,10 @@ splitter lines. This process may create additional surfaces."
     (dolist (surf surfaces)
       (with-struct (sidedef- lineseg) surf
         (multiple-value-bind (num den) (line-intersect-ratio splitter lineseg)
-          (if (double= den 0d0)
+          (if (float= den (shiva-float 0.0))
               ;; parallel lines
               (cond
-                ((double= num 0d0)
+                ((float= num (shiva-float 0.0))
                  ;; on the same line
                  (push (lineseg-orig-line lineseg) on-splitter)
                  (if (v= (linedef-normal splitter) (lineseg-normal lineseg))
@@ -408,13 +408,13 @@ splitter lines. This process may create additional surfaces."
   (let ((lineseg (make-lineseg :orig-line line)))
     (multiple-value-bind (num den)
         (line-intersect-ratio split-line lineseg)
-      (unless (double= den 0d0)
+      (unless (float= den (shiva-float 0.0))
         (let ((t-split (/ num den)))
           (cond
-            ((double= t-split 0d0) (linedef-start line))
-            ((double= t-split 1d0) (linedef-end line))
-            ((and (double> 1d0 t-split)
-                  (double> t-split 0d0))
+            ((float= t-split (shiva-float 0.0)) (linedef-start line))
+            ((float= t-split (shiva-float 1.0)) (linedef-end line))
+            ((and (float> (shiva-float 1.0) t-split)
+                  (float> t-split (shiva-float 0.0)))
              (lineseg-end (car (split-lineseg lineseg t-split))))))))))
 
 (defun linedefs<-bounds (bounds)

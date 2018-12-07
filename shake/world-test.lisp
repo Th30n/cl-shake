@@ -21,7 +21,7 @@
         #:prove
         #:shake)
   (:import-from #:shiva
-                #:double=
+                #:float=
                 #:v
                 #:v=
                 #:v3->v2)
@@ -50,7 +50,7 @@
   `(let-mtrace ,p1 ,p2
      ,@(when fraction
              (list
-              `(is (shake:mtrace-fraction mtrace) ,fraction :test #'double=)))
+              `(is (shake:mtrace-fraction mtrace) ,fraction :test #'float=)))
      (is (shake:mtrace-endpos mtrace) ,endpos :test #'v=)
      (is (shake:mtrace-normal mtrace) ,normal
          :test (lambda (a b)

@@ -28,7 +28,7 @@
   (far nil :type (double-float 0d0) :read-only t))
 
 (defun make-perspective (fovy aspect near far)
-  (assert (double> (coerce far 'double-float) (coerce near 'double-float)))
+  (assert (float> (coerce far 'double-float) (coerce near 'double-float)))
   (make-perspective-priv :fovy (coerce fovy 'double-float)
                          :aspect (coerce aspect 'double-float)
                          :near (coerce near 'double-float)
@@ -107,8 +107,8 @@
                   ;; Note 2D vy iz vz in 3D.
                   (* (vy h) (abs (vz normal))))))
         (cond
-          ((double> (- s e) 0d0) nil) ;; outside
-          ((double> 0d0 (+ s e)) :inside)
+          ((float> (- s e) 0d0) nil) ;; outside
+          ((float> 0d0 (+ s e)) :inside)
           (t :intersect))))))
 
 ;; NOTE: This and `INTERSECT-PLANE' are on a hot path, they should be be fast
@@ -304,8 +304,8 @@
                   (recursive-hull-check hull new-origin
                                         (v+ new-origin
                                             (vscale time-left new-vel)))))))
-          (if (double> (vdistsq (v3->v2 origin) (v3->v2 climb-endpos))
-                       (vdistsq (v3->v2 origin) (v3->v2 slide-endpos)))
+          (if (float> (vdistsq (v3->v2 origin) (v3->v2 climb-endpos))
+                      (vdistsq (v3->v2 origin) (v3->v2 slide-endpos)))
               climb-endpos
               slide-endpos)))))
 
@@ -315,7 +315,7 @@
   (let ((sector (hull-point-sector (smdl:bsp-model-hull smdl:*world-model*)
                                    (v3->v2 entity-position))))
     (or (not sector) ; We are off the map, treat it as grounded.
-        (double= (sbsp:sector-floor-height sector) (vy entity-position)))))
+        (float= (sbsp:sector-floor-height sector) (vy entity-position)))))
 
 (defun apply-gravity (entity-position)
   (declare (special *time-delta* smdl:*world-model*))

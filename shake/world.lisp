@@ -61,8 +61,8 @@
   (when-let* ((sector (hull-point-sector hull-node (v3->v2 point)))
               (floor-height (sbsp:sector-floor-height sector))
               (ceiling-height (sbsp:sector-ceiling-height sector)))
-    (and (double>= ceiling-height (+ (vy point) height))
-         (double>= (vy point) floor-height))))
+    (and (float>= ceiling-height (+ (vy point) height))
+         (float>= (vy point) floor-height))))
 
 (defparameter *dist-epsilon* 1d-10)
 
