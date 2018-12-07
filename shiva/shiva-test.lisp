@@ -30,15 +30,15 @@
           (v 4 7))
       (v 1 -4) :test #'v=)
   (is-type (v- (v 3 4) (v 4 4))
-           '(vector double-float 2)))
+           '(vector shiva-float 2)))
 
 (subtest "Testing vdot"
   (is (vdot (v 3 5)
             (v 4 2))
-      22d0)
+      (shiva-float 22.0))
   (is (vdot (v 2 4)
             (v 8 -4))
-      0d0))
+      (shiva-float 0.0)))
 
 (subtest "Testing m*"
   (is (m* (mat '(1 2 3)
@@ -77,13 +77,13 @@
         (vtransform (m* scale translation) (v 1 2 3 0)) :test #'v=)))
 
 (subtest "Testing projections"
-  (let ((ortho (ortho -1d0 2d0 -3d0 4d0 -5d0 6d0))
-        (persp (perspective (* deg->rad 90d0) 1d0 1d0 10d0)))
+  (let ((ortho (ortho -1.0 2.0 -3.0 4.0 -5.0 6.0))
+        (persp (perspective (* deg->rad 90.0) 1.0 1.0 10.0)))
     (is (vtransform ortho (v -1 -3 5 1))
         (v -1 -1 -1 1) :test #'v=)
     (is (vtransform ortho (v 2 4 -6 1))
         (v 1 1 1 1) :test #'v=)
-    (is (vtransform ortho (v 0.5d0 0.5d0 -0.5d0 1))
+    (is (vtransform ortho (v 0.5 0.5 -0.5 1))
         (v 0 0 0 1) :test #'v=)
     (is (vtransform persp (v 0 0 -1 1))
         (v 0 0 -1 1) :test #'v=)

@@ -17,8 +17,14 @@
 (in-package #:shiva)
 (declaim (optimize (speed 3)))
 
+(deftype shiva-float (&optional min max) `(double-float ,min ,max))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline shiva-float))
+  (defun shiva-float (x) (coerce x 'shiva-float)))
+
 (deftype vec (size)
-  `(simple-array double-float (,size)))
+  `(simple-array shiva-float (,size)))
 
 ;; purpose-specific language compiler for matrix computation
 
@@ -26,9 +32,9 @@
   (let ((base-arrays `(,@(mapcar #'car arrays)
 		       ,@(mapcar (lambda (x) (if (consp x) (car x) x)) simple-arrays)))
 	(loop-collectors '((sum . sum) (min . minimize) (max . maximize))))
-    (labels ((expand-array (dims &key (type 'double-float))
+    (labels ((expand-array (dims &key (type 'shiva-float))
 	       `(make-array ,dims :element-type ',type))
-	     (expand-array-declaration (name dims &key (type 'double-float))
+	     (expand-array-declaration (name dims &key (type 'shiva-float))
 	       (declare (ignore dims))
 	       `(declare (type (simple-array ,type) ,name)))
 	     (let-arrays (code)
@@ -37,12 +43,12 @@
 		     (new-array-decls (iter (for array in arrays)
 					    (collect (apply #'expand-array-declaration array))))
 		     (other-decls `(,@(iter (for scalar in scalars)
-					    (collect `(declare (type double-float ,scalar))))
+					    (collect `(declare (type shiva-float ,scalar))))
 				    ,@(iter (for simple-array in simple-arrays)
 					    (if (consp simple-array)
 						(bind (((name &key type) simple-array))
 						  (collect `(declare (type (simple-array ,type) ,name))))
-						(collect `(declare (type (simple-array double-float) ,simple-array))))))))
+						(collect `(declare (type (simple-array shiva-float) ,simple-array))))))))
 		 (cond
 		   ((or decls other-decls) `(let ,decls ,@new-array-decls ,@other-decls ,@code))
 		   (t `(progn ,@code)))))
@@ -68,7 +74,7 @@
 		      `(iter
 			,@(expand-index (cadr term))
 			(,name (progn ,@(expand-code (cddr term))) into ,acc)
-			(declare (type double-float ,acc))
+			(declare (type shiva-float ,acc))
 			(finally (return ,acc))))))
 		 ((eq (car term) 'min-index)
 		  (expand-compare term 'minimizing))
@@ -98,8 +104,8 @@
 
 (defun vscale (scalar vector &aux (n (1- (array-dimension vector 0))))
   "Scale a VECTOR by given SCALAR."
-  (declare (type double-float scalar))
-  (declare (type (simple-array double-float) vector))
+  (check-type vector (simple-array shiva-float))
+  (check-type scalar shiva-float)
   (tensor ((i 0 n)) ((out (1+ n))) (:scalars (scalar) :simple-arrays (vector))
 	  ($ i (setf (out i) (* scalar (vector i))))
 	  out))
@@ -118,7 +124,7 @@
 	  out))
 
 (declaim (inline v3dot))
-(declaim (ftype (function ((vec 3) (vec 3)) double-float) v3dot))
+(declaim (ftype (function ((vec 3) (vec 3)) shiva-float) v3dot))
 (defun v3dot (v1 v2)
   (declare (type (vec 3) v1 v2))
   (+ (* (aref v1 0) (aref v2 0))
@@ -131,20 +137,20 @@
 	  (sum i (* (v1 i) (v2 i)))))
 
 (declaim (inline vnorm vnormalize vdist vdistsq))
-(defun vnorm (v) (sqrt (the (double-float 0d0) (vdot v v))))
-(defun vnormalize (v) (vscale (/ 1d0 (vnorm v)) v))
+(defun vnorm (v) (sqrt (the (shiva-float #.(shiva-float 0.0)) (vdot v v))))
+(defun vnormalize (v) (vscale (/ 1.0 (vnorm v)) v))
 (defun vdist (v1 v2) (vnorm (v- v1 v2)))
 (defun vdistsq (v1 v2) (let ((d (v- v1 v2))) (vdot d d)))
 (defun angle (v)
   "Return the angle in radians of vector V around the Z axis."
-  (declare (type (simple-array double-float) v))
+  (declare (type (simple-array shiva-float) v))
   (atan (vy v) (vx v)))
 (defun direction (v1 v2)
   "Return the direction angle in radians between points V1 and V2"
   (angle (v- v2 v1)))
-(defconstant rad->deg (/ 180 pi)
+(defconstant rad->deg (shiva-float (/ 180 pi))
   "Constant for conversion from radians to degrees.")
-(defconstant deg->rad (/ pi 180)
+(defconstant deg->rad (shiva-float (/ pi 180))
   "Constant for conversion from degrees to radians.")
 (defun deg-angle (v) (* rad->deg (angle v)))
 (defun deg-direction (v1 v2) (* rad->deg (direction v1 v2)))
@@ -162,7 +168,7 @@
        (let ((pivot (max-index row-search (a row-search i))))
 	 (rotatef (pivots i) (pivots pivot))
 	 ($ col-swap (rotatef (a pivot col-swap) (a i col-swap)))
-	 (let ((scale (/ 1d0 (a i i))))
+	 (let ((scale (/ (shiva-float 1.0) (a i i))))
 	   ($ row-down
 	      (let ((row-value (a row-down i)))
 		(setf (a row-down i) (* row-value scale))
@@ -200,8 +206,8 @@
     ($ col (setf (ipivots (pivots col)) col))
     ($ col
        (let ((pcol (ipivots col)))
-	 ($ ip (setf (tmp ip) 0d0))
-	 (setf (tmp pcol) 1d0)
+	 ($ ip (setf (tmp ip) (shiva-float 0.0)))
+	 (setf (tmp pcol) (shiva-float 1.0))
 	 ($ i (setf (tmp i) (- (sum k (* (lr i k) (tmp k)))))))
        ($ ii
 	  (decf (tmp ii) (sum j (* (lr ii j) (tmp j))))
@@ -210,14 +216,14 @@
    out))
 
 (defun v (&rest elements)
-  "Create a vector of double-float and fill it with ELEMENTS."
+  "Create a vector of `SHIVA-FLOAT' and fill it with ELEMENTS."
   (declare (dynamic-extent elements))
   (let* ((n (length elements))
-	 (vector (make-array n :element-type 'double-float)))
+	 (vector (make-array n :element-type 'shiva-float)))
     (iter (for i from 0)
           (declare (type fixnum i))
 	  (for elt in elements)
-	  (setf (aref vector i) (coerce elt 'double-float)))
+	  (setf (aref vector i) (shiva-float elt)))
     vector))
 
 (defmacro vx (vector) `(aref ,vector 0))
@@ -255,26 +261,26 @@
   (declare (type (vec 3) v))
   (v (vx v) (vz v)))
 
-(defun v2->v3 (v &optional (y 0d0))
+(defun v2->v3 (v &optional (y (shiva-float 0.0)))
   "Convert VEC 2 to VEC 3 by adding the y axis, set to 0."
   (declare (type (vec 2) v))
   (v (vx v) y (vy v)))
 
 (deftype mat (n &optional m)
-  `(simple-array double-float (,n ,(if (null m) n m))))
+  `(simple-array shiva-float (,n ,(if (null m) n m))))
 
 (defun mat (&rest rows)
-  "Construct a row major matrix as a 2D vector of double-float and fill it
+  "Construct a row major matrix as a 2D vector of `SHIVA-FLOAT' and fill it
 with ROWS."
   (declare (dynamic-extent rows))
   (let* ((n (list-length rows))
          (m (length (car rows)))
-         (matrix (make-array (list n m) :element-type 'double-float)))
+         (matrix (make-array (list n m) :element-type 'shiva-float)))
     (iter (for i from 0)
           (for row in rows)
           (iter (for j from 0)
                 (for elt in row)
-                (setf (aref matrix i j) (coerce elt 'double-float))))
+                (setf (aref matrix i j) (shiva-float elt))))
     matrix))
 
 (defun mat-row (matrix row-index)
@@ -296,12 +302,13 @@ with ROWS."
 (declaim (inline midentity4))
 (defun midentity4 ()
   "Construct a 4x4 identity matrix."
-  (let ((out (make-array '(4 4) :element-type 'double-float
-                         :initial-element 0d0)))
-    (setf (aref out 0 0) 1d0)
-    (setf (aref out 1 1) 1d0)
-    (setf (aref out 2 2) 1d0)
-    (setf (aref out 3 3) 1d0)
+  (let ((out (make-array '(4 4) :element-type 'shiva-float
+                         ;; This doesn't look good if we get a pointer to double-float
+                         :initial-element (shiva-float 0.0))))
+    (setf (aref out 0 0) (shiva-float 1.0))
+    (setf (aref out 1 1) (shiva-float 1.0))
+    (setf (aref out 2 2) (shiva-float 1.0))
+    (setf (aref out 3 3) (shiva-float 1.0))
     out))
 
 (defmacro deftransform (row-index values col-index)
@@ -311,16 +318,16 @@ with ROWS."
        ,@(iter (for i below 3) (for val in values)
                (collect `(let ((,row-index ,i))
                            (setf (aref ,out ,row-index ,col-index)
-                                 (coerce ,val 'double-float)))))
+                                 (shiva-float ,val)))))
        ,out)))
 
 (declaim (inline translation))
-(defun translation (&key (x 0d0) (y 0d0) (z 0d0))
+(defun translation (&key (x 0.0) (y 0.0) (z 0.0))
   "Construct a translation matrix."
   (deftransform i (x y z) 3))
 
 (declaim (inline scale))
-(defun scale (&key (x 1d0) (y 1d0) (z 1d0))
+(defun scale (&key (x 1.0) (y 1.0) (z 1.0))
   "Construct a scale matrix."
   (deftransform i (x y z) i))
 
@@ -332,18 +339,18 @@ with ROWS."
   (check-type top real)
   (check-type near real)
   (check-type far real)
-  (let ((rml (coerce (- right left) 'double-float))
-        (tmb (coerce (- top bottom) 'double-float))
+  (let ((rml (shiva-float (- right left)))
+        (tmb (shiva-float (- top bottom)))
         ;; negate near and far, to switch OpenGL view direction.
-        (nmf (coerce (- near far) 'double-float))
-        (rpl (coerce (+ right left) 'double-float))
-        (tpb (coerce (+ top bottom) 'double-float))
-        (fpn (coerce (+ far near) 'double-float)))
-    (declare (type double-float rml tmb nmf rpl tpb fpn))
-    (mat (list (/ 2d0 rml) 0d0 0d0 (- (/ rpl rml)))
-         (list 0d0 (/ 2d0 tmb) 0d0 (- (/ tpb tmb)))
-         (list 0d0 0d0 (/ 2d0 nmf) (/ fpn nmf))
-         (list 0d0 0d0 0d0 1d0))))
+        (nmf (shiva-float (- near far)))
+        (rpl (shiva-float (+ right left)))
+        (tpb (shiva-float (+ top bottom)))
+        (fpn (shiva-float (+ far near))))
+    (declare (type shiva-float rml tmb nmf rpl tpb fpn))
+    (mat (list (/ 2.0 rml) 0.0 0.0 (- (/ rpl rml)))
+         (list 0.0 (/ 2.0 tmb) 0.0 (- (/ tpb tmb)))
+         (list 0.0 0.0 (/ 2.0 nmf) (/ fpn nmf))
+         (list 0.0 0.0 0.0 1.0))))
 
 (defun perspective (fovy aspect near far)
   "Create a perspective projection with symmetric view frustum."
@@ -351,16 +358,16 @@ with ROWS."
   (check-type aspect (real 0))
   (check-type near (real 0))
   (check-type far (real 0))
-  (let* ((tan-half-fov (tan (/ (coerce fovy 'double-float) 2d0)))
-         (x (/ 1d0 (* (coerce aspect 'double-float) tan-half-fov)))
-         (y (/ 1d0 tan-half-fov))
-         (fmn (coerce (- far near) 'double-float))
-         (fpn (coerce (+ far near) 'double-float)))
-    (declare (type double-float tan-half-fov x y fmn fpn))
-    (mat (list x 0d0 0d0 0d0)
-         (list 0d0 y 0d0 0d0)
-         (list 0d0 0d0 (- (/ fpn fmn)) (/ (* -2d0 far near) fmn))
-         (list 0d0 0d0 -1d0 0d0))))
+  (let* ((tan-half-fov (shiva-float (tan (* 0.5 fovy))))
+         (x (/ 1.0 (* (shiva-float aspect) tan-half-fov)))
+         (y (/ 1.0 tan-half-fov))
+         (fmn (shiva-float (- far near)))
+         (fpn (shiva-float (+ far near))))
+    (declare (type shiva-float tan-half-fov x y fmn fpn))
+    (mat (list x 0.0 0.0 0.0)
+         (list 0.0 y 0.0 0.0)
+         (list 0.0 0.0 (- (/ fpn fmn)) (/ (* -2.0 far near) fmn))
+         (list 0.0 0.0 -1.0 0.0))))
 
 (declaim (inline double=))
 (defun double= (a b &key (epsilon 1d-9) (rel-epsilon double-float-epsilon))
@@ -409,11 +416,11 @@ epsilon. Doesn't handle infinities."
            (setf (out i) (- (* (v1 j) (v2 k)) (* (v1 k) (v2 j))))))
     out))
 
-(deftype quat () `(cons (vec 3) double-float))
+(deftype quat () `(cons (vec 3) shiva-float))
 
 (defun q (x y z w)
   "Construct a quaternion as a cons of vector X Y Z and W."
-  (cons (v x y z) (coerce w 'double-float)))
+  (cons (v x y z) (shiva-float w)))
 
 (defmacro qx (quaternion) `(vx (car ,quaternion)))
 (defmacro qy (quaternion) `(vy (car ,quaternion)))
@@ -435,11 +442,11 @@ epsilon. Doesn't handle infinities."
 
 (defun qconj (q)
   "Conjugate a quaternion."
-  (cons (vscale -1d0 (car q)) (cdr q)))
+  (cons (vscale (shiva-float -1.0) (car q)) (cdr q)))
 
 (defun qrotation (axis rad-angle)
   "Construct a quaternion for rotation of RAD-ANGLE around AXIS vector."
-  (let ((half-angle (/ (coerce rad-angle 'double-float) 2d0)))
+  (let ((half-angle (/ (shiva-float rad-angle) 2.0)))
     (cons (vscale (sin half-angle) axis) (cos half-angle))))
 
 (defun vrotate (quaternion vector)
@@ -470,5 +477,5 @@ epsilon. Doesn't handle infinities."
         (qy (qy quaternion))
         (qz (qz quaternion))
         (qw (qw quaternion)))
-    (atan (* 2d0 (+ (* qw qx) (* qy qz)))
-          (- 1d0 (* 2d0 (+ (* qx qx) (* qy qy)))))))
+    (atan (* 2.0 (+ (* qw qx) (* qy qz)))
+          (- 1.0 (* 2.0 (+ (* qx qx) (* qy qy)))))))
