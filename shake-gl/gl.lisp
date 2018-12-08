@@ -171,7 +171,7 @@ Example usage:
 (defun uniform-matrix-4f (location matrix &key (transpose t))
   (declare (optimize (speed 3) (space 3)))
   (check-type location (signed-byte 64))
-  (check-type matrix (simple-array double-float (4 4)))
+  (check-type matrix (mat 4))
   (check-type transpose boolean)
   ;; Keep this small and optimized.  Unfortunately, sb-profile says this
   ;; performs a lot of allocations.  I cannot tell why, everything should be

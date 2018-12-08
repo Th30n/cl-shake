@@ -22,7 +22,7 @@
   "Movement trace information. FRACTION is determines the completed part of
   the path. ENDPOS is the clipped position. NORMAL is the surface normal at
   impact."
-  (fraction 1d0 :type double-float)
+  (fraction #.(shiva-float 1.0) :type shiva-float)
   (endpos nil :type (vec 3))
   (normal nil :type (or null (vec 3))))
 
@@ -64,7 +64,9 @@
     (and (float>= ceiling-height (+ (vy point) height))
          (float>= (vy point) floor-height))))
 
-(defparameter *dist-epsilon* 1d-10)
+(defparameter *dist-epsilon*
+  #-shiva-double-float 5s-6
+  #+shiva-double-float 1d-10)
 
 (defun cross-fraction (t1 t2)
   "Calculate the crosspoint fraction. The fraction is offset by *DIST-EPSILON*
@@ -73,7 +75,7 @@
                             (+ t1 *dist-epsilon*)
                             (- t1 *dist-epsilon*))
                         (- t1 t2))
-                     0d0 1d0)))
+                     (shiva-float 0) (shiva-float 1))))
     frac))
 
 (defun adjust-midf (hull p1 p2 p1f p2f mid midf frac)
@@ -84,7 +86,7 @@
   (do ()
       ((not (eq (hull-point-contents hull (v3->v2 mid)) :contents-solid))
        (values midf mid))
-    (decf frac 0.01d0)
+    (decf frac #.(shiva-float 0.01d0))
     (if (minusp frac)
         (return (values midf mid))
         (setf midf (+ p1f (* frac (- p2f p1f)))
@@ -110,7 +112,7 @@
           (let ((other-side (if (minusp t1)
                                 (sbsp:node-front node)
                                 (sbsp:node-back node))))
-            (if (crossp other-side mid 0.5d0) ;; TODO: Don't hardcode height
+            (if (crossp other-side mid (shiva-float 0.5)) ;; TODO: Don't hardcode height
                 ;; Continue through the other part.
                 (recursive-hull-check hull mid p2 other-side midf p2f)
                 ;; Other side is solid, this is the impact point.
@@ -124,7 +126,9 @@
                                   :normal (v2->v3 normal))
                      t)))))))))
 
-(defun recursive-hull-check (hull p1 p2 &optional (node nil) (p1f 0d0) (p2f 1d0))
+(defun recursive-hull-check (hull p1 p2 &optional (node nil)
+                                          (p1f #.(shiva-float 0))
+                                          (p2f #.(shiva-float 1)))
   "Checks the HULL for the nearest collision on the way from P1 to P2. Returns
   the MTRACE of the final movement. The secondary value is T if there were
   collisions."
@@ -140,7 +144,7 @@
           ((and (minusp t1) (minusp t2))
            ;; Path is behind the line.
            (recursive-hull-check hull p1 p2 (sbsp:node-back node) p1f p2f))
-          ((and (<= 0d0 t1) (<= 0d0 t2))
+          ((and (<= 0.0 t1) (<= 0.0 t2))
            ;; Path is in front of the line.
            (recursive-hull-check hull p1 p2 (sbsp:node-front node) p1f p2f))
           (t

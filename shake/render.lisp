@@ -474,10 +474,10 @@
   ;; TODO: Do we want window or render dimensions?
   (with-struct (render-system- debug-text-list win-width win-height) render-system
     (let ((progs (render-system-prog-manager render-system))
-          (ortho (ortho 0d0 win-width 0d0 win-height -1d0 1d0)))
+          (ortho (ortho 0.0 win-width 0.0 win-height -1.0 1.0)))
       (sdata:res-let (point-renderer font)
         (with-struct (font- texture cell-size) font
-          (let ((half-cell (* 0.5d0 cell-size))
+          (let ((half-cell (* 0.5 cell-size))
                 (text-shader (get-program progs "billboard" "text" "billboard")))
             (gl:active-texture :texture0)
             (gl:bind-texture :texture-2d texture)
@@ -494,7 +494,7 @@
                       (size (* half-cell (debug-text-scale debug-text))))
                   (gl:uniformf size-loc size)
                   (loop for char across text
-                     and offset of-type double-float from half-cell by half-cell do
+                     and offset of-type single-float from half-cell by half-cell do
                        (destructuring-bind (x . y) (char->font-cell-pos char font)
                          (gl:uniformi char-pos-loc x y)
                          (let ((translation

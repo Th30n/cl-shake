@@ -59,13 +59,21 @@
 
 (defun lineseg-start (lineseg)
   (let* ((line (lineseg-orig-line lineseg))
-         (l-vec (linedef-vec line)))
-    (v+ (linedef-start line) (vscale (lineseg-t-start lineseg) l-vec))))
+         (l-vec (linedef-vec line))
+         (t-start (lineseg-t-start lineseg)))
+    (cond
+      ((= 1.0 t-start) (linedef-end line))
+      ((= 0.0 t-start) (linedef-start line))
+      (t (v+ (linedef-start line) (vscale t-start l-vec))))))
 
 (defun lineseg-end (lineseg)
   (let* ((line (lineseg-orig-line lineseg))
-         (l-vec (linedef-vec line)))
-    (v+ (linedef-start line) (vscale (lineseg-t-end lineseg) l-vec))))
+         (l-vec (linedef-vec line))
+         (t-end (lineseg-t-end lineseg)))
+    (cond
+      ((= 1.0 t-end) (linedef-end line))
+      ((= 0.0 t-end) (linedef-start line))
+      (t (v+ (linedef-start line) (vscale t-end l-vec))))))
 
 (defun lineseg-normal (lineseg)
   (linedef-normal (lineseg-orig-line lineseg)))
@@ -386,7 +394,10 @@ splitter lines. This process may create additional surfaces."
                      ;; same facing go to the front
                      (push surf front)
                      ;; opposite facing go in the back
-                     (push surf back)))
+                     (progn
+                       (assert (v= (v- (linedef-normal splitter))
+                                   (lineseg-normal lineseg)))
+                       (push surf back))))
                 ((plusp num)
                  (push surf front))
                 (t

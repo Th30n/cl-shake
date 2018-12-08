@@ -15,24 +15,24 @@
 (declaim (inline make-plane))
 (defstruct plane
   (normal nil :type (vec 3) :read-only t)
-  (dist nil :type double-float :read-only t))
+  (dist nil :type shiva-float :read-only t))
 
 (defstruct projection
   (matrix nil :type (mat 4) :read-only t))
 
 (defstruct (perspective (:include projection)
                         (:constructor make-perspective-priv))
-  (fovy nil :type (double-float 0d0) :read-only t)
-  (aspect nil :type (double-float 0d0) :read-only t)
-  (near nil :type (double-float 0d0) :read-only t)
-  (far nil :type (double-float 0d0) :read-only t))
+  (fovy nil :type (shiva-float #.(shiva-float 0.0)) :read-only t)
+  (aspect nil :type (shiva-float #.(shiva-float 0.0)) :read-only t)
+  (near nil :type (shiva-float #.(shiva-float 0.0)) :read-only t)
+  (far nil :type (shiva-float #.(shiva-float 0.0)) :read-only t))
 
 (defun make-perspective (fovy aspect near far)
-  (assert (float> (coerce far 'double-float) (coerce near 'double-float)))
-  (make-perspective-priv :fovy (coerce fovy 'double-float)
-                         :aspect (coerce aspect 'double-float)
-                         :near (coerce near 'double-float)
-                         :far (coerce far 'double-float)
+  (assert (float> (shiva-float far) (shiva-float near)))
+  (make-perspective-priv :fovy (shiva-float fovy)
+                         :aspect (shiva-float aspect)
+                         :near (shiva-float near)
+                         :far (shiva-float far)
                          :matrix (perspective fovy aspect near far)))
 
 (defstruct camera
@@ -85,30 +85,39 @@
   (check-type plane plane)
   (check-type mins (vec 2))
   (check-type maxs (vec 2))
-  (check-type bound-y double-float)
+  (check-type bound-y shiva-float)
   (with-struct (plane- normal dist) plane
-    (let ((center (make-array 3 :element-type 'double-float))
-          (h (make-array 2 :element-type 'double-float))
-          (bound-sum (v+ mins maxs))
-          (bound-diff (v- maxs mins)))
+    (let ((center (make-array 3 :element-type 'shiva-float))
+          (h (make-array 2 :element-type 'shiva-float))
+          (bound-sum (make-array 2 :element-type 'shiva-float))
+          (bound-diff (make-array 2 :element-type 'shiva-float)))
       (declare (dynamic-extent center h bound-sum bound-diff))
+      ;; NOTE: Using LET* and DYNAMIC-EXTENT breaks for some reason
       (setf
-       ;; (setf center (vscale 0.5d0 bound-sum))
-       (vx center) (* 0.5d0 (vx bound-sum))
+       ;; (setf bound-sum (v+ mins maxs))
+       (vx bound-sum) (+ (vx mins) (vx maxs))
+       (vy bound-sum) (+ (vy mins) (vy maxs)))
+      (setf
+       ;; (setf bound-diff (v- maxs mins)))
+       (vx bound-diff) (- (vx maxs) (vx mins))
+       (vy bound-diff) (- (vy maxs) (vy mins)))
+      (setf
+       ;; (setf center (vscale 0.5 bound-sum))
+       (vx center) (* 0.5 (vx bound-sum))
        (vy center) bound-y  ; v2->v3
-       (vz center) (* 0.5d0 (vy bound-sum))
-       ;; NOTE: Using LET* and DYNAMIC-EXTENT breaks for some reason
-       ;; (setf h (vscale 0.5d0 bound-diff))
-       (vx h) (* 0.5d0 (vx bound-diff))
-       (vy h) (* 0.5d0 (vy bound-diff)))
+       (vz center) (* 0.5 (vy bound-sum)))
+      (setf
+       ;; (setf h (vscale 0.5 bound-diff))
+       (vx h) (* 0.5 (vx bound-diff))
+       (vy h) (* 0.5 (vy bound-diff)))
       (let ((s (+ (v3dot center normal) dist))
             (e (+ (* (vx h) (abs (vx normal)))
                   (* bound-y (abs (vy normal)))
                   ;; Note 2D vy iz vz in 3D.
                   (* (vy h) (abs (vz normal))))))
         (cond
-          ((float> (- s e) 0d0) nil) ;; outside
-          ((float> 0d0 (+ s e)) :inside)
+          ((float> (- s e) #.(shiva-float 0.0)) nil) ;; outside
+          ((float> #.(shiva-float 0.0) (+ s e)) :inside)
           (t :intersect))))))
 
 ;; NOTE: This and `INTERSECT-PLANE' are on a hot path, they should be be fast
@@ -121,7 +130,7 @@
   (declare (optimize (speed 3)))
   (check-type frustum-planes list)
   (check-type bounds (cons (vec 2) (vec 2)))
-  (check-type bound-y double-float)
+  (check-type bound-y shiva-float)
   (let ((mins (car bounds)) (maxs (cdr bounds))
         (intersect-type nil))
     (dolist (plane frustum-planes intersect-type)
@@ -138,9 +147,12 @@
          (old-v-angle (* rad->deg (q->euler-x xrot)))
          (v-angle-diff yrel))
     (cond
-      ((>= old-v-angle 90d0) (decf old-v-angle 180d0))
-      ((<= old-v-angle -90d0) (incf old-v-angle 180d0)))
-    (let ((v-angle (clamp (+ old-v-angle v-angle-diff) -89d0 89d0)))
+      ((>= old-v-angle #.(shiva-float 90d0))
+       (decf old-v-angle #.(shiva-float 180d0)))
+      ((<= old-v-angle #.(shiva-float -90d0))
+       (incf old-v-angle #.(shiva-float 180d0))))
+    (let ((v-angle (clamp (+ old-v-angle v-angle-diff)
+                          #.(shiva-float -89d0) #.(shiva-float 89d0))))
       (setf (camera-rotation camera)
             (q* xrot (qrotation (v 1 0 0) (* deg->rad (- v-angle old-v-angle)))))
       camera)))
@@ -176,7 +188,7 @@
 (defun draw-timer-stats (timer &key (x 0) (y -20))
   (with-struct (timer- name max avg) timer
     (srend::draw-text (format nil "~A: ~,2Fms (avg) ~,2Fms (max)"
-                              name (* 1d3 avg) (* 1d3 max))
+                              name (* 1s3 avg) (* 1s3 max))
                       :x x :y y)))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
@@ -228,16 +240,19 @@
   (gethash key *game-keys*))
 
 (defstruct ticcmd
-  (forward-move 0d0 :type double-float)
-  (side-move 0d0 :type double-float)
-  (angle-turn (cons 0d0 0d0) :type (cons double-float double-float)))
+  (forward-move #.(shiva-float 0.0) :type shiva-float)
+  (side-move #.(shiva-float 0.0) :type shiva-float)
+  (angle-turn (cons #.(shiva-float 0.0) #.(shiva-float 0.0))
+              :type (cons shiva-float shiva-float)))
 
 (defun build-ticcmd ()
   (let ((xrel (car *mouse*))
         ;; Invert the Y movement.
         (yrel (- (cdr *mouse*)))
-        (sens 1.5d0)
-        (move-speed (if (game-key-down-p :scancode-lshift) 1d0 4d0))
+        (sens #.(shiva-float 1.5d0))
+        (move-speed (if (game-key-down-p :scancode-lshift)
+                        #.(shiva-float 1.0)
+                        #.(shiva-float 4.0)))
         (cmd (make-ticcmd)))
     (when (game-key-down-p :scancode-w)
       (incf (ticcmd-forward-move cmd) move-speed))
@@ -247,8 +262,8 @@
       (incf (ticcmd-side-move cmd) move-speed))
     (when (game-key-down-p :scancode-a)
       (decf (ticcmd-side-move cmd) move-speed))
-    (incf (car (ticcmd-angle-turn cmd)) (* xrel (/ sens 10d0)))
-    (incf (cdr (ticcmd-angle-turn cmd)) (* yrel (/ sens 10d0)))
+    (incf (car (ticcmd-angle-turn cmd)) (* xrel (/ sens #.(shiva-float 10d0))))
+    (incf (cdr (ticcmd-angle-turn cmd)) (* yrel (/ sens #.(shiva-float 10d0))))
     (setf (car *mouse*) 0)
     (setf (cdr *mouse*) 0)
     cmd))
@@ -261,11 +276,11 @@
   (let ((change (vscale (vdot velocity normal) normal)))
     (v- velocity change)))
 
-(defconstant +step-height+ 0.375d0 "Height of a stair step.")
+(defconstant +step-height+ #.(shiva-float 0.375d0) "Height of a stair step.")
 
 (defun player-climb-move (origin velocity hull)
-  (let ((step-origin (v+ origin (v 0d0 +step-height+ 0d0))))
-    (if (/= 1d0 (mtrace-fraction (recursive-hull-check hull origin step-origin)))
+  (let ((step-origin (v+ origin (v 0.0 +step-height+ 0.0))))
+    (if (/= 1.0 (mtrace-fraction (recursive-hull-check hull origin step-origin)))
         ;; Unable to move up to climb a stair.
         origin
         ;; Try climbing a stair with regular movement.
@@ -289,14 +304,14 @@
   (check-type velocity (vec 3))
   (let* ((hull (smdl:bsp-model-hull smdl:*world-model*))
          (mtrace (recursive-hull-check hull origin (v+ origin velocity))))
-    (if (= (mtrace-fraction mtrace) 1d0)
+    (if (= (mtrace-fraction mtrace) 1.0)
         ;; Completed the whole move.
         (mtrace-endpos mtrace)
         ;; Partial move, try sliding or climbing.
         ;; XXX: Maybe use time-left to scale climb velocity?
         (let ((climb-endpos (player-climb-move origin velocity hull))
               (slide-endpos
-               (let ((time-left (- 1d0 (mtrace-fraction mtrace)))
+               (let ((time-left (- 1.0 (mtrace-fraction mtrace)))
                      (new-origin (mtrace-endpos mtrace))
                      (new-vel (clip-velocity velocity
                                              (mtrace-normal mtrace))))
@@ -326,9 +341,9 @@
              (v (vx position) (max (vy position) floor) (vz position)))))
     (if (groundedp entity-position)
         entity-position
-        (let* ((gravity-speed 10d0)
+        (let* ((gravity-speed #.(shiva-float 10d0))
                ;; TODO: Use remaining time fraction.
-               (gravity-velocity (v 0d0 (- (* gravity-speed *time-delta*)) 0d0)))
+               (gravity-velocity (v 0.0 (- (* gravity-speed *time-delta*)) 0.0)))
           ;; TODO: Remove `clamp-to-floor' when `recursive-hull-check'
           ;; correctly clips vertical movement
           (clamp-to-floor
@@ -345,7 +360,7 @@
         ((velocity (v+ (vscale forward-move forward-dir)
                        (vscale side-move (view-dir :right player))))
          ;; TODO: Seperate player position from camera.
-         (camera-offset (v 0d0 0.5d0 0d0))
+         (camera-offset (v 0.0 0.5 0.0))
          (origin (v- (camera-position player) camera-offset))
          (end-pos (v+ origin velocity)))
       (if noclip
@@ -360,7 +375,7 @@
   (check-type camera camera)
   (check-type cmd ticcmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
-    (let ((*time-delta* (coerce (/ +ticrate+) 'double-float))
+    (let ((*time-delta* (shiva-float (/ +ticrate+)))
           (noclip nil))
       (declare (special *time-delta*))
       (unless (and (zerop forward-move) (zerop side-move))
@@ -369,7 +384,7 @@
         (unless (and (zerop x-turn) (zerop y-turn))
           (nrotate-camera x-turn y-turn camera)))
       (unless noclip
-        (let ((camera-offset (v 0d0 0.5d0 0d0)))
+        (let ((camera-offset (v 0.0 0.5 0.0)))
           (setf (camera-position camera)
                 (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset)))))))))
 
@@ -402,7 +417,7 @@
       (let ((pos (sbsp:map-thing-pos thing))
             (angle (sbsp:map-thing-angle thing)))
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
-        (return (nrotate-camera angle 0d0 camera))))))
+        (return (nrotate-camera angle #.(shiva-float 0.0) camera))))))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
@@ -430,9 +445,10 @@
     (smdl:with-model-manager model-manager
       (with-resources "main"
         (load-main-resources render-system)
-        (let* ((proj (make-perspective (* deg->rad 60d0)
+        (let* ((proj (make-perspective (* deg->rad #.(shiva-float 60d0))
                                        (/ *win-width* *win-height*)
-                                       0.01d0 100d0))
+                                       #.(shiva-float 0.01d0)
+                                       #.(shiva-float 100d0)))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp")))
@@ -468,8 +484,8 @@
                            (render camera)
                            (let ((mvp (m* (m* (camera-projection-matrix camera)
                                               (camera-view-transform camera))
-                                          (m* (translation :x 17d0 :y 0.25d0 :z 51d0)
-                                              (scale :x 0.5d0 :y 0.5d0 :z 0.5d0)))))
+                                          (m* (translation :x 17 :y 0.25 :z 51)
+                                              (scale :x 0.5 :y 0.5 :z 0.5)))))
                              (srend:render-surface
                               (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
                               mvp))
@@ -495,7 +511,7 @@
   (check-type camera camera)
   (check-type world-model smdl:bsp-model)
   (with-struct (camera- position) camera
-    (let ((pos-2d (make-array 2 :element-type 'double-float))
+    (let ((pos-2d (make-array 2 :element-type 'shiva-float))
           (frustum (list (left-frustum-plane camera) (right-frustum-plane camera)
                          (near-frustum-plane camera) (far-frustum-plane camera)))
           (mvp (m* (camera-projection-matrix camera)

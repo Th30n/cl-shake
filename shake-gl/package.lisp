@@ -29,4 +29,7 @@
            #:uniform-matrix-4f
            #:with-gl-array
            #:with-mapped-buffer
-           #:with-uniform-locations))
+           #:with-uniform-locations)
+  (:import-from #:shiva
+                #:shiva-float
+                #:mat))

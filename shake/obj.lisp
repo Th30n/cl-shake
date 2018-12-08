@@ -56,7 +56,7 @@ f 3/1/5 7/4/5 8/3/5
         :type (member :eof :word :number :comment :slash :unknown))
   (string "" :type string :read-only t)
   (leading-whitespace "" :type string :read-only t)
-  (number 0 :type (or double-float fixnum) :read-only t))
+  (number 0 :type (or shiva-float fixnum) :read-only t))
 
 (declaim (inline make-token-error))
 (defstruct token-error
@@ -86,7 +86,7 @@ f 3/1/5 7/4/5 8/3/5
                  (if (<= most-negative-fixnum int most-positive-fixnum)
                      (coerce int 'fixnum)
                      (error "Integer '~S' doesn't fit in fixnum" int)))
-               (coerce (* sign significand (expt 10 exponent)) 'double-float))))
+               (shiva-float (* sign significand (expt 10 exponent))))))
     (do ((c (read-char stream nil :eof) (read-char stream nil :eof))
          (string (make-array 0 :element-type 'character :adjustable t :fill-pointer 0))
          (first-char-p t nil)
@@ -244,7 +244,7 @@ f 3/1/5 7/4/5 8/3/5
                  (token-number (read-token tokenizer))
                  default-value))))
     (make-vertex :type :geometric
-                 :val (v (expect-number) (expect-number) (expect-number) (maybe-number 1.0d0)))))
+                 :val (v (expect-number) (expect-number) (expect-number) (maybe-number 1.0)))))
 
 (defun read-texture-vertex (tokenizer)
   (flet ((expect-number ()
@@ -259,7 +259,7 @@ f 3/1/5 7/4/5 8/3/5
                  (token-number (read-token tokenizer))
                  default-value))))
     (make-vertex :type :texture
-                 :val (v (expect-number) (maybe-number 0.0d0) (maybe-number 0.0d0) 0d0))))
+                 :val (v (expect-number) (maybe-number 0.0) (maybe-number 0.0) 0.0))))
 
 (defun read-normal-vertex (tokenizer)
   (flet ((expect-number ()
@@ -269,7 +269,7 @@ f 3/1/5 7/4/5 8/3/5
                (error "Expected number, got ~S" token))
              (token-number token))))
     (make-vertex :type :normal
-                 :val (v (expect-number) (expect-number) (expect-number) 0d0))))
+                 :val (v (expect-number) (expect-number) (expect-number) 0.0))))
 
 (defun read-faces (tokenizer obj)
   (labels ((expect-fixnum ()

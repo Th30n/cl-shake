@@ -412,7 +412,7 @@ epsilon. Doesn't handle infinities."
   (or (double= a b) (< a b)))
 
 (declaim (inline single=))
-(defun single= (a b &key (epsilon 1s-6) (rel-epsilon single-float-epsilon))
+(defun single= (a b &key (epsilon 1s-5) (rel-epsilon single-float-epsilon))
   "Compare floating points using epsilon difference and fallback to relative
 epsilon. Doesn't handle infinities."
   (declare (type single-float a b epsilon rel-epsilon))
@@ -517,7 +517,7 @@ epsilon. Doesn't handle infinities."
 
 (defun qrotation (axis rad-angle)
   "Construct a quaternion for rotation of RAD-ANGLE around AXIS vector."
-  (let ((half-angle (/ (shiva-float rad-angle) 2.0)))
+  (let ((half-angle (* 0.5 (shiva-float rad-angle))))
     (cons (vscale (sin half-angle) axis) (cos half-angle))))
 
 (defun vrotate (quaternion vector)

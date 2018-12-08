@@ -21,6 +21,6 @@
   :version "0.0.1"
   :author "Teon Banek <theongugl@gmail.com>"
   :licence "GPL2"
-  :depends-on ("cl-opengl" "cffi" "alexandria" "cl-ppcre")
+  :depends-on ("cl-opengl" "cffi" "alexandria" "cl-ppcre" "shiva")
   :components ((:file "package")
                (:file "gl" :depends-on ("package"))))

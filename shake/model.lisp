@@ -115,11 +115,11 @@
            (ceiling-bottom (aif back-sector
                                 (sbsp:sector-ceiling-height it)
                                 1)))
-      (when (float< (coerce floor-top 'double-float)
-                    (coerce floor-bottom 'double-float))
+      (when (float< (shiva-float floor-top)
+                    (shiva-float floor-bottom))
         (rotatef floor-bottom floor-top))
-      (when (float< (coerce ceiling-top 'double-float)
-                    (coerce ceiling-bottom 'double-float))
+      (when (float< (shiva-float ceiling-top)
+                    (shiva-float ceiling-bottom))
         (rotatef ceiling-bottom ceiling-top))
       (append
        (let ((start-3d-bot (v2->v3 start floor-bottom))
