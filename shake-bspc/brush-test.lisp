@@ -26,6 +26,7 @@
                 #:rotate
                 #:set-equal)
   (:import-from #:shiva
+                #:shiva-float
                 #:deg->rad
                 #:v=
                 #:v))
@@ -38,7 +39,7 @@
 (defparameter *square-linedefs*
   (make-linedef-loop
    ;; top left, bottom left, bottom right, top right
-   (v -1d0 0d0) (v -1d0 -1d0) (v 0d0 -1d0) (v 0d0 0d0)))
+   (v -1.0 0.0) (v -1.0 -1.0) (v 0.0 -1.0) (v 0.0 0.0)))
 
 (defparameter *expanded-square-linedefs*
   (make-linedef-loop (v -2 1) (v -2 -2) (v 1 -2) (v 1 1)))
@@ -77,7 +78,7 @@
 
 (subtest "Clipping two neighbour square brushes"
   (let* ((b1 (lines->brush *square-linedefs*))
-         (b2 (brush-translate b1 (v 1d0 0d0)))
+         (b2 (brush-translate b1 (v 1.0 0.0)))
          (expected
           (mapcar #'linedef->lineseg
                   (append (select-brush-lines b1 (first second fourth))
@@ -87,8 +88,8 @@
 
 (subtest "Brush is clipped twice."
   (let* ((b1 (lines->brush *square-linedefs*))
-         (b2 (brush-translate b1 (v 1d0 0d0)))
-         (b3 (brush-translate b1 (v 0d0 1d0)))
+         (b2 (brush-translate b1 (v 1.0 0.0)))
+         (b3 (brush-translate b1 (v 0.0 1.0)))
          (expected
           (mapcar #'linedef->lineseg
                   (append (select-brush-lines b1 (first second))
@@ -98,7 +99,8 @@
         expected :test #'lineseg-set-equal)))
 
 (subtest "Test brush clipping with variable floors"
-  (let* ((step-brush (lines->brush *square-linedefs* :floor-height 0.2d0))
+  (let* ((step-brush (lines->brush *square-linedefs*
+                                   :floor-height #.(shiva-float 0.2d0)))
          (wall-brush (brush-translate (lines->brush *expanded-square-linedefs*)
                                       (v 1.5 0)))
          (expected (mapcar #'linedef->lineseg

@@ -54,8 +54,8 @@
   "Segment of a line. Each line starts as a full segment, but may be split
   into multiple segments."
   (orig-line (make-linedef) :type linedef)
-  (t-start 0d0 :type double-float)
-  (t-end 1d0 :type double-float))
+  (t-start #.(shiva-float 0.0) :type shiva-float)
+  (t-end #.(shiva-float 1.0) :type shiva-float))
 
 (defun lineseg-start (lineseg)
   (let* ((line (lineseg-orig-line lineseg))
@@ -145,6 +145,8 @@
                          (not (base-type-p slot-type)))
                     ;; This will not work if read-slot-type is not imported.
                     `(,(symbolicate 'read- slot-type '-form) ,slot-name))
+                   ((eq 'float64 slot-type)
+                    `(shiva:shiva-float ,slot-name))
                    (t
                     slot-name)))))
       `(progn
@@ -177,9 +179,9 @@
 (defstruct sector
   "A sector surrounded by lines. Stores information about floor and ceiling."
   ;; (lines nil :type list) ;; Unused?
-  (floor-height 0d0 :type double-float)
+  (floor-height #.(shiva-float 0.0) :type shiva-float)
   (floor-texinfo nil :type (or null texinfo))
-  (ceiling-height 1d0 :type double-float)
+  (ceiling-height #.(shiva-float 1.0) :type shiva-float)
   (ceiling-texinfo nil :type (or null texinfo))
   (ambient-light (v 0 0 0) :type (vec 3)))
 

@@ -79,7 +79,7 @@
 
 (defun brush-center (brush)
   (destructuring-bind (mins . maxs) (brush-bounds brush)
-    (vscale 0.5d0 (v+ mins maxs))))
+    (vscale (shiva-float 0.5) (v+ mins maxs))))
 
 (defun brush-rotate (brush rad-angle)
   "Rotate the given BRUSH for RAD-ANGLE around the center."
@@ -222,7 +222,7 @@ direction."
 (defun expand-brush (brush &key square)
   "Expand the given BRUSH by the given size of the SQUARE. This will perform a
   Minkowski sum of the brush polygon and the square polygon."
-  (let* ((half-size (* 0.5d0 (coerce square 'double-float)))
+  (let* ((half-size (* 0.5 (shiva-float square)))
          (hull-size (list half-size (- half-size)))
          (back-sector (sidedef-back-sector (first (brush-surfaces brush)))))
     (labels ((add-square (point)

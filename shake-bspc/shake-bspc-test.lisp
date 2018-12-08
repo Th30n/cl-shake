@@ -21,6 +21,7 @@
         #:prove
         #:shake-bspc)
   (:import-from #:shiva
+                #:shiva-float
                 #:v=
                 #:v))
 
@@ -50,13 +51,13 @@
 (subtest "Testing split-lineseg"
   (let* ((line (car *test-linedefs*))
          (seg (linedef->lineseg line)))
-    (is (sbsp:split-lineseg seg -1d0)
+    (is (sbsp:split-lineseg seg (shiva-float -1.0))
         nil)
-    (is (sbsp:split-lineseg seg 0d0)
+    (is (sbsp:split-lineseg seg (shiva-float 0.0))
         nil)
-    (is (sbsp:split-lineseg seg 1d0)
+    (is (sbsp:split-lineseg seg (shiva-float 1.0))
         nil)
-    (let* ((t-split 0.8d0)
+    (let* ((t-split (shiva-float 0.8d0))
            (split-segs (sbsp:split-lineseg seg t-split)))
       (is split-segs
           (cons (make-lineseg :orig-line line
@@ -80,38 +81,38 @@
       (is (read-bsp in) bsp :test #'equalp))))
 
 (defparameter *coincident-linedefs*
-  (list (make-linedef :start (v -3.0d0 1.0d0) :end (v -2.0d0 1.0d0))
-        (make-linedef :start (v -4.0d0 2.0d0) :end (v -4.0d0 0.0d0))
-        (make-linedef :start (v -1.0d0 1.0d0) :end (v 0.0d0 1.0d0))))
+  (list (make-linedef :start (v -3d0 1.0) :end (v -2.0 1.0))
+        (make-linedef :start (v -4.0 2.0) :end (v -4.0 0.0))
+        (make-linedef :start (v -1.0 1.0) :end (v 0.0 1.0))))
 
 (defparameter *double-split-linedefs*
-  (list (make-linedef :start (v 1d0 1d0) :end (v 1d0 3d0))
-        (make-linedef :start (v 4d0 0d0) :end (v 0d0 0d0))
-        (make-linedef :start (v 3d0 1d0) :end (v 3d0 2d0))))
+  (list (make-linedef :start (v 1.0 1.0) :end (v 1.0 3d0))
+        (make-linedef :start (v 4.0 0.0) :end (v 0.0 0.0))
+        (make-linedef :start (v 3d0 1.0) :end (v 3d0 2.0))))
 
 (subtest "Test build-bsp produces correct back-to-front"
   (subtest "Coincident segments"
     (let* ((surfs (mapcar #'linedef->sidedef *coincident-linedefs*))
            (bsp (build-bsp surfs)))
-      (is (mapcar #'sidedef-lineseg (back-to-front (v -0.5d0 1.5d0) bsp))
+      (is (mapcar #'sidedef-lineseg (back-to-front (v -0.5 1.5d0) bsp))
           (list (make-lineseg :orig-line (second *coincident-linedefs*)
-                              :t-start 0.5d0 :t-end 1d0)
+                              :t-start (shiva-float 0.5) :t-end (shiva-float 1.0))
                 (sidedef-lineseg (third surfs))
                 (sidedef-lineseg (first surfs))
                 (make-lineseg :orig-line (second *coincident-linedefs*)
-                              :t-start 0d0 :t-end 0.5d0))
+                              :t-start (shiva-float 0.0) :t-end (shiva-float 0.5)))
           :test #'equalp)))
   (subtest "Double split segment"
     (let* ((surfs (mapcar #'linedef->sidedef *double-split-linedefs*))
            (bsp (build-bsp surfs)))
       (is (mapcar #'sidedef-lineseg (back-to-front (v 3.5d0 1.5d0) bsp))
           (list (make-lineseg :orig-line (second *double-split-linedefs*)
-                              :t-start 0.75d0 :t-end 1d0)
+                              :t-start (shiva-float 0.75) :t-end (shiva-float 1.0))
                 (sidedef-lineseg (first surfs))
                 (make-lineseg :orig-line (second *double-split-linedefs*)
-                              :t-start 0.25d0 :t-end 0.75d0)
+                              :t-start (shiva-float 0.25) :t-end (shiva-float 0.75))
                 (make-lineseg :orig-line (second *double-split-linedefs*)
-                              :t-start 0d0 :t-end 0.25d0)
+                              :t-start (shiva-float 0.0) :t-end (shiva-float 0.25))
                 (sidedef-lineseg (third surfs)))
           :test #'equalp))))
 

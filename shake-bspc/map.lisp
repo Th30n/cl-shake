@@ -32,7 +32,8 @@
   * :PLAYER-SPAWN"
   type
   (pos (v 0 0) :type (vec 2))
-  (angle 0d0 :type (double-float 0d0 360d0))
+  (angle #.(shiva-float 0.0)
+         :type (shiva-float #.(shiva-float 0.0) #.(shiva-float 360d0)))
   brushes)
 
 (defun write-map-thing (thing stream)
@@ -49,7 +50,7 @@
   (let ((name (read stream))
         (type (read stream))
         (pos (v (read stream) (read stream)))
-        (angle (read stream))
+        (angle (shiva-float (read stream)))
         (brush-count (read stream)))
     (declare (ignore name))
     (make-map-thing :type type :pos pos :angle angle
