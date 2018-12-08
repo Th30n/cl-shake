@@ -17,10 +17,6 @@
 (in-package #:shiva)
 (declaim (optimize (speed 3)))
 
-;; TODO: Remove this defaulting to double-float after the transition period.
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (pushnew :shiva-double-float *features*))
-
 #-shiva-double-float
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (pushnew :shiva-single-float *features*))
@@ -116,7 +112,8 @@
 (defun vscale (scalar vector &aux (n (1- (array-dimension vector 0))))
   "Scale a VECTOR by given SCALAR."
   (check-type vector (simple-array shiva-float))
-  (check-type scalar shiva-float)
+  (check-type scalar real)
+  (setf scalar (shiva-float scalar))
   (tensor ((i 0 n)) ((out (1+ n))) (:scalars (scalar) :simple-arrays (vector))
 	  ($ i (setf (out i) (* scalar (vector i))))
 	  out))

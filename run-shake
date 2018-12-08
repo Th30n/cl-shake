@@ -1,5 +1,7 @@
 #!/usr/bin/sbcl --script
 
 (load "~/.sbclrc")
+(pushnew :shiva-single-float *features*)
+(asdf:load-system "shiva" :force t)
 (ql:quickload "shake")
 (shake:main)

@@ -151,9 +151,9 @@
 (defun v2->qpoint (vector-2d)
   (q+:make-qpointf (vx vector-2d) (vy vector-2d)))
 
-(defun draw-linedef-normal (line painter &key (scale 0.25d0))
+(defun draw-linedef-normal (line painter &key (scale 0.25))
   (let* ((center (v+ (sbsp:linedef-start line)
-                     (vscale 0.5d0 (sbsp:linedef-vec line))))
+                     (vscale 0.5 (sbsp:linedef-vec line))))
          (dest (v+ center (vscale scale (sbsp:linedef-normal line)))))
     (with-finalizing* ((p1 (v2->qpoint center))
                        (p2 (v2->qpoint dest)))
@@ -443,7 +443,7 @@
 
 (defun items-at (map-scene scene-pos)
   (let* ((size (map->scene-unit 4))
-         (offset (* 0.5d0 size))
+         (offset (* 0.5 size))
          (center-x (- (q+:x scene-pos) offset))
          (center-y (- (q+:y scene-pos) offset)))
     (q+:items map-scene center-x center-y size size
@@ -614,8 +614,8 @@
                              (size (q+:default-size (q+:renderer item))))
              (q+:set-pos item pos)
              ;; Scale the image to fit in half a cell.
-             (q+:set-scale item (/ 0.5d0 (max (q+:width size)
-                                              (q+:height size))))
+             (q+:set-scale item (/ 0.5 (max (q+:width size)
+                                            (q+:height size))))
              (q+:set-rotation item (sbsp:map-thing-angle thing)))
            item))
     (let ((image-file
