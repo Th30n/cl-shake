@@ -214,10 +214,12 @@
   (objects 0 :type fixnum)
   (draw-count 0 :type fixnum)
   (max-bytes 0 :type fixnum)
+  ;; T if this batch should be drawn in wireframe mode.
+  (wireframe-p nil :type boolean)
   (free-p nil :type boolean)
   (ready-p nil :type boolean))
 
-(defun init-batch (byte-size)
+(defun init-batch (byte-size &key wireframep)
   (let ((buffers (gl:gen-buffers 2))
         (vertex-array (gl:gen-vertex-array)))
     (gl:bind-buffer :array-buffer (first buffers))
@@ -231,7 +233,8 @@
                 :layers (make-array +max-batch-size+
                                     :element-type '(cons fixnum fixnum)
                                     :fill-pointer 0)
-                :max-bytes byte-size)))
+                :max-bytes byte-size
+                :wireframe-p wireframep)))
 
 (defun free-batch (batch)
   (declare (optimize (speed 3) (space 3)))
@@ -321,6 +324,8 @@
                        (coerce (row-major-aref mvp ix) 'single-float))))
           (%gl:uniform-1iv tex-layer-loc layer-count layer-array)
           (%gl:uniform-matrix-4fv mvp-loc layer-count t mvp-array))))
+    (when (batch-wireframe-p batch)
+      (gl:polygon-mode :front-and-back :line))
     (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
       (cond
         ((and multi-draw-indirect-p base-instance-p)
@@ -348,6 +353,7 @@
                 (%gl:vertex-attrib-i1i 4 ix)
                 (gl:draw-arrays :triangles draw-start draw-count)
                 (incf draw-start draw-count)))))))
+  (gl:polygon-mode :front-and-back :fill)
   (gl:bind-vertex-array 0))
 
 (defun add-surface-vertex-data (surface mvp batch)
@@ -400,12 +406,12 @@
           (free-batch batch))))
     (setf (fill-pointer batches) 0)))
 
-(defun add-new-batch (byte-size)
+(defun add-new-batch (byte-size &key wireframep)
   (declare (optimize (speed 3) (space 3)))
   (aif (get-current-batch)
        (finish-batch it (render-system-gl-config *rs*)))
   ;; TODO: Reuse already allocated batches, instead of allocating new ones.
-  (let ((batch (init-batch byte-size)))
+  (let ((batch (init-batch byte-size :wireframep wireframep)))
     (vector-push-extend batch *batches*)
     batch))
 
@@ -415,10 +421,11 @@
     (aref (the (vector batch) *batches*)
           (1- (length (the (vector batch) *batches*))))))
 
-(defun render-surface (surface mvp)
+(defun render-surface (surface mvp &key wireframep)
   (declare (optimize (speed 3) (space 3)))
   (check-type surface smdl::surf-triangles)
   (check-type mvp (mat 4))
+  (check-type wireframep boolean)
   (check-type *rs* render-system)
   (with-struct (render-system- image-manager) *rs*
     (let ((current-batch (get-current-batch))
@@ -438,12 +445,14 @@
                    (let ((free-space (- max-bytes offset)))
                      (and (> free-space surface-space)
                           (< objects +max-batch-size+)
-                          (tex-match-p batch))))))
+                          (tex-match-p batch)
+                          (eq wireframep (batch-wireframe-p batch)))))))
         (let ((batch
                (if (and current-batch (can-add-p current-batch))
                    current-batch
                    ;; Each batch contains 100kB of vertex data.
-                   (add-new-batch (max surface-space (* 100 1024))))))
+                   (add-new-batch (max surface-space (* 100 1024))
+                                  :wireframep wireframep))))
           (add-surface-vertex-data surface mvp batch))))))
 
 (defun draw-text (text &key x y (scale 1.0s0))
