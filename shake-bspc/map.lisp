@@ -25,6 +25,26 @@
   clip-nodes
   things)
 
+(defun print-bspfile-info (bspfile)
+  (check-type bspfile bspfile)
+  (format t "Nodes: ~A~%"
+          (bsp-trav (bspfile-nodes bspfile)
+                    (lambda (front back)
+                      (list
+                       (+ (first front) (first back)) ;; node count
+                       (1+ (min (second front) (second back))) ;; min depth
+                       (1+ (max (third front) (third back))))) ;; max depth
+                    '(1 1 1)))
+  (format t "Clip Nodes: ~A~%"
+          (bsp-trav (bspfile-clip-nodes bspfile)
+                    (lambda (front back)
+                      (list
+                       (+ (first front) (first back)) ;; node count
+                       (1+ (min (second front) (second back))) ;; min depth
+                       (1+ (max (third front) (third back))))) ;; max depth
+                    '(1 1 1)))
+  (format t "Things: ~A~%" (length (bspfile-things bspfile))))
+
 (defstruct map-thing
   "A thing on a map. Contains slots POS and ANGLE for spawn position. If a
   thing is brush based (e.g. a door or a platorm), they are stored in BRUSHES
