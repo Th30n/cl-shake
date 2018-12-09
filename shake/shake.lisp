@@ -475,35 +475,69 @@
              (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
              mvp)))))))
 
-(defun render-weapon-pickup (camera model-manager)
-  ;; Render weapon pickup
-  (let* ((mvp (m* (m* (camera-projection-matrix camera)
-                      (camera-view-transform camera))
-                  (m*
-                   (m* (translation :x 17 :y 0.125 :z 51)
-                       (rotation (v 0 1 0) (* deg->rad (mod (get-time) 360))))
-                   (scale :x 0.125 :y 0.125 :z 0.125))))
-         (shotgun-model (smdl:get-model model-manager "../shotgun.obj"))
-         (bounds-scale (vscale (* 0.5 0.125)
+(defstruct weapon
+  (model nil :type smdl::obj-model)
+  (position (v 0 0 0) :type (vec 3))
+  (scale #.(shiva-float 1.0) :type shiva-float)
+  (angle-y #.(shiva-float 0.0) :type shiva-float)
+  (bounds-scale (v 1 1 1) :type (vec 3)))
+
+(defun make-shotgun (model-manager position)
+  (check-type position (vec 3))
+  (let* ((shotgun-model (smdl:get-model model-manager "../shotgun.obj"))
+         (scale #.(shiva-float 0.125))
+         (bounds-scale (vscale (* 0.5 scale)
                                (v- (smdl::obj-model-max-bounds shotgun-model)
                                    (smdl::obj-model-min-bounds shotgun-model)))))
-    ;; TODO: Instead of assert, calculate center and offset the bounds cube.
     (assert (v= (vscale 0.5 (v+ (smdl::obj-model-min-bounds shotgun-model)
                                 (smdl::obj-model-max-bounds shotgun-model)))
                 (v 0 0 0)))
+    (make-weapon :model shotgun-model
+                 :position position
+                 :scale scale
+                 :bounds-scale bounds-scale)))
+
+(defun weapon-view-transform (weapon)
+  (check-type weapon weapon)
+  (let ((pos (weapon-position weapon))
+        (scale (weapon-scale weapon)))
+    (m* (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+            (rotation (v 0 1 0) (* deg->rad (weapon-angle-y weapon))))
+        (scale :x scale :y scale :z scale))))
+
+(defun weapon-render (weapon camera model-manager)
+  (check-type weapon weapon)
+  (check-type camera camera)
+  (check-type model-manager smdl::model-manager)
+  (let* ((view-project (m* (camera-projection-matrix camera)
+                           (camera-view-transform camera)))
+         (mvp (m* view-project (weapon-view-transform weapon))))
     ;; Render the bounds cube
-    (srend:render-surface
-     (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
-     (m* (m* (camera-projection-matrix camera)
-             (camera-view-transform camera))
-         (m*
-          (m* (translation :x 17 :y 0.125 :z 51)
-              (rotation (v 0 1 0) (* deg->rad (mod (get-time) 360))))
-          (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))
-         )
-     :wireframep t)
+    (let ((pos (weapon-position weapon))
+          (bounds-scale (weapon-bounds-scale weapon)))
+      (srend:render-surface
+       (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+       (m* view-project
+           (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+               (m* (rotation (v 0 1 0) (* deg->rad (weapon-angle-y weapon)))
+                   (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))))
+       :wireframep t))
     ;; Render the weapon model
-    (srend:render-surface (smdl::obj-model-verts shotgun-model) mvp)))
+    (srend:render-surface (smdl::obj-model-verts (weapon-model weapon)) mvp)))
+
+(defun weapon-think (weapon)
+  (check-type weapon weapon)
+  (setf (weapon-angle-y weapon) (shiva-float (mod (get-time) 360))))
+
+(defun run-thinkers (thinkers)
+  (dolist (thinker thinkers)
+    (weapon-think thinker)))
+
+(defun render-things (render-things camera model-manager)
+  (check-type camera camera)
+  (check-type model-manager smdl::model-manager)
+  (dolist (render-thing render-things)
+    (weapon-render render-thing camera model-manager)))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
@@ -537,11 +571,21 @@
                                        #.(shiva-float 100d0)))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer :name "Main Loop"))
-               (smdl:*world-model* (smdl:get-model model-manager "test.bsp")))
+               (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
+               ;; TODO: These should probably be members of some kind of game struct
+               (think-things nil)
+               (render-things nil))
           (load-weapons render-system model-manager)
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
           (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
+          ;; Spawn and register shotgun thing
+          (let ((shotgun (make-shotgun model-manager (v 17 0.125 51))))
+            (push shotgun think-things)
+            (push shotgun render-things))
+          (let ((shotgun (make-shotgun model-manager (v 15 0.125 48))))
+            (push shotgun think-things)
+            (push shotgun render-things))
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))
@@ -572,16 +616,12 @@
               (:idle ()
                      (with-timer (frame-timer)
                        (try-run-tics #'build-ticcmd
-                                     (lambda (tic) (run-tic camera tic)))
+                                     (lambda (tic)
+                                       (run-tic camera tic)
+                                       (run-thinkers think-things)))
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
-                           (render camera)
-                           ;; TODO: This should be part of `RENDER', and
-                           ;; should use currently equipped weapon.
-                           (render-weapon camera model-manager)
-                           ;; TODO: This should go through a generic loop for
-                           ;; rendering all things on the map.
-                           (render-weapon-pickup camera model-manager)
+                           (render-view camera model-manager render-things)
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))
@@ -645,7 +685,7 @@
                               (rec front test-p)))))))))
         (rec (smdl:bsp-model-nodes world-model))))))
 
-(defun render (camera)
+(defun render-view (camera model-manager render-things)
   (gl:enable :depth-test)
   ;; TODO: Enable this when we correctly generate CCW faces for .bsp models.
   ;; (gl:enable :cull-face)
@@ -655,4 +695,7 @@
   (render-world camera smdl:*world-model*)
   ;; Draw "crosshair"
   (srend::draw-text "+" :x (floor *win-width* 2) :y (floor *win-height* 2)
-                    :scale 2.0s0))
+                    :scale 2.0)
+  ;; TODO: This should use currently equipped weapon.
+  (render-weapon camera model-manager)
+  (render-things render-things camera model-manager))
