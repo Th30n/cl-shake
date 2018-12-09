@@ -92,7 +92,7 @@
         (setf midf (+ p1f (* frac (- p2f p1f)))
               mid (v+ p1 (vscale frac (v- p2 p1)))))))
 
-(defun split-hull-check (hull node t1 t2 p1 p2 p1f p2f)
+(defun split-hull-check (hull height node t1 t2 p1 p2 p1f p2f)
   "Check for collision on both sides of given hull NODE. T1 and T2 are
   distances to splitting node line for points P1 and P2. P1F and P2F are
   fractions of the movement line from P1 to P2."
@@ -101,6 +101,7 @@
          (mid (v+ p1 (vscale frac (v- p2 p1)))))
     (multiple-value-bind (pre-trace hit-p)
         (recursive-hull-check hull p1 mid
+                              height
                               (if (minusp t1)
                                   (sbsp:node-back node)
                                   (sbsp:node-front node))
@@ -112,9 +113,9 @@
           (let ((other-side (if (minusp t1)
                                 (sbsp:node-front node)
                                 (sbsp:node-back node))))
-            (if (crossp other-side mid (shiva-float 0.5)) ;; TODO: Don't hardcode height
+            (if (crossp other-side mid height)
                 ;; Continue through the other part.
-                (recursive-hull-check hull mid p2 other-side midf p2f)
+                (recursive-hull-check hull mid p2 height other-side midf p2f)
                 ;; Other side is solid, this is the impact point.
                 (let ((normal (sbsp:linedef-normal (sbsp:node-line node))))
                   (when (minusp t1)
@@ -126,7 +127,8 @@
                                   :normal (v2->v3 normal))
                      t)))))))))
 
-(defun recursive-hull-check (hull p1 p2 &optional (node nil)
+(defun recursive-hull-check (hull p1 p2 &optional (height #.(shiva-float 0))
+                                          (node nil)
                                           (p1f #.(shiva-float 0))
                                           (p2f #.(shiva-float 1)))
   "Checks the HULL for the nearest collision on the way from P1 to P2. Returns
@@ -143,9 +145,9 @@
         (cond
           ((and (minusp t1) (minusp t2))
            ;; Path is behind the line.
-           (recursive-hull-check hull p1 p2 (sbsp:node-back node) p1f p2f))
+           (recursive-hull-check hull p1 p2 height (sbsp:node-back node) p1f p2f))
           ((and (<= 0.0 t1) (<= 0.0 t2))
            ;; Path is in front of the line.
-           (recursive-hull-check hull p1 p2 (sbsp:node-front node) p1f p2f))
+           (recursive-hull-check hull p1 p2 height (sbsp:node-front node) p1f p2f))
           (t
-           (split-hull-check hull node t1 t2 p1 p2 p1f p2f))))))
+           (split-hull-check hull height node t1 t2 p1 p2 p1f p2f))))))
