@@ -560,6 +560,16 @@
 (defmacro with-init ((render-system window) &body body)
   `(call-with-init (lambda (,render-system ,window) ,@body)))
 
+(defstruct game
+  (think-things nil :type list)
+  (render-things nil :type list))
+
+(defun game-add-weapon (game weapon)
+  (check-type game game)
+  (check-type weapon weapon)
+  (push weapon (game-think-things game))
+  (push weapon (game-render-things game)))
+
 (defun main ()
   (with-init (render-system win)
     (smdl:with-model-manager model-manager
@@ -572,20 +582,14 @@
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
-               ;; TODO: These should probably be members of some kind of game struct
-               (think-things nil)
-               (render-things nil))
+               (game (make-game)))
           (load-weapons render-system model-manager)
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
           (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
-          ;; Spawn and register shotgun thing
-          (let ((shotgun (make-shotgun model-manager (v 17 0.125 51))))
-            (push shotgun think-things)
-            (push shotgun render-things))
-          (let ((shotgun (make-shotgun model-manager (v 15 0.125 48))))
-            (push shotgun think-things)
-            (push shotgun render-things))
+          ;; Spawn and register weapon things
+          (game-add-weapon game (make-shotgun model-manager (v 17 0.125 51)))
+          (game-add-weapon game (make-shotgun model-manager (v 15 0.125 48)))
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))
@@ -618,10 +622,10 @@
                        (try-run-tics #'build-ticcmd
                                      (lambda (tic)
                                        (run-tic camera tic)
-                                       (run-thinkers think-things)))
+                                       (run-thinkers (game-think-things game))))
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
-                           (render-view camera model-manager render-things)
+                           (render-view camera model-manager (game-render-things game))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))
