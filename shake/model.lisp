@@ -98,7 +98,9 @@
 (declaim (inline make-obj-model))
 (defstruct obj-model
   "A 3D model obtained from Wavefront OBJ file."
-  (verts nil :type surf-triangles :read-only t))
+  (verts nil :type surf-triangles :read-only t)
+  (min-bounds (v 0 0 0) :type (vec 3) :read-only t)
+  (max-bounds (v 0 0 0) :type (vec 3) :read-only t))
 
 (defun make-triangles (sidedef)
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
@@ -206,7 +208,9 @@
   (declare (type sobj:obj obj))
   ;; This assumes that object only consists of triangles.
   (let* ((num-verts (* 3 (length (sobj:obj-element-data obj))))
-         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts))
+         (min-bounds nil)
+         (max-bounds nil))
     (loop for face across (sobj:obj-element-data obj) with i = 0 do
          (loop for point across (sobj:element-points face)
             for position = (sobj:vertex-val (aref (sobj:obj-geometric-vertices obj)
@@ -216,13 +220,23 @@
             for uv = (sobj:vertex-val (aref (sobj:obj-texture-vertices obj)
                                             (sobj:vref-texture point)))
             do (progn
+                 (unless (and min-bounds max-bounds)
+                   (setf min-bounds (vxyz position))
+                   (setf max-bounds (vxyz position)))
+                 (dotimes (i 3)
+                   (when (< (aref position i) (aref min-bounds i))
+                     (setf (aref min-bounds i) (aref position i)))
+                   (when (> (aref position i) (aref max-bounds i))
+                     (setf (aref max-bounds i) (aref position i))))
                  (setf (cffi:mem-aref verts '(:struct vertex-data) i)
                        (make-l-vertex-data :position (vxyz position)
                                            :color (v 1 1 1)
                                            :normal (vxyz normal)
                                            :uv (vxy uv)))
                  (incf i))))
+    (assert (and min-bounds max-bounds))
     (make-obj-model
+     :min-bounds min-bounds :max-bounds max-bounds
      :verts
      (make-surf-triangles :num-verts num-verts
                           :verts-byte-size (* num-verts (cffi:foreign-type-size

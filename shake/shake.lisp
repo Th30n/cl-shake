@@ -480,15 +480,33 @@
 
 (defun render-weapon-pickup (camera model-manager)
   ;; Render weapon pickup
-  (let ((mvp (m* (m* (camera-projection-matrix camera)
-                     (camera-view-transform camera))
-                 (m*
-                  (m* (translation :x 17 :y 0.125 :z 51)
-                      (scale :x 0.125 :y 0.125 :z 0.125))
-                  (rotation (v 0 1 0) (* deg->rad (mod (get-time) 360)))))))
+  (let* ((mvp (m* (m* (camera-projection-matrix camera)
+                      (camera-view-transform camera))
+                  (m*
+                   (m* (translation :x 17 :y 0.125 :z 51)
+                       (rotation (v 0 1 0) (* deg->rad (mod (get-time) 360))))
+                   (scale :x 0.125 :y 0.125 :z 0.125))))
+         (shotgun-model (smdl:get-model model-manager "../shotgun.obj"))
+         (bounds-scale (vscale (* 0.5 0.125)
+                               (v- (smdl::obj-model-max-bounds shotgun-model)
+                                   (smdl::obj-model-min-bounds shotgun-model)))))
+    ;; TODO: Instead of assert, calculate center and offset the bounds cube.
+    (assert (v= (vscale 0.5 (v+ (smdl::obj-model-min-bounds shotgun-model)
+                                (smdl::obj-model-max-bounds shotgun-model)))
+                (v 0 0 0)))
+    ;; Render the bounds cube
     (srend:render-surface
-     (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
-     mvp)))
+     (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+     (m* (m* (camera-projection-matrix camera)
+             (camera-view-transform camera))
+         (m*
+          (m* (translation :x 17 :y 0.125 :z 51)
+              (rotation (v 0 1 0) (* deg->rad (mod (get-time) 360))))
+          (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))
+         )
+     :wireframep t)
+    ;; Render the weapon model
+    (srend:render-surface (smdl::obj-model-verts shotgun-model) mvp)))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
