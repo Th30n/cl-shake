@@ -96,7 +96,7 @@
   (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data
         #:shake.debug)
   (:export #:main
-           #:recursive-hull-check
+           #:clip-hull
            #:hull-point-contents
            ;; mtrace
            #:mtrace

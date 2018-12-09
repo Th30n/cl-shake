@@ -127,16 +127,13 @@
                                   :normal (v2->v3 normal))
                      t)))))))))
 
-(defun recursive-hull-check (hull p1 p2 &optional (height #.(shiva-float 0))
-                                          (node nil)
-                                          (p1f #.(shiva-float 0))
-                                          (p2f #.(shiva-float 1)))
-  "Checks the HULL for the nearest collision on the way from P1 to P2. Returns
-  the MTRACE of the final movement. The secondary value is T if there were
-  collisions."
+(defun recursive-hull-check (hull p1 p2 height
+                             &optional (node hull)
+                               (p1f #.(shiva-float 0))
+                               (p2f #.(shiva-float 1)))
+  (declare (type (or sbsp:node sbsp:leaf) hull node))
   (declare (type (vec 3) p1 p2))
-  (unless node
-    (setf node hull))
+  (declare (type shiva-float height p1f p2f))
   (if (sbsp:leaf-p node)
       ;; TODO: Clip direct/only vertical movement, e.g. gravity.
       (values (make-mtrace :endpos p2) nil)
@@ -151,3 +148,13 @@
            (recursive-hull-check hull p1 p2 height (sbsp:node-front node) p1f p2f))
           (t
            (split-hull-check hull height node t1 t2 p1 p2 p1f p2f))))))
+
+(defun clip-hull (hull p1 p2 &key (height #.(shiva-float 0.0)))
+  "Checks the HULL for the nearest collision on the way from P1 to P2. Returns
+  the MTRACE of the final movement. The secondary value is T if there were
+  collisions."
+  (check-type hull (or sbsp:node sbsp:leaf))
+  (check-type p1 (vec 3))
+  (check-type p2 (vec 3))
+  (check-type height (shiva-float #.(shiva-float 0.0)))
+  (recursive-hull-check hull p1 p2 height))

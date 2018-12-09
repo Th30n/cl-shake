@@ -44,10 +44,10 @@
 (defmacro let-mtrace (p1 p2 &body body)
   `(let* ((p1 ,p1)
           (p2 ,p2)
-          (mtrace (shake:recursive-hull-check hull p1 p2)))
+          (mtrace (shake:clip-hull hull p1 p2)))
      ,@body))
 
-(defmacro test-recursive-hull-check (p1 p2 &key fraction endpos normal)
+(defmacro test-clip-hull (p1 p2 &key fraction endpos normal)
   `(let-mtrace ,p1 ,p2
      ,@(when fraction
              (list
@@ -68,20 +68,20 @@
     (is (shake:hull-point-contents hull (v 0d0 0d0)) :contents-empty)
     (is (shake:hull-point-contents hull (v -0.01d0 -0.01d0)) :contents-solid)))
 
-(subtest "recursive-hull-check"
+(subtest "clip-hull"
   (let* ((segs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
          (hull (build-bsp segs)))
-    (test-recursive-hull-check
+    (test-clip-hull
      (v 0.5d0 0d0 -1d0) (v 0d0 0d0 -0.5d0)
      :fraction 1d0 :endpos p2 :normal nil)
-    (test-recursive-hull-check
+    (test-clip-hull
      (v 0.5d0 0d0 -0.5d0) (v -0.5d0 0d0 -0.5d0)
      :fraction 0.5d0 :endpos (v 0d0 0d0 -0.5d0) :normal (v 1d0 0d0 0d0))
-    (test-recursive-hull-check
+    (test-clip-hull
      (v -0.5d0 0d0 -1.5d0) (v -0.5d0 0d0 0.5d0)
      :fraction 0.25d0 :endpos (v -0.5d0 0d0 -1d0) :normal (v 0d0 0d0 -1d0))))
 
-(subtest "pathological recursive-hull-check"
+(subtest "pathological clip-hull"
   (let* ((segs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
          (hull (build-bsp segs)))
     (let-mtrace

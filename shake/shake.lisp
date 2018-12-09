@@ -291,14 +291,13 @@
 (defun player-climb-move (origin velocity hull)
   (let ((step-origin (v+ origin (v 0.0 +step-height+ 0.0)))
         (height #.(shiva-float 0.5)))
-    (if (/= 1.0 (mtrace-fraction (recursive-hull-check hull origin step-origin height)))
+    (if (/= 1.0 (mtrace-fraction (clip-hull hull origin step-origin :height height)))
         ;; Unable to move up to climb a stair.
         origin
         ;; Try climbing a stair with regular movement.
         ;; XXX: What if we need to climb again?
-        (mtrace-endpos (recursive-hull-check hull step-origin
-                                             (v+ step-origin velocity)
-                                             height)))))
+        (mtrace-endpos (clip-hull hull step-origin (v+ step-origin velocity)
+                                  :height height)))))
 
 ;; Moving the player on the ground should work the following way.
 ;; The trivial case is when the full move can be made, so we just return the
@@ -316,7 +315,7 @@
   (check-type velocity (vec 3))
   (let* ((hull (smdl:bsp-model-hull smdl:*world-model*))
          (height #.(shiva-float 0.5))
-         (mtrace (recursive-hull-check hull origin (v+ origin velocity) height)))
+         (mtrace (clip-hull hull origin (v+ origin velocity) :height height)))
     (if (= (mtrace-fraction mtrace) 1.0)
         ;; Completed the whole move.
         (mtrace-endpos mtrace)
@@ -329,10 +328,8 @@
                      (new-vel (clip-velocity velocity
                                              (mtrace-normal mtrace))))
                  (mtrace-endpos
-                  (recursive-hull-check hull new-origin
-                                        (v+ new-origin
-                                            (vscale time-left new-vel))
-                                        height)))))
+                  (clip-hull hull new-origin (v+ new-origin (vscale time-left new-vel))
+                             :height height)))))
           (if (float> (vdistsq (v3->v2 origin) (v3->v2 climb-endpos))
                       (vdistsq (v3->v2 origin) (v3->v2 slide-endpos)))
               climb-endpos
@@ -361,10 +358,10 @@
           ;; TODO: Remove `clamp-to-floor' when `recursive-hull-check'
           ;; correctly clips vertical movement
           (clamp-to-floor
-           (mtrace-endpos (recursive-hull-check (smdl:bsp-model-hull smdl:*world-model*)
-                                                entity-position
-                                                (v+ entity-position gravity-velocity)
-                                                #.(shiva-float 0.5))))))))
+           (mtrace-endpos (clip-hull (smdl:bsp-model-hull smdl:*world-model*)
+                                     entity-position
+                                     (v+ entity-position gravity-velocity)
+                                     :height #.(shiva-float 0.5))))))))
 
 (defun move-player (player forward-move side-move &key (noclip nil))
   (let ((forward-dir (view-dir :forward player)))
@@ -466,7 +463,7 @@
            (origin (camera-position camera)) ;; (v- (camera-position camera) camera-offset))
            ;; (end-pos (v+ origin velocity))
            (hull (smdl:bsp-model-hull smdl:*world-model*)))
-      (multiple-value-bind (mtrace hitp) (recursive-hull-check hull origin (v+ origin velocity))
+      (multiple-value-bind (mtrace hitp) (clip-hull hull origin (v+ origin velocity))
         (when hitp
           (let* ((dest (v+ (mtrace-endpos mtrace)
                            (vscale #.(shiva-float 0.005d0) (mtrace-normal mtrace))))
