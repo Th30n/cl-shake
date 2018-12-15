@@ -334,6 +334,23 @@
             triangles)
       (setf end point))))
 
+(defun choose-random-splitters (surfaces splitters)
+  (let* ((potential-splitters (remove-if
+                               (lambda (surf)
+                                 (member (lineseg-orig-line (sidedef-lineseg surf))
+                                         splitters :test #'equalp))
+                               surfaces))
+         (max-index (list-length potential-splitters))
+         (n 5))
+    (if (<= max-index n)
+        potential-splitters
+        (let (choices)
+          (dotimes (i n choices)
+            (push (do ((choice (nth (random max-index) potential-splitters)
+                               (nth (random max-index) potential-splitters)))
+                      ((not (member choice choices)) choice))
+                  choices))))))
+
 (defun choose-splitter (surfaces splitters)
   (declare (type list surfaces splitters))
   (let (rest splitter-surf)
@@ -411,6 +428,36 @@ splitter lines. This process may create additional surfaces."
                   (push split-back back)))))))
     (values front back on-splitter)))
 
+(defun choose-best-random-splitter (surfaces splitters)
+  ;; Note, this is done horribly inefficiently, but at the moment it's not a
+  ;; problem.
+  (let* ((potential-splitters (choose-random-splitters surfaces splitters))
+         (best-splitter-surf (first potential-splitters))
+         (rest (remove best-splitter-surf surfaces))
+         (split-difference 0)
+         (on-splitter-count 0))
+    (when potential-splitters
+      (multiple-value-bind (front back on-splitter)
+          (partition-surfaces (lineseg-orig-line (sidedef-lineseg best-splitter-surf))
+                              rest)
+        (setf split-difference (abs (- (list-length front) (list-length back))))
+        (setf on-splitter-count (list-length on-splitter))
+        (dolist (splitter-surf potential-splitters)
+          (multiple-value-bind (front back on-splitter)
+              (partition-surfaces (lineseg-orig-line (sidedef-lineseg splitter-surf))
+                                  (remove splitter-surf surfaces))
+            (let ((new-split-difference
+                   (abs (- (list-length front) (list-length back))))
+                  (new-on-splitter-count (list-length on-splitter)))
+              (when (or (< new-split-difference split-difference)
+                        (and (= new-split-difference split-difference)
+                             (< new-on-splitter-count on-splitter-count)))
+                (setf best-splitter-surf splitter-surf)
+                (setf rest (remove splitter-surf surfaces))
+                (setf split-difference new-split-difference)
+                (setf on-splitter-count new-on-splitter-count)))))))
+    (values best-splitter-surf rest)))
+
 (defun bounds-of-surfaces (surfaces)
   (bounds-of-linedefs (mapcar (compose #'lineseg-orig-line #'sidedef-lineseg)
                               surfaces)))
@@ -487,10 +534,20 @@ as NIL."
             (when (length>= 3 back-convex)
               (apply #'make-linedef-loop back-convex))))))
 
+(defvar *splitter-choice-strategy* :best-random
+  "Strategy for choosing splitting surfaces in `BUILD-BSP'.
+
+One of:
+
+  * :BEST-RANDOM --- make a random selection of surfaces and take the one
+    which makes the most equal split.
+  * :FIRST --- take the first viable surface.")
+
 (defun build-bsp (surfaces &optional splitters
                              (bounds (bounds-of-surfaces surfaces))
                              (convex-region (linedefs<-bounds bounds))
                              sector)
+  (check-type *splitter-choice-strategy* (member :best-random :first))
   (assert (or (not convex-region) ;; degenerate region
               (convex-hull-p (mapcar #'linedef->lineseg convex-region))))
   (if (null surfaces)
@@ -499,7 +556,10 @@ as NIL."
                    :subsector (make-subsector :lines convex-region
                                               :orig-sector sector)))
       (multiple-value-bind
-            (splitter-surf rest) (choose-splitter surfaces splitters)
+            (splitter-surf rest)
+          (ccase *splitter-choice-strategy*
+            (:best-random (choose-best-random-splitter surfaces splitters))
+            (:first (choose-splitter surfaces splitters)))
         (if (not splitter-surf)
             ;; We've selected all the segments and they form a convex hull.
             (progn

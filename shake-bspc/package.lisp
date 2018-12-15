@@ -101,6 +101,7 @@
            #:invalid-map-file-error
            #:message
            #:compile-map-file
+           #:*splitter-choice-strategy*
            #:build-bsp
            #:read-bsp
            ;; bsp file structure

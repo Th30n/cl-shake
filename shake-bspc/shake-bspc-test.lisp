@@ -92,7 +92,8 @@
 
 (subtest "Test build-bsp produces correct back-to-front"
   (subtest "Coincident segments"
-    (let* ((surfs (mapcar #'linedef->sidedef *coincident-linedefs*))
+    (let* ((*splitter-choice-strategy* :first)
+           (surfs (mapcar #'linedef->sidedef *coincident-linedefs*))
            (bsp (build-bsp surfs)))
       (is (mapcar #'sidedef-lineseg (back-to-front (v -0.5 1.5d0) bsp))
           (list (make-lineseg :orig-line (second *coincident-linedefs*)
@@ -103,7 +104,8 @@
                               :t-start (shiva-float 0.0) :t-end (shiva-float 0.5)))
           :test #'equalp)))
   (subtest "Double split segment"
-    (let* ((surfs (mapcar #'linedef->sidedef *double-split-linedefs*))
+    (let* ((*splitter-choice-strategy* :first)
+           (surfs (mapcar #'linedef->sidedef *double-split-linedefs*))
            (bsp (build-bsp surfs)))
       (is (mapcar #'sidedef-lineseg (back-to-front (v 3.5d0 1.5d0) bsp))
           (list (make-lineseg :orig-line (second *double-split-linedefs*)
@@ -117,10 +119,11 @@
           :test #'equalp))))
 
 (subtest "Test build-bsp produces correct axis aligned bounding boxes"
-  (let ((boxes (bsp-rec (build-bsp (mapcar #'linedef->sidedef *test-linedefs*))
-                        (lambda (node front back)
-                          (list (node-bounds node) (funcall front) (funcall back)))
-                        #'leaf-bounds)))
+  (let* ((*splitter-choice-strategy* :first)
+         (boxes (bsp-rec (build-bsp (mapcar #'linedef->sidedef *test-linedefs*))
+                         (lambda (node front back)
+                           (list (node-bounds node) (funcall front) (funcall back)))
+                         #'leaf-bounds)))
     (is boxes *expected-boxes* :test #'equalp)))
 
 (finalize)
