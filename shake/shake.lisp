@@ -436,6 +436,25 @@
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
         (return (nrotate-camera angle #.(shiva-float 0.0) camera))))))
 
+(defun spawn-things (game model-manager map-model)
+  (check-type game game)
+  (check-type model-manager smdl::model-manager)
+  (check-type map-model smdl:bsp-model)
+  (dolist (thing (smdl:bsp-model-things map-model))
+    (let* ((pos-2d (sbsp:map-thing-pos thing))
+           (floor-height (sbsp:sector-floor-height
+                          (hull-point-sector (smdl:bsp-model-hull map-model)
+                                             pos-2d)))
+           (angle-y (sbsp:map-thing-angle thing)))
+      (ccase (sbsp:map-thing-type thing)
+        (:player-spawn) ;; Handled by `SPAWN-PLAYER'.
+        (:shotgun
+         (game-add-weapon game
+                          (make-shotgun model-manager
+                                        ;; TODO: Fix magic 0.25
+                                        (v2->v3 pos-2d (+ floor-height 0.25))
+                                        :angle-y angle-y)))))))
+
 (defun render-weapon (camera model-manager)
   (flet ((calc-kickback ()
            ;; Placeholder for shooting animation
@@ -482,7 +501,7 @@
   (angle-y #.(shiva-float 0.0) :type shiva-float)
   (bounds-scale (v 1 1 1) :type (vec 3)))
 
-(defun make-shotgun (model-manager position)
+(defun make-shotgun (model-manager position &key (angle-y #.(shiva-float 0.0)))
   (check-type position (vec 3))
   (let* ((shotgun-model (smdl:get-model model-manager "../shotgun.obj"))
          (scale #.(shiva-float 0.125))
@@ -494,6 +513,7 @@
                 (v 0 0 0)))
     (make-weapon :model shotgun-model
                  :position position
+                 :angle-y angle-y
                  :scale scale
                  :bounds-scale bounds-scale)))
 
@@ -587,9 +607,7 @@
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
           (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
-          ;; Spawn and register weapon things
-          (game-add-weapon game (make-shotgun model-manager (v 17 0.125 51)))
-          (game-add-weapon game (make-shotgun model-manager (v 15 0.125 48)))
+          (spawn-things game model-manager smdl:*world-model*)
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))

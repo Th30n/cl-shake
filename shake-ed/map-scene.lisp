@@ -340,16 +340,27 @@
   (add-thing-to-scene scene (sbsp:make-map-thing :type :player-spawn
                                                  :pos scene-pos)))
 
+(defun insert-shotgun (scene scene-pos)
+  (with-slots (graphics-item-thing-map things) scene
+    (add-thing-to-scene scene (sbsp:make-map-thing :type :shotgun
+                                                   :pos scene-pos))))
+
 (defun show-things-menu (scene scene-pos)
   (with-finalizing* ((pos (q+:qcursor-pos))
                      (menu (q+:make-qmenu "Things"))
                      (player-spawn-action (q+:add-action menu
-                                                         "Insert player spawn")))
+                                                         "Set Player Spawn"))
+                     (weapons-menu (q+:make-qmenu "Add Weapon"))
+                     (shotgun-spawn-action (q+:add-action weapons-menu
+                                                          "Shotgun")))
+    (q+:add-menu menu weapons-menu)
     (let ((res (q+:exec menu pos)))
       (unless (null-qobject-p res)
         (cond
           ((string= (q+:text player-spawn-action) (q+:text res))
-           (insert-player-spawn scene scene-pos)))))))
+           (insert-player-spawn scene scene-pos))
+          ((string= (q+:text shotgun-spawn-action) (q+:text res))
+           (insert-shotgun scene scene-pos)))))))
 
 (defun select-line (item)
   (with-finalizing ((pen (make-qpen (map->scene-unit 4)
@@ -620,9 +631,9 @@
            item))
     (let ((image-file
            (concatenate 'string ":/things/"
-                        (case (sbsp:map-thing-type thing)
+                        (ccase (sbsp:map-thing-type thing)
                           (:player-spawn "player.svg")
-                          (otherwise "invalid.svg")))))
+                          (:shotgun "weapon.svg")))))
       (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
 
 (defun read-map (stream scene)

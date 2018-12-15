@@ -1,6 +1,7 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource prefix="/things">
-    <file alias="player.svg">images/things/player-spawn.svg</file>
+  <file alias="player.svg">images/things/player-spawn.svg</file>
+  <file alias="weapon.svg">images/things/weapon.svg</file>
 </qresource>
 <qresource prefix="/modes">
   <file alias="things.svg">images/things/player-spawn.svg</file>
