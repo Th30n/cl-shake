@@ -473,7 +473,7 @@
   (with-struct (font- cell-size chars-per-line start-char-code) font
     (let ((char-code (- (char-code char) start-char-code)))
       (multiple-value-bind (y x) (floor char-code chars-per-line)
-        (cons (* x cell-size) (* y cell-size))))))
+        (values (* x cell-size) (* y cell-size))))))
 
 (defun renderer-draw (renderer) (funcall renderer :draw))
 
@@ -504,7 +504,7 @@
                   (gl:uniformf size-loc size)
                   (loop for char across text
                      and offset of-type single-float from half-cell by half-cell do
-                       (destructuring-bind (x . y) (char->font-cell-pos char font)
+                       (multiple-value-bind (x y) (char->font-cell-pos char font)
                          (gl:uniformi char-pos-loc x y)
                          (let ((translation
                                 (translation :x (+ offset pos-x)
