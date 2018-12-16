@@ -25,6 +25,7 @@
                 #:float=
                 #:v
                 #:v=
+                #:vnormalize
                 #:v3->v2)
   (:import-from #:sbsp
                 #:make-linedef-loop
@@ -100,5 +101,37 @@
       (is (shake:hull-point-contents
            hull (v3->v2 (shake:mtrace-endpos mtrace)))
           :contents-empty))))
+
+(subtest "ray-oobb-intersection"
+  (let ((oobb (shake::make-oobb
+               :center (v 0 0 0)
+               :half-lengths (v 1 1 1)
+               :directions (make-array 3 :initial-contents
+                                       ;; Axis aligned bounds
+                                       (list (v 1 0 0) (v 0 1 0) (v 0 0 1))))))
+    (ok (not (shake::ray-oobb-intersect (v 1.1 0 0) (v 1 0 0) oobb)))
+    (is (shake::ray-oobb-intersect (v 1.1 0 0) (v -1 0 0) oobb)
+        #.(shiva-float 0.10000002384185791d0) :test #'float=)
+    (is (shake::ray-oobb-intersect (v 1.1 0 0) (v -1 0 0) oobb
+                                   :ray-length #.(shiva-float 0.25))
+        #.(shiva-float 0.10000002384185791d0) :test #'float=)
+    (ok (not (shake::ray-oobb-intersect (v 1.1 0 0) (v -1 0 0) oobb
+                                        :ray-length #.(shiva-float 0.1)))))
+  (let ((oobb (shake::make-oobb
+               :center (v 0 0 0)
+               :half-lengths (v 0.5 0.5 0.5)
+               :directions (make-array 3 :initial-contents
+                                       ;; Rotated for 45 degrees around Z-axis
+                                       (list (vnormalize (v 1 -1 0))
+                                             (vnormalize (v 1 1 0))
+                                             (v 0 0 1))))))
+    (ok (not (shake::ray-oobb-intersect (v 1.1 0 0) (v 1 0 0) oobb)))
+    (is (shake::ray-oobb-intersect (v 1 2 0) (vnormalize (v -1 -2 0)) oobb)
+        #.(shiva-float 1.7090217008050597d0) :test #'float=)
+    (is (shake::ray-oobb-intersect (v 1 2 0) (vnormalize (v -1 -2 0)) oobb
+                                   :ray-length #.(shiva-float 2.0))
+        #.(shiva-float 1.7090217008050597d0) :test #'float=)
+    (ok (not (shake::ray-oobb-intersect (v 1 2 0) (vnormalize (v -1 -2 0)) oobb
+                                        :ray-length #.(shiva-float 1.5))))))
 
 (finalize)

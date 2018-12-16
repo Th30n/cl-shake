@@ -158,3 +158,50 @@
   (check-type p2 (vec 3))
   (check-type height (shiva-float #.(shiva-float 0.0)))
   (recursive-hull-check hull p1 p2 height))
+
+(declaim (inline make-oobb))
+(defstruct oobb
+  "Object Oriented Bounding Box"
+  (center (v 0 0 0) :type (vec 3))
+  ;; Positive half-lengths from the center in each direction
+  (half-lengths (v 0.5 0.5 0.5) :type (vec 3))
+  ;; Normalized side directions
+  (directions (make-array 3 :element-type '(vec 3)
+                          :initial-contents (list (v 1 0 0) (v 0 1 0) (v 0 0 1)))
+              :type (simple-array (vec 3) (3))))
+
+(defun ray-oobb-intersect (origin dir oobb &key ray-length)
+  "Return distance from ORIGIN along DIR where ray intersects OOBB.  If there
+is no intersection, return NIL.  Referenced algorithm from Real-Time Rendering
+3rd edition, 16.7.1 Slabs Method."
+  (check-type origin (vec 3))
+  (check-type dir (vec 3))
+  (check-type oobb oobb)
+  (check-type ray-length (or null shiva-float))
+  (assert (float= (v3dot dir dir) #.(shiva-float 1)))
+  (let ((t-min nil)
+        (t-max nil)
+        (p (v- (oobb-center oobb) origin)))
+    (dotimes (i 3)
+      (let ((e (v3dot (aref (oobb-directions oobb) i) p))
+            (f (v3dot (aref (oobb-directions oobb) i) dir))
+            (h (aref (oobb-half-lengths oobb) i)))
+        (if (float> (abs f) #.(shiva-float 0))
+            ;; Not perpendicular to direction
+            (let* ((1/f (/ #.(shiva-float 1) f))
+                   (t1 (* (+ e h) 1/f))
+                   (t2 (* (- e h) 1/f)))
+              (if (float> t1 t2) (rotatef t1 t2))
+              (if (or (not t-min) (float> t1 t-min)) (setf t-min t1))
+              (if (or (not t-max) (float< t2 t-max)) (setf t-max t2))
+              (if (float> t-min t-max) (return-from ray-oobb-intersect))
+              (if (float< t-max #.(shiva-float 0)) (return-from ray-oobb-intersect)))
+            ;; Ray perpendicular to direction
+            (if (or (float< (+ e h) #.(shiva-float 0))
+                    (float< (- h e) #.(shiva-float 0)))
+                (return-from ray-oobb-intersect)))
+        (if (and ray-length t-min (float>= t-min ray-length))
+            (return-from ray-oobb-intersect))))
+    (if (float> t-min #.(shiva-float 0))
+        t-min
+        t-max)))
