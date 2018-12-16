@@ -363,6 +363,46 @@
                                      (v+ entity-position gravity-velocity)
                                      :height #.(shiva-float 0.5))))))))
 
+(defun player-touch-triggers (start end)
+  (declare (special *game*))
+  (check-type *game* game)
+  (check-type start (vec 3))
+  (check-type end (vec 3))
+  (unless (v= start end)
+    (let ((move-dir (vnormalize (v- end start)))
+          (move-len (vnorm (v- end start)))
+          (touched-things nil))
+      (dolist (thing (game-think-things *game*))
+        (when (weapon-p thing)
+          (let* ((hull-expand (* 0.5 sbsp::+clip-square+))
+                 (half-height 0.25)
+                 (oobb (make-oobb
+                       :center (weapon-position thing)
+                       :half-lengths
+                       (v+ (weapon-bounds-scale thing)
+                           ;; TODO: Appropriate collision hull expansion
+                           (v hull-expand half-height hull-expand))))
+                (rotation (rotation (v 0 1 0) (* deg->rad (weapon-angle-y thing)))))
+            (setf (vx (oobb-directions oobb))
+                  (vxyz (vtransform rotation (v (vx (vx (oobb-directions oobb)))
+                                                (vy (vx (oobb-directions oobb)))
+                                                (vz (vx (oobb-directions oobb)))
+                                                0.0))))
+            (setf (vz (oobb-directions oobb))
+                  (vxyz (vtransform rotation (v (vx (vz (oobb-directions oobb)))
+                                                (vy (vz (oobb-directions oobb)))
+                                                (vz (vz (oobb-directions oobb)))
+                                                0.0))))
+            (when (ray-oobb-intersect start move-dir oobb :ray-length move-len)
+              (push thing touched-things)))))
+      ;; Trigger touched things
+      (setf (game-think-things *game*)
+            (remove-if (lambda (thing) (member thing touched-things))
+                       (game-think-things *game*)))
+      (setf (game-render-things *game*)
+            (remove-if (lambda (thing) (member thing touched-things))
+                       (game-render-things *game*))))))
+
 (defun move-player (player forward-move side-move &key (noclip nil))
   (let ((forward-dir (view-dir :forward player)))
     (unless noclip
@@ -378,18 +418,22 @@
       (if noclip
           (setf (camera-position player) (v+ camera-offset end-pos))
           (let ((destination (apply-gravity (player-ground-move origin velocity))))
+            (player-touch-triggers origin destination)
             (setf (camera-position player)
                   (v+ camera-offset destination)))))))
 
-(defun run-tic (camera cmd)
+(defun run-tic (game camera cmd)
   "Run a single tic/frame of game logic. CMD is used to read and act on player
   controls."
+  (check-type game game)
   (check-type camera camera)
   (check-type cmd ticcmd)
   (with-struct (ticcmd- forward-move side-move angle-turn) cmd
     (let ((*time-delta* (shiva-float (/ +ticrate+)))
+          (*game* game)
           (noclip nil))
       (declare (special *time-delta*))
+      (declare (special *game*))
       (unless (and (zerop forward-move) (zerop side-move))
         (move-player camera (* forward-move *time-delta*) (* side-move *time-delta*) :noclip noclip))
       (destructuring-bind (x-turn . y-turn) angle-turn
@@ -398,7 +442,8 @@
       (unless noclip
         (let ((camera-offset (v 0.0 0.5 0.0)))
           (setf (camera-position camera)
-                (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset)))))))))
+                (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset))))))))
+  (run-thinkers (game-think-things game)))
 
 (defun load-main-resources (render-system)
   (add-res "point-renderer" #'make-point-renderer #'renderer-delete)
@@ -534,7 +579,10 @@
          (mvp (m* view-project (weapon-view-transform weapon))))
     ;; Render the bounds cube
     (let ((pos (weapon-position weapon))
-          (bounds-scale (weapon-bounds-scale weapon)))
+          (bounds-scale (v+ (weapon-bounds-scale weapon)
+                            (v (* 0.5 sbsp::+clip-square+)
+                               0.25
+                               (* 0.5 sbsp::+clip-square+)))))
       (srend:render-surface
        (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
        (m* view-project
@@ -638,9 +686,8 @@
               (:idle ()
                      (with-timer (frame-timer)
                        (try-run-tics #'build-ticcmd
-                                     (lambda (tic)
-                                       (run-tic camera tic)
-                                       (run-thinkers (game-think-things game))))
+                                     (lambda (ticcmd)
+                                       (run-tic game camera ticcmd)))
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
                            (render-view camera model-manager (game-render-things game))
