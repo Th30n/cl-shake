@@ -255,7 +255,24 @@
   (angle-turn (cons #.(shiva-float 0.0) #.(shiva-float 0.0))
               :type (cons shiva-float shiva-float)))
 
+;;; Player
+
+(defstruct inventory
+  (weapons nil :type list))
+
+(defstruct player
+  (inventory (make-inventory) :type inventory)
+  (current-weapon nil :type (or null weapon))
+  (weapon-hidden-p nil :type boolean))
+
 (defun build-ticcmd ()
+  (declare (special *player*))
+  (check-type *player* player)
+  ;; XXX: Hacked toggling PLAYER-WEAPON-HIDDEN-P, use appropriate on-key-down
+  ;; event. Also, is this the right place to do the toggle?
+  (when (game-key-down-p :scancode-h)
+    (zap #'not (player-weapon-hidden-p *player*))
+    (release-game-key :scancode-h))
   (let ((xrel (car *mouse*))
         ;; Invert the Y movement.
         (yrel (- (cdr *mouse*)))
@@ -363,9 +380,10 @@
                                      (v+ entity-position gravity-velocity)
                                      :height #.(shiva-float 0.5))))))))
 
-(defun player-touch-triggers (start end)
+(defun player-touch-triggers (player start end)
   (declare (special *game*))
   (check-type *game* game)
+  (check-type player player)
   (check-type start (vec 3))
   (check-type end (vec 3))
   (unless (v= start end)
@@ -396,14 +414,23 @@
             (when (ray-oobb-intersect start move-dir oobb :ray-length move-len)
               (push thing touched-things)))))
       ;; Trigger touched things
-      (setf (game-think-things *game*)
-            (remove-if (lambda (thing) (member thing touched-things))
-                       (game-think-things *game*)))
-      (setf (game-render-things *game*)
-            (remove-if (lambda (thing) (member thing touched-things))
-                       (game-render-things *game*))))))
+      (dolist (touched touched-things)
+        (when (weapon-p touched)
+          ;; TODO: Handle stacking same weapons
+          (push touched (inventory-weapons (player-inventory player)))
+          (unless (player-current-weapon player)
+            (setf (player-current-weapon player) touched)))
+        ;; NOTE: Removal is horribly inefficient.
+        (setf (game-think-things *game*)
+              (remove touched (game-think-things *game*)))
+        (setf (game-render-things *game*)
+              (remove touched (game-render-things *game*)))))))
 
 (defun move-player (player forward-move side-move &key (noclip nil))
+  (declare (special *player*))
+  (check-type *player* player)
+  ;; TODO: Consolidate player and camera
+  (check-type player camera)
   (let ((forward-dir (view-dir :forward player)))
     (unless noclip
       ;; Project forward-dir to plane of movement.
@@ -418,7 +445,7 @@
       (if noclip
           (setf (camera-position player) (v+ camera-offset end-pos))
           (let ((destination (apply-gravity (player-ground-move origin velocity))))
-            (player-touch-triggers origin destination)
+            (player-touch-triggers *player* origin destination)
             (setf (camera-position player)
                   (v+ camera-offset destination)))))))
 
@@ -500,44 +527,50 @@
                                         (v2->v3 pos-2d (+ floor-height 0.25))
                                         :angle-y angle-y)))))))
 
-(defun render-weapon (camera model-manager)
-  (flet ((calc-kickback ()
-           ;; Placeholder for shooting animation
-           (if (game-key-down-p :mouse1) 4.0 0.0)))
-    (let ((mvp (m* (camera-projection-matrix camera)
-                   (m* (m* (translation :x 0.5 :y -0.5 :z #.(shiva-float -1.4d0))
-                           (rotation (v 0 1 0) (* deg->rad 182)))
-                       (rotation (v 1 0 0) (* deg->rad (- -3 (calc-kickback))))))))
-      ;; Hack the projected Z so that we keep the depth of FP weapon small, thus
-      ;; drawing over almost everything.
-      (zap (lambda (x) (* 0.25 x)) (aref mvp 2 0))
-      (zap (lambda (x) (* 0.25 x)) (aref mvp 2 1))
-      (zap (lambda (x) (* 0.25 x)) (aref mvp 2 2))
-      (zap (lambda (x) (* 0.25 x)) (aref mvp 2 3))
-      (srend:render-surface
-       (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
-       mvp)))
-  ;; Placeholder for rendering shot, this should be done elsewhere.
-  (when (game-key-down-p :mouse1)
-    (let* ((forward-dir (view-dir :forward camera))
-           (shot-range #.(shiva-float 20))
-           (velocity (vscale shot-range forward-dir))
-           ;; TODO: Seperate player position from camera.
-           ;; (camera-offset (v 0d0 0.5d0 0d0))
-           (origin (camera-position camera)) ;; (v- (camera-position camera) camera-offset))
-           ;; (end-pos (v+ origin velocity))
-           (hull (smdl:bsp-model-hull smdl:*world-model*)))
-      (multiple-value-bind (mtrace hitp) (clip-hull hull origin (v+ origin velocity))
-        (when hitp
-          (let* ((dest (v+ (mtrace-endpos mtrace)
-                           (vscale #.(shiva-float 0.005d0) (mtrace-normal mtrace))))
-                 (mvp (m* (m* (camera-projection-matrix camera)
-                             (camera-view-transform camera))
-                         (m* (translation :x (vx dest) :y (vy dest) :z (vz dest))
-                             (scale :x 0.125 :y 0.125 :z 0.125)))))
+(defun player-render-weapon (player camera model-manager)
+  (check-type player player)
+  (check-type camera camera)
+  (check-type model-manager smdl::model-manager)
+  (let ((weapon (player-current-weapon player)))
+    (when weapon
+      (unless (player-weapon-hidden-p player)
+        (flet ((calc-kickback ()
+                 ;; Placeholder for shooting animation
+                 (if (game-key-down-p :mouse1) 4.0 0.0)))
+          (let ((mvp (m* (camera-projection-matrix camera)
+                         (m* (m* (translation :x 0.5 :y -0.5 :z #.(shiva-float -1.4d0))
+                                 (rotation (v 0 1 0) (* deg->rad 182)))
+                             (rotation (v 1 0 0) (* deg->rad (- -3 (calc-kickback))))))))
+            ;; Hack the projected Z so that we keep the depth of FP weapon small, thus
+            ;; drawing over almost everything.
+            (zap (lambda (x) (* 0.25 x)) (aref mvp 2 0))
+            (zap (lambda (x) (* 0.25 x)) (aref mvp 2 1))
+            (zap (lambda (x) (* 0.25 x)) (aref mvp 2 2))
+            (zap (lambda (x) (* 0.25 x)) (aref mvp 2 3))
             (srend:render-surface
-             (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
-             mvp)))))))
+             (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
+             mvp))))
+      ;; Placeholder for rendering shot, this should be done elsewhere.
+      (when (game-key-down-p :mouse1)
+        (let* ((forward-dir (view-dir :forward camera))
+               (shot-range #.(shiva-float 20))
+               (velocity (vscale shot-range forward-dir))
+               ;; TODO: Seperate player position from camera.
+               ;; (camera-offset (v 0d0 0.5d0 0d0))
+               (origin (camera-position camera)) ;; (v- (camera-position camera) camera-offset))
+               ;; (end-pos (v+ origin velocity))
+               (hull (smdl:bsp-model-hull smdl:*world-model*)))
+          (multiple-value-bind (mtrace hitp) (clip-hull hull origin (v+ origin velocity))
+            (when hitp
+              (let* ((dest (v+ (mtrace-endpos mtrace)
+                               (vscale #.(shiva-float 0.005d0) (mtrace-normal mtrace))))
+                     (mvp (m* (m* (camera-projection-matrix camera)
+                                  (camera-view-transform camera))
+                              (m* (translation :x (vx dest) :y (vy dest) :z (vz dest))
+                                  (scale :x 0.125 :y 0.125 :z 0.125)))))
+                (srend:render-surface
+                 (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+                 mvp)))))))))
 
 (defun run-thinkers (thinkers)
   (dolist (thinker thinkers)
@@ -582,7 +615,9 @@
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
-               (game (make-game)))
+               (game (make-game))
+               (*player* (make-player)))
+          (declare (special *player*))
           (load-weapons render-system model-manager)
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
@@ -622,7 +657,7 @@
                                        (run-tic game camera ticcmd)))
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
-                           (render-view camera model-manager (game-render-things game))
+                           (render-view *player* camera model-manager (game-render-things game))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))
@@ -686,7 +721,7 @@
                               (rec front test-p)))))))))
         (rec (smdl:bsp-model-nodes world-model))))))
 
-(defun render-view (camera model-manager render-things)
+(defun render-view (player camera model-manager render-things)
   (gl:enable :depth-test)
   ;; TODO: Enable this when we correctly generate CCW faces for .bsp models.
   ;; (gl:enable :cull-face)
@@ -697,6 +732,5 @@
   ;; Draw "crosshair"
   (srend::draw-text "+" :x (floor *win-width* 2) :y (floor *win-height* 2)
                     :scale 2.0)
-  ;; TODO: This should use currently equipped weapon.
-  (render-weapon camera model-manager)
+  (player-render-weapon player camera model-manager)
   (render-things render-things camera model-manager))
