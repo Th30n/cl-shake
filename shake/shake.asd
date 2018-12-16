@@ -32,5 +32,6 @@
                (:file "world")
                (:file "image")
                (:file "render")
+               (:file "game")
                (:file "shake"))
   :in-order-to ((test-op (test-op shake-test))))
