@@ -391,7 +391,7 @@
           (move-len (vnorm (v- end start)))
           (touched-things nil))
       (dolist (thing (game-think-things *game*))
-        (when (weapon-p thing)
+        (when (typep thing 'weapon)
           (let* ((hull-expand (* 0.5 sbsp::+clip-square+))
                  (half-height 0.25)
                  (oobb (make-oobb
@@ -415,7 +415,7 @@
               (push thing touched-things)))))
       ;; Trigger touched things
       (dolist (touched touched-things)
-        (when (weapon-p touched)
+        (when (typep touched 'weapon)
           ;; TODO: Handle stacking same weapons
           (push touched (inventory-weapons (player-inventory player)))
           (unless (player-current-weapon player)
@@ -521,11 +521,11 @@
       (ccase (sbsp:map-thing-type thing)
         (:player-spawn) ;; Handled by `SPAWN-PLAYER'.
         (:shotgun
-         (game-add-weapon game
-                          (make-shotgun model-manager
-                                        ;; TODO: Fix magic 0.25
-                                        (v2->v3 pos-2d (+ floor-height 0.25))
-                                        :angle-y angle-y)))))))
+         (game-add-thing game
+                         (make-shotgun model-manager
+                                       ;; TODO: Fix magic 0.25
+                                       (v2->v3 pos-2d (+ floor-height 0.25))
+                                       :angle-y angle-y)))))))
 
 (defun player-render-weapon (player camera model-manager)
   (check-type player player)
@@ -574,7 +574,7 @@
 
 (defun run-thinkers (thinkers)
   (dolist (thinker thinkers)
-    (weapon-think thinker)))
+    (thing-think thinker)))
 
 (defun render-things (render-things camera model-manager)
   (check-type camera camera)

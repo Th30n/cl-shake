@@ -6,18 +6,39 @@
   (think-things nil :type list)
   (render-things nil :type list))
 
-(defstruct weapon
-  (model nil :type smdl::obj-model)
-  (position (v 0 0 0) :type (vec 3))
-  (scale #.(shiva-float 1.0) :type shiva-float)
-  (angle-y #.(shiva-float 0.0) :type shiva-float)
-  (bounds-scale (v 1 1 1) :type (vec 3)))
+(defclass thing ()
+  ())
 
-(defun game-add-weapon (game weapon)
-  (check-type game game)
-  (check-type weapon weapon)
-  (push weapon (game-think-things game))
+(defgeneric thing-think (thing)
+  (:documentation "Run thinking for this THING")
+  (:method ((thing thing))
+    "Default THING-THINK method is a no-op."
+    nil))
+
+(defgeneric game-add-thing (game thing)
+  (:documentation "Register THING in GAME.")
+  (:method (game (thing thing))
+    "Add THING to list of all things in GAME."
+    (check-type game game)
+    (push thing (game-think-things game))))
+
+(defclass weapon (thing)
+  ((model :initform nil :type smdl::obj-model
+          :initarg :model :accessor weapon-model)
+   (position :initform (v 0 0 0) :type (vec 3)
+             :initarg :position :accessor weapon-position)
+   (scale :initform #.(shiva-float 1.0) :type shiva-float
+          :initarg :scale :accessor weapon-scale)
+   (angle-y :initform #.(shiva-float 0.0) :type shiva-float
+            :initarg :angle-y :accessor weapon-angle-y)
+   (bounds-scale :initform (v 1 1 1) :type (vec 3)
+                 :initarg :bounds-scale :accessor weapon-bounds-scale)))
+
+(defmethod game-add-thing :after (game (weapon weapon))
   (push weapon (game-render-things game)))
+
+(defmethod thing-think :after ((weapon weapon))
+  (setf (weapon-angle-y weapon) (shiva-float (mod (get-time) 360))))
 
 (defun make-shotgun (model-manager position &key (angle-y #.(shiva-float 0.0)))
   (check-type position (vec 3))
@@ -29,11 +50,12 @@
     (assert (v= (vscale 0.5 (v+ (smdl::obj-model-min-bounds shotgun-model)
                                 (smdl::obj-model-max-bounds shotgun-model)))
                 (v 0 0 0)))
-    (make-weapon :model shotgun-model
-                 :position position
-                 :angle-y angle-y
-                 :scale scale
-                 :bounds-scale bounds-scale)))
+    (make-instance 'weapon
+                   :model shotgun-model
+                   :position position
+                   :angle-y angle-y
+                   :scale scale
+                   :bounds-scale bounds-scale)))
 
 (defun weapon-view-transform (weapon)
   (check-type weapon weapon)
@@ -65,7 +87,3 @@
        :wireframep t))
     ;; Render the weapon model
     (srend:render-surface (smdl::obj-model-verts (weapon-model weapon)) mvp)))
-
-(defun weapon-think (weapon)
-  (check-type weapon weapon)
-  (setf (weapon-angle-y weapon) (shiva-float (mod (get-time) 360))))
