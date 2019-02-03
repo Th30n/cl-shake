@@ -40,8 +40,9 @@
 (defmethod thing-think :after ((weapon weapon))
   (setf (weapon-angle-y weapon) (shiva-float (mod (get-time) 360))))
 
-(defun make-shotgun (model-manager position &key (angle-y #.(shiva-float 0.0)))
+(defun make-shotgun (image-manager model-manager position &key (angle-y #.(shiva-float 0.0)))
   (check-type position (vec 3))
+  (srend::load-image-from-file image-manager "shotgun.bmp")
   (let* ((shotgun-model (smdl:get-model model-manager "../shotgun.obj"))
          (scale #.(shiva-float 0.125))
          (bounds-scale (vscale (* 0.5 scale)
@@ -50,6 +51,7 @@
     (assert (v= (vscale 0.5 (v+ (smdl::obj-model-min-bounds shotgun-model)
                                 (smdl::obj-model-max-bounds shotgun-model)))
                 (v 0 0 0)))
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts shotgun-model)) "shotgun.bmp")
     (make-instance 'weapon
                    :model shotgun-model
                    :position position
@@ -91,6 +93,8 @@
 (defclass enemy (thing)
   ((model :initform nil :type smdl::obj-model
           :initarg :model :accessor enemy-model)
+   (center :initform (v 0 0 0) :type (vec 3)
+           :initarg :center :accessor enemy-center)
    (position :initform (v 0 0 0) :type (vec 3)
              :initarg :position :accessor enemy-position)
    (scale :initform #.(shiva-float 1.0) :type shiva-float
@@ -103,16 +107,18 @@
 (defmethod game-add-thing :after (game (enemy enemy))
   (push enemy (game-render-things game)))
 
-(defun make-enemy (model-manager position &key (angle-y #.(shiva-float 0.0)))
+(defun make-enemy (image-manager model-manager position &key (angle-y #.(shiva-float 0.0)))
   (check-type position (vec 3))
+  (srend::load-image-from-file image-manager "enemy.bmp")
   (let* ((model (smdl:get-model model-manager "../enemy.obj"))
+         (center (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
+                                 (smdl::obj-model-min-bounds model))))
          (bounds-scale (vscale 0.5 (v- (smdl::obj-model-max-bounds model)
                                        (smdl::obj-model-min-bounds model)))))
-    ;; (assert (v= (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
-    ;;                             (smdl::obj-model-min-bounds model)))
-    ;;             (v 0 0 0)))
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts model)) "enemy.bmp")
     (make-instance 'enemy
                    :model model
+                   :center center
                    :position position
                    :angle-y angle-y
                    :bounds-scale bounds-scale)))
@@ -133,12 +139,12 @@
                            (camera-view-transform camera)))
          (mvp (m* view-project (enemy-view-transform enemy))))
     ;; Render the bounds cube
-    (let ((pos (enemy-position enemy))
+    (let ((pos (v+ (enemy-center enemy) (enemy-position enemy)))
           (bounds-scale (enemy-bounds-scale enemy)))
       (srend:render-surface
        (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
        (m* view-project
-           (m* (translation :x (vx pos) :y (+ 0.5 (vy pos)) :z (vz pos))
+           (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
                (m* (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy)))
                    (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))))
        :wireframep t))

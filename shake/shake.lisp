@@ -482,16 +482,6 @@
              (srend::load-font (data-path "share/font-16.bmp") 16 #\Space))
            #'srend::delete-font))
 
-(defun load-weapons (render-system model-manager)
-  (srend::load-image-from-file (srend::render-system-image-manager render-system) "shotgun.bmp")
-  (let ((shotgun-model (smdl:get-model model-manager "../shotgun.obj")))
-    ;; TODO: This should be more generic and injected in a better way.
-    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts shotgun-model)) "shotgun.bmp"))
-  (srend::load-image-from-file (srend::render-system-image-manager render-system) "enemy.bmp")
-  (let ((enemy-model (smdl:get-model model-manager "../enemy.obj")))
-    ;; TODO: This should be more generic and injected in a better way.
-    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts enemy-model)) "enemy.bmp")))
-
 (defun load-map-textures (render-system bsp)
   (labels ((texture-name (surf)
              (aif (sbsp:sidedef-texinfo surf)
@@ -512,8 +502,9 @@
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
         (return (nrotate-camera angle #.(shiva-float 0.0) camera))))))
 
-(defun spawn-things (game model-manager map-model)
+(defun spawn-things (game image-manager model-manager map-model)
   (check-type game game)
+  (check-type image-manager srend::image-manager)
   (check-type model-manager smdl::model-manager)
   (check-type map-model smdl:bsp-model)
   (dolist (thing (smdl:bsp-model-things map-model))
@@ -526,13 +517,13 @@
         (:player-spawn) ;; Handled by `SPAWN-PLAYER'.
         (:shotgun
          (game-add-thing game
-                         (make-shotgun model-manager
+                         (make-shotgun image-manager model-manager
                                        ;; TODO: Fix magic 0.25
                                        (v2->v3 pos-2d (+ floor-height 0.25))
                                        :angle-y angle-y)))
         (:enemy
          (game-add-thing game
-                         (make-enemy model-manager
+                         (make-enemy image-manager model-manager
                                      (v2->v3 pos-2d floor-height)
                                      :angle-y angle-y)))))))
 
@@ -673,11 +664,11 @@
                (game (make-game))
                (*player* (make-player)))
           (declare (special *player*))
-          (load-weapons render-system model-manager)
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
           (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
-          (spawn-things game model-manager smdl:*world-model*)
+          (spawn-things game (srend::render-system-image-manager render-system)
+                        model-manager smdl:*world-model*)
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))
