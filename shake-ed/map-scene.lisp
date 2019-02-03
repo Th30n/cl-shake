@@ -642,7 +642,7 @@
                         (ccase (sbsp:map-thing-type thing)
                           (:player-spawn "player.svg")
                           (:shotgun "weapon.svg")
-                          (:enemy "weapon.svg")))))
+                          (:enemy "enemy.svg")))))
       (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
 
 (defun read-map (stream scene)
