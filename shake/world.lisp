@@ -171,9 +171,9 @@
               :type (simple-array (vec 3) (3))))
 
 (defun ray-oobb-intersect (origin dir oobb &key ray-length)
-  "Return distance from ORIGIN along DIR where ray intersects OOBB.  If there
-is no intersection, return NIL.  Referenced algorithm from Real-Time Rendering
-3rd edition, 16.7.1 Slabs Method."
+  "Return distance from ORIGIN along normalized DIR where ray intersects OOBB.
+If there is no intersection, return NIL.  Referenced algorithm from Real-Time
+Rendering 3rd edition, 16.7.1 Slabs Method."
   (check-type origin (vec 3))
   (check-type dir (vec 3))
   (check-type oobb oobb)

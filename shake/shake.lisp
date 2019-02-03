@@ -525,7 +525,44 @@
                          (make-shotgun model-manager
                                        ;; TODO: Fix magic 0.25
                                        (v2->v3 pos-2d (+ floor-height 0.25))
-                                       :angle-y angle-y)))))))
+                                       :angle-y angle-y)))
+        (:enemy
+         (game-add-thing game
+                         (make-enemy model-manager
+                                     (v2->v3 pos-2d floor-height)
+                                     :angle-y angle-y)))))))
+
+(defun hit-enemy-p (start end)
+  (declare (special *game*))
+  (check-type *game* game)
+  (check-type start (vec 3))
+  (check-type end (vec 3))
+  (unless (v= start end)
+    (let ((move-dir (vnormalize (v- end start)))
+          (move-len (vnorm (v- end start)))
+          (hit-distance nil)
+          (hit-enemy nil))
+      (dolist (thing (game-think-things *game*))
+        (when (typep thing 'enemy)
+          (let ((oobb (make-oobb
+                       :center (enemy-position thing)
+                       :half-lengths (enemy-bounds-scale thing)))
+                (rotation (rotation (v 0 1 0) (* deg->rad (enemy-angle-y thing)))))
+            (setf (vx (oobb-directions oobb))
+                  (vxyz (vtransform rotation (v (vx (vx (oobb-directions oobb)))
+                                                (vy (vx (oobb-directions oobb)))
+                                                (vz (vx (oobb-directions oobb)))
+                                                0.0))))
+            (setf (vz (oobb-directions oobb))
+                  (vxyz (vtransform rotation (v (vx (vz (oobb-directions oobb)))
+                                                (vy (vz (oobb-directions oobb)))
+                                                (vz (vz (oobb-directions oobb)))
+                                                0.0))))
+            (let ((hitp (ray-oobb-intersect start move-dir oobb :ray-length move-len)))
+              (when (and hitp (or (not hit-enemy) (< hitp hit-distance)))
+                (setf hit-enemy thing)
+                (setf hit-distance hitp))))))
+      (values hit-enemy hit-distance))))
 
 (defun player-render-weapon (player camera model-manager)
   (check-type player player)
@@ -552,7 +589,7 @@
              mvp))))
       ;; Placeholder for rendering shot, this should be done elsewhere.
       (when (game-key-down-p :mouse1)
-        (let* ((forward-dir (view-dir :forward camera))
+        (let* ((forward-dir (vnormalize (view-dir :forward camera)))
                (shot-range #.(shiva-float 20))
                (velocity (vscale shot-range forward-dir))
                ;; TODO: Seperate player position from camera.
@@ -561,16 +598,27 @@
                ;; (end-pos (v+ origin velocity))
                (hull (smdl:bsp-model-hull smdl:*world-model*)))
           (multiple-value-bind (mtrace hitp) (clip-hull hull origin (v+ origin velocity))
-            (when hitp
-              (let* ((dest (v+ (mtrace-endpos mtrace)
-                               (vscale #.(shiva-float 0.005d0) (mtrace-normal mtrace))))
-                     (mvp (m* (m* (camera-projection-matrix camera)
-                                  (camera-view-transform camera))
-                              (m* (translation :x (vx dest) :y (vy dest) :z (vz dest))
-                                  (scale :x 0.125 :y 0.125 :z 0.125)))))
-                (srend:render-surface
-                 (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
-                 mvp)))))))))
+            (multiple-value-bind (hit-enemy dist) (hit-enemy-p origin (mtrace-endpos mtrace))
+              (let ((dest (cond
+                            (hit-enemy (v+ origin (vscale dist forward-dir)))
+                            (hitp
+                             (v+ (mtrace-endpos mtrace)
+                                 (vscale #.(shiva-float 0.005d0) (mtrace-normal mtrace)))))))
+                (declare (special *game*))
+                (when hit-enemy
+                  ;; NOTE: Removal is horribly inefficient.
+                  (setf (game-think-things *game*)
+                        (remove hit-enemy (game-think-things *game*)))
+                  (setf (game-render-things *game*)
+                        (remove hit-enemy (game-render-things *game*))))
+                (when dest
+                  (let ((mvp (m* (m* (camera-projection-matrix camera)
+                                     (camera-view-transform camera))
+                                 (m* (translation :x (vx dest) :y (vy dest) :z (vz dest))
+                                     (scale :x 0.125 :y 0.125 :z 0.125)))))
+                    (srend:render-surface
+                     (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+                     mvp)))))))))))
 
 (defun run-thinkers (thinkers)
   (dolist (thinker thinkers)
@@ -580,7 +628,9 @@
   (check-type camera camera)
   (check-type model-manager smdl::model-manager)
   (dolist (render-thing render-things)
-    (weapon-render render-thing camera model-manager)))
+    (ctypecase render-thing
+      (weapon (weapon-render render-thing camera model-manager))
+      (enemy (enemy-render render-thing camera model-manager)))))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
@@ -657,7 +707,9 @@
                                        (run-tic game camera ticcmd)))
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
-                           (render-view *player* camera model-manager (game-render-things game))
+                           (let ((*game* game))
+                             (declare (special *game*))
+                             (render-view *player* camera model-manager (game-render-things game)))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))

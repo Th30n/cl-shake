@@ -87,3 +87,60 @@
        :wireframep t))
     ;; Render the weapon model
     (srend:render-surface (smdl::obj-model-verts (weapon-model weapon)) mvp)))
+
+(defclass enemy (thing)
+  ((model :initform nil :type smdl::obj-model
+          :initarg :model :accessor enemy-model)
+   (position :initform (v 0 0 0) :type (vec 3)
+             :initarg :position :accessor enemy-position)
+   (scale :initform #.(shiva-float 1.0) :type shiva-float
+          :initarg :scale :accessor enemy-scale)
+   (angle-y :initform #.(shiva-float 0.0) :type shiva-float
+            :initarg :angle-y :accessor enemy-angle-y)
+   (bounds-scale :initform (v 1 1 1) :type (vec 3)
+                 :initarg :bounds-scale :accessor enemy-bounds-scale)))
+
+(defmethod game-add-thing :after (game (enemy enemy))
+  (push enemy (game-render-things game)))
+
+(defun make-enemy (model-manager position &key (angle-y #.(shiva-float 0.0)))
+  (check-type position (vec 3))
+  (let* ((model (smdl:get-model model-manager "../enemy.obj"))
+         (bounds-scale (vscale 0.5 (v- (smdl::obj-model-max-bounds model)
+                                       (smdl::obj-model-min-bounds model)))))
+    (assert (v= (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
+                                (smdl::obj-model-min-bounds model)))
+                (v 0 0 0)))
+    (make-instance 'enemy
+                   :model model
+                   :position position
+                   :angle-y angle-y
+                   :bounds-scale bounds-scale)))
+
+(defun enemy-view-transform (enemy)
+  (check-type enemy enemy)
+  (let ((pos (enemy-position enemy))
+        (scale (enemy-scale enemy)))
+    (m* (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+            (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy))))
+        (scale :x scale :y scale :z scale))))
+
+(defun enemy-render (enemy camera model-manager)
+  (check-type enemy enemy)
+  (check-type camera camera)
+  (check-type model-manager smdl::model-manager)
+  (let* ((view-project (m* (camera-projection-matrix camera)
+                           (camera-view-transform camera)))
+         (mvp (m* view-project (enemy-view-transform enemy))))
+    ;; Render the bounds cube
+    (let ((pos (enemy-position enemy))
+          (bounds-scale (enemy-bounds-scale enemy)))
+      (srend:render-surface
+       (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+       (m* view-project
+           (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+               (m* (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy)))
+                   (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))))
+       :wireframep t))
+    ;; Render the enemy model
+    (srend:render-surface (smdl::obj-model-verts (enemy-model enemy)) mvp)))

@@ -345,22 +345,30 @@
     (add-thing-to-scene scene (sbsp:make-map-thing :type :shotgun
                                                    :pos scene-pos))))
 
+(defun insert-enemy (scene scene-pos)
+  (with-slots (graphics-item-thing-map things) scene
+    (add-thing-to-scene scene (sbsp:make-map-thing :type :enemy
+                                                   :pos scene-pos))))
+
 (defun show-things-menu (scene scene-pos)
   (with-finalizing* ((pos (q+:qcursor-pos))
                      (menu (q+:make-qmenu "Things"))
-                     (player-spawn-action (q+:add-action menu
-                                                         "Set Player Spawn"))
+                     (player-spawn-action (q+:add-action menu "Set Player Spawn"))
                      (weapons-menu (q+:make-qmenu "Add Weapon"))
-                     (shotgun-spawn-action (q+:add-action weapons-menu
-                                                          "Shotgun")))
+                     (shotgun-spawn-action (q+:add-action weapons-menu "Shotgun"))
+                     (npcs-menu (q+:make-qmenu "Add NPC"))
+                     (enemy-spawn-action (q+:add-action npcs-menu "Enemy")))
     (q+:add-menu menu weapons-menu)
+    (q+:add-menu menu npcs-menu)
     (let ((res (q+:exec menu pos)))
       (unless (null-qobject-p res)
         (cond
           ((string= (q+:text player-spawn-action) (q+:text res))
            (insert-player-spawn scene scene-pos))
           ((string= (q+:text shotgun-spawn-action) (q+:text res))
-           (insert-shotgun scene scene-pos)))))))
+           (insert-shotgun scene scene-pos))
+          ((string= (q+:text enemy-spawn-action) (q+:text res))
+           (insert-enemy scene scene-pos)))))))
 
 (defun select-line (item)
   (with-finalizing ((pen (make-qpen (map->scene-unit 4)
@@ -633,7 +641,8 @@
            (concatenate 'string ":/things/"
                         (ccase (sbsp:map-thing-type thing)
                           (:player-spawn "player.svg")
-                          (:shotgun "weapon.svg")))))
+                          (:shotgun "weapon.svg")
+                          (:enemy "weapon.svg")))))
       (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
 
 (defun read-map (stream scene)
