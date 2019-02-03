@@ -108,9 +108,9 @@
   (let* ((model (smdl:get-model model-manager "../enemy.obj"))
          (bounds-scale (vscale 0.5 (v- (smdl::obj-model-max-bounds model)
                                        (smdl::obj-model-min-bounds model)))))
-    (assert (v= (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
-                                (smdl::obj-model-min-bounds model)))
-                (v 0 0 0)))
+    ;; (assert (v= (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
+    ;;                             (smdl::obj-model-min-bounds model)))
+    ;;             (v 0 0 0)))
     (make-instance 'enemy
                    :model model
                    :position position
@@ -138,7 +138,7 @@
       (srend:render-surface
        (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
        (m* view-project
-           (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+           (m* (translation :x (vx pos) :y (+ 0.5 (vy pos)) :z (vz pos))
                (m* (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy)))
                    (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))))
        :wireframep t))

@@ -486,7 +486,11 @@
   (srend::load-image-from-file (srend::render-system-image-manager render-system) "shotgun.bmp")
   (let ((shotgun-model (smdl:get-model model-manager "../shotgun.obj")))
     ;; TODO: This should be more generic and injected in a better way.
-    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts shotgun-model)) "shotgun.bmp")))
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts shotgun-model)) "shotgun.bmp"))
+  (srend::load-image-from-file (srend::render-system-image-manager render-system) "enemy.bmp")
+  (let ((enemy-model (smdl:get-model model-manager "../enemy.obj")))
+    ;; TODO: This should be more generic and injected in a better way.
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts enemy-model)) "enemy.bmp")))
 
 (defun load-map-textures (render-system bsp)
   (labels ((texture-name (surf)
@@ -545,7 +549,8 @@
       (dolist (thing (game-think-things *game*))
         (when (typep thing 'enemy)
           (let ((oobb (make-oobb
-                       :center (enemy-position thing)
+                       ;; XXX: Hack center
+                       :center (v+ (enemy-position thing) (v 0 0.5 0))
                        :half-lengths (enemy-bounds-scale thing)))
                 (rotation (rotation (v 0 1 0) (* deg->rad (enemy-angle-y thing)))))
             (setf (vx (oobb-directions oobb))
