@@ -224,6 +224,9 @@
   (incf (car *mouse*) xrel)
   (incf (cdr *mouse*) yrel))
 
+(defstruct key-press
+  (state :clicked :type (member :clicked :held)))
+
 (defvar *game-keys* (make-hash-table)
   "Mapping of currently pressed keys. Used for building a tick command.")
 
@@ -231,7 +234,7 @@
   (clrhash *game-keys*))
 
 (defun press-game-key (key)
-  (setf (gethash key *game-keys*) t))
+  (setf (gethash key *game-keys*) (make-key-press)))
 
 (defun release-game-key (key)
   (setf (gethash key *game-keys*) nil))
@@ -469,8 +472,8 @@
       (unless noclip
         (let ((camera-offset (v 0.0 0.5 0.0)))
           (setf (camera-position camera)
-                (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset))))))))
-  (run-thinkers (game-think-things game)))
+                (v+ camera-offset (apply-gravity (v- (camera-position camera) camera-offset))))))
+      (run-thinkers (game-think-things game)))))
 
 (defun load-main-resources (render-system)
   (add-res "point-renderer" #'make-point-renderer #'renderer-delete)
@@ -560,9 +563,10 @@
                 (setf hit-distance hitp))))))
       (values hit-enemy hit-distance))))
 
-(defun player-render-weapon (player camera model-manager)
+(defun player-render-weapon (player camera image-manager model-manager)
   (check-type player player)
   (check-type camera camera)
+  (check-type image-manager srend::image-manager)
   (check-type model-manager smdl::model-manager)
   (let ((weapon (player-current-weapon player)))
     (when weapon
@@ -583,7 +587,17 @@
             (srend:render-surface
              (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
              mvp))))
-      ;; Placeholder for rendering shot, this should be done elsewhere.
+      ;; XXX: Placeholder for rendering shot, this should be done elsewhere.
+      ;; Alternate fire (projectile)
+      (let ((fire-button (game-key-down-p :mouse3)))
+        (when (and fire-button (eq :clicked (key-press-state fire-button)))
+          (setf (key-press-state fire-button) :held)
+          (let ((rotation (q->mat (camera-rotation camera)))
+                (position (camera-position camera)))
+            (declare (special *game*))
+            (game-add-thing *game*
+             (make-projectile image-manager model-manager position :rotation rotation)))))
+      ;; Primary fire (hitscan)
       (when (game-key-down-p :mouse1)
         (let* ((forward-dir (vnormalize (view-dir :forward camera)))
                (shot-range #.(shiva-float 20))
@@ -626,7 +640,8 @@
   (dolist (render-thing render-things)
     (ctypecase render-thing
       (weapon (weapon-render render-thing camera model-manager))
-      (enemy (enemy-render render-thing camera model-manager)))))
+      (enemy (enemy-render render-thing camera model-manager))
+      (projectile (projectile-render render-thing camera model-manager)))))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
@@ -705,7 +720,9 @@
                          (srend:with-draw-frame (render-system)
                            (let ((*game* game))
                              (declare (special *game*))
-                             (render-view *player* camera model-manager (game-render-things game)))
+                             (render-view *player* camera
+                                          (srend::render-system-image-manager render-system)
+                                          model-manager (game-render-things game)))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))
@@ -769,7 +786,7 @@
                               (rec front test-p)))))))))
         (rec (smdl:bsp-model-nodes world-model))))))
 
-(defun render-view (player camera model-manager render-things)
+(defun render-view (player camera image-manager model-manager render-things)
   (gl:enable :depth-test)
   ;; TODO: Enable this when we correctly generate CCW faces for .bsp models.
   ;; (gl:enable :cull-face)
@@ -780,5 +797,5 @@
   ;; Draw "crosshair"
   (srend::draw-text "+" :x (floor *win-width* 2) :y (floor *win-height* 2)
                     :scale 2.0)
-  (player-render-weapon player camera model-manager)
+  (player-render-weapon player camera image-manager model-manager)
   (render-things render-things camera model-manager))

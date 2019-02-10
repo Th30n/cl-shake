@@ -150,3 +150,101 @@
        :wireframep t))
     ;; Render the enemy model
     (srend:render-surface (smdl::obj-model-verts (enemy-model enemy)) mvp)))
+
+(defclass projectile (thing)
+  ((model :initform nil :type smdl::obj-model
+          :initarg :model :accessor projectile-model)
+   (center :initform (v 0 0 0) :type (vec 3)
+           :initarg :center :accessor projectile-center)
+   (position :initform (v 0 0 0) :type (vec 3)
+             :initarg :position :accessor projectile-position)
+   (scale :initform #.(shiva-float 1.0) :type shiva-float
+          :initarg :scale :accessor projectile-scale)
+   (rotation :initform (shiva::midentity4) :type (mat 4)
+             :initarg :rotation :accessor projectile-rotation)
+   (bounds-scale :initform (v 1 1 1) :type (vec 3)
+                 :initarg :bounds-scale :accessor projectile-bounds-scale)
+   (explodedp :initform nil :type boolean :accessor projectile-explodedp)))
+
+(defmethod game-add-thing :after (game (projectile projectile))
+  (push projectile (game-render-things game)))
+
+(defmethod thing-think :after ((projectile projectile))
+  (declare (special *game*))
+  (if (projectile-explodedp projectile)
+      (progn
+        (zap (lambda (scale) (+ scale 0.05))
+             (projectile-scale projectile))
+        (when (> (projectile-scale projectile) 0.5)
+          (setf (game-render-things *game*)
+                (remove projectile (game-render-things *game*)))
+          (setf (game-think-things *game*)
+                (remove projectile (game-think-things *game*)))))
+      (let* ((forward-dir
+              (vnormalize (vxyz (vtransform (projectile-rotation projectile) (v 0 0 -1 0)))))
+             (speed #.(shiva-float 0.05))
+             (velocity (vscale speed forward-dir))
+             (origin (projectile-position projectile))
+             (hull (smdl:bsp-model-hull smdl:*world-model*)))
+        (multiple-value-bind (mtrace hitp) (clip-hull hull origin (v+ origin velocity))
+          (multiple-value-bind (hit-enemy dist) (hit-enemy-p origin (mtrace-endpos mtrace))
+            (when (or hit-enemy hitp)
+              (setf (projectile-explodedp projectile) t))
+            (when hit-enemy
+              ;; NOTE: Removal is horribly inefficient.
+              (setf (game-think-things *game*)
+                    (remove hit-enemy (game-think-things *game*)))
+              (setf (game-render-things *game*)
+                    (remove hit-enemy (game-render-things *game*))))
+            (let ((dest (if hit-enemy
+                            (v+ origin (vscale dist forward-dir))
+                            (mtrace-endpos mtrace))))
+              (setf (projectile-position projectile) dest)))))))
+
+(defun make-projectile (image-manager model-manager position &key (rotation (shiva::midentity4)))
+  (check-type position (vec 3))
+  (srend::load-image-from-file image-manager "projectile.bmp")
+  (let* ((model (smdl:get-model model-manager "projectile.obj"))
+         (center (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
+                                 (smdl::obj-model-min-bounds model))))
+         (scale #.(shiva-float 0.125))
+         (bounds-scale (vscale (* (+ scale 0.05) 0.5)
+                               (v- (smdl::obj-model-max-bounds model)
+                                   (smdl::obj-model-min-bounds model)))))
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts model)) "projectile.bmp")
+    (make-instance 'projectile
+                   :model model
+                   :scale scale
+                   :center center
+                   :position position
+                   :rotation rotation
+                   :bounds-scale bounds-scale)))
+
+(defun projectile-view-transform (projectile)
+  (check-type projectile projectile)
+  (let ((pos (projectile-position projectile))
+        (scale (projectile-scale projectile))
+        (rotation (projectile-rotation projectile)))
+    (m* (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+            rotation)
+        (scale :x scale :y scale :z scale))))
+
+(defun projectile-render (projectile camera model-manager)
+  (check-type projectile projectile)
+  (check-type camera camera)
+  (check-type model-manager smdl::model-manager)
+  (let* ((view-project (m* (camera-projection-matrix camera)
+                           (camera-view-transform camera)))
+         (mvp (m* view-project (projectile-view-transform projectile))))
+    ;; Render the bounds cube
+    (let ((pos (v+ (projectile-center projectile) (projectile-position projectile)))
+          (bounds-scale (projectile-bounds-scale projectile)))
+      (srend:render-surface
+       (smdl::obj-model-verts (smdl:model-manager-default-model model-manager))
+       (m* view-project
+           (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+               (m* (projectile-rotation projectile)
+                   (scale :x (vx bounds-scale) :y (vy bounds-scale) :z (vz bounds-scale)))))
+       :wireframep t))
+    ;; Render the projectile model
+    (srend:render-surface (smdl::obj-model-verts (projectile-model projectile)) mvp)))
