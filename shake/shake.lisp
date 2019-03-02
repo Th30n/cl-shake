@@ -192,11 +192,11 @@
                       :x x :y y)))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
-               *last-time* *base-time* *gametic*))
+               *last-tic* *base-time* *gametic*))
 (defconstant +ticrate+ 60)
 (defconstant +max-frame-skip+ 5)
-(defvar *base-time* 0)
-(defvar *last-time* 0)
+(defvar *base-time* 0 "Time since game started in milliseconds")
+(defvar *last-tic* 0)
 (defvar *gametic* 0)
 
 (defun get-time ()
@@ -205,15 +205,19 @@
   (floor (* +ticrate+ (- (the (unsigned-byte 32) (sdl2:get-ticks)) *base-time*))
          1000))
 
+(defun get-game-time ()
+  "Return milliseconds of elapsed game time"
+  (coerce (round (* 1000 *gametic*) +ticrate+) 'fixnum))
+
 (defun start-game-loop ()
   "Starts the game loop by reseting the game time."
   (setf *base-time* (sdl2:get-ticks)
-        *last-time* *base-time*
+        *last-tic* 0
         *gametic* 0))
 
 (defun try-run-tics (build-ticcmd run-tic)
-  (let ((new-tics (- (get-time) *last-time*)))
-    (incf *last-time* new-tics)
+  (let ((new-tics (- (get-time) *last-tic*)))
+    (incf *last-tic* new-tics)
     (repeat (min new-tics +max-frame-skip+)
       (funcall run-tic (funcall build-ticcmd))
       (incf *gametic*))))
@@ -717,9 +721,17 @@
                (release-mouse-button button))
               (:idle ()
                      (with-timer (frame-timer)
-                       (try-run-tics #'build-ticcmd
-                                     (lambda (ticcmd)
-                                       (run-tic game camera ticcmd)))
+                       ;; TODO: This is a hack to allow using managers and
+                       ;; game in tic logic functions. Managers should
+                       ;; probably be part of GAME struct and it should be
+                       ;; global.
+                       (let ((*image-manager* (srend::render-system-image-manager render-system))
+                             (*model-manager* model-manager)
+                             (*game* game))
+                         (declare (special *image-manager* *model-manager* *game*))
+                         (try-run-tics #'build-ticcmd
+                                       (lambda (ticcmd)
+                                         (run-tic game camera ticcmd))))
                        (unless minimized-p
                          (srend:with-draw-frame (render-system)
                            (let ((*game* game))
