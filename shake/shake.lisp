@@ -266,7 +266,8 @@
 (defstruct player
   (inventory (make-inventory) :type inventory)
   (current-weapon nil :type (or null weapon))
-  (weapon-hidden-p nil :type boolean))
+  (weapon-hidden-p nil :type boolean)
+  (position (v 0 0 0) :type (vec 3)))
 
 (defun build-ticcmd ()
   (declare (special *player*))
@@ -429,28 +430,29 @@
         (setf (game-render-things *game*)
               (remove touched (game-render-things *game*)))))))
 
-(defun move-player (player forward-move side-move &key (noclip nil))
+(defun player-move (camera forward-move side-move &key (noclip nil))
   (declare (special *player*))
   (check-type *player* player)
   ;; TODO: Consolidate player and camera
-  (check-type player camera)
-  (let ((forward-dir (view-dir :forward player)))
+  (check-type camera camera)
+  (let ((forward-dir (view-dir :forward camera)))
     (unless noclip
       ;; Project forward-dir to plane of movement.
       (setf forward-dir (vnormalize (v (vx forward-dir) 0 (vz forward-dir)))))
     (let* ;; Intentionally make diagonal movement faster.
         ((velocity (v+ (vscale forward-move forward-dir)
-                       (vscale side-move (view-dir :right player))))
+                       (vscale side-move (view-dir :right camera))))
          ;; TODO: Seperate player position from camera.
          (camera-offset (v 0.0 0.5 0.0))
-         (origin (v- (camera-position player) camera-offset))
+         (origin (v- (camera-position camera) camera-offset))
          (end-pos (v+ origin velocity)))
       (if noclip
-          (setf (camera-position player) (v+ camera-offset end-pos))
+          (setf (player-position *player*) end-pos)
           (let ((destination (apply-gravity (player-ground-move origin velocity))))
             (player-touch-triggers *player* origin destination)
-            (setf (camera-position player)
-                  (v+ camera-offset destination)))))))
+            (setf (player-position *player*) destination)))
+      (setf (camera-position camera)
+            (v+ camera-offset (player-position *player*))))))
 
 (defun run-tic (game camera cmd)
   "Run a single tic/frame of game logic. CMD is used to read and act on player
@@ -465,7 +467,7 @@
       (declare (special *time-delta*))
       (declare (special *game*))
       (unless (and (zerop forward-move) (zerop side-move))
-        (move-player camera (* forward-move *time-delta*) (* side-move *time-delta*) :noclip noclip))
+        (player-move camera (* forward-move *time-delta*) (* side-move *time-delta*) :noclip noclip))
       (destructuring-bind (x-turn . y-turn) angle-turn
         (unless (and (zerop x-turn) (zerop y-turn))
           (nrotate-camera x-turn y-turn camera)))
@@ -503,7 +505,8 @@
       (let ((pos (sbsp:map-thing-pos thing))
             (angle (sbsp:map-thing-angle thing)))
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
-        (return (nrotate-camera angle #.(shiva-float 0.0) camera))))))
+        (nrotate-camera angle #.(shiva-float 0.0) camera)
+        (return (make-player :position (v2->v3 pos)))))))
 
 (defun spawn-things (game image-manager model-manager map-model)
   (check-type game game)
@@ -677,11 +680,12 @@
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
                (game (make-game))
-               (*player* (make-player)))
+               (*player* nil))
           (declare (special *player*))
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
-          (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera)
+          (setf *player*
+                (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera))
           (spawn-things game (srend::render-system-image-manager render-system)
                         model-manager smdl:*world-model*)
           (symbol-macrolet ((input-focus-p
