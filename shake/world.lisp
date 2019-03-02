@@ -135,8 +135,26 @@
   (declare (type (vec 3) p1 p2))
   (declare (type shiva-float height p1f p2f))
   (if (sbsp:leaf-p node)
-      ;; TODO: Clip direct/only vertical movement, e.g. gravity.
-      (values (make-mtrace :endpos p2) nil)
+      ;; Clip direct/only vertical movement, e.g. gravity.
+      (if-let ((sector (hull-point-sector node (v3->v2 p2))))
+        (let ((floor-height (sbsp:sector-floor-height sector))
+              (ceiling-height (sbsp:sector-ceiling-height sector)))
+          (assert floor-height)
+          (assert ceiling-height)
+          (let ((floor-hit-p (float< (vy p2) floor-height))
+                (ceiling-hit-p (float< ceiling-height (+ (vy p2) height))))
+            (if (not (or floor-hit-p ceiling-hit-p))
+                (values (make-mtrace :endpos p2) nil)
+                ;; TODO: Correctly make a fraction movement
+                (values (make-mtrace :fraction #.(shiva-float 1.0)
+                                     :normal (if floor-hit-p (v 0 1 0) (v 0 -1 0))
+                                     :endpos (v (vx p2)
+                                                (clamp (vy p2)
+                                                       floor-height
+                                                       (- ceiling-height height))
+                                                (vz p2)))
+                        t))))
+        (values (make-mtrace :endpos p2) nil))
       (let ((t1 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p1)))
             (t2 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p2))))
         (cond

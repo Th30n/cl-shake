@@ -106,43 +106,87 @@
    ;; AI part
    (last-attack-time-ms :initform 0 :type fixnum
                         :initarg :last-attack-time-ms
-                        :accessor enemy-last-attack-time-ms)))
+                        :accessor enemy-last-attack-time-ms)
+   (target :initform nil :type (or null player thing) :initarg :target
+           :accessor enemy-target)
+   (last-visible-target-pos :initform nil :type (or null (vec 3))
+                            :initarg :last-visible-target-pos
+                            :accessor enemy-last-visible-target-pos)))
 
 (defmethod game-add-thing :after (game (enemy enemy))
   (push enemy (game-render-things game)))
 
+(defun player-visible-p (enemy player)
+  (declare (special smdl:*world-model*))
+  (check-type smdl:*world-model* smdl:bsp-model)
+  (check-type enemy enemy)
+  (check-type player player)
+  (let* ((eye-origin (v+ (enemy-position enemy) (v 0 0.5 0)))
+         (forward-dir
+          (vnormalize
+           (vxyz (vtransform (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy))) (v 0 0 -1 0)))))
+         (player-center (v+ (player-position player) (v 0 0.5 0)))
+         (-dir-to-player (v- eye-origin player-center))
+         (hull (smdl:bsp-model-hull smdl:*world-model*)))
+    (when (<= (cos (* deg->rad 60)) (vdot forward-dir -dir-to-player))
+      ;; TODO: Think about targeting additional points on player beside center.
+      (multiple-value-bind (mtrace hitp) (clip-hull hull eye-origin player-center)
+        (declare (ignore mtrace))
+        (not hitp)))))
+
+(defun enemy-shoot (enemy)
+  (check-type enemy enemy)
+  (assert (enemy-target enemy))
+  (let ((attack-cooldown-ms 2000)
+        (eye-origin (v+ (enemy-position enemy) (v 0 0.5 0)))
+        (player-center (v+ (player-position (enemy-target enemy)) (v 0 0.5 0))))
+
+    (when (<= (enemy-last-attack-time-ms enemy) (- (get-game-time) attack-cooldown-ms))
+      (let ((dir-to-player (vnormalize (v- player-center eye-origin))))
+        (let* ((-dir (v- dir-to-player)) ; Projectile's forward dir is -Z
+               (x-dir (vnormalize (vcross (v 0 1 0) -dir)))
+               (y-dir (vnormalize (vcross -dir x-dir)))
+               (rotation (mat (list (vx x-dir) (vx y-dir) (vx -dir) 0)
+                              (list (vy x-dir) (vy y-dir) (vy -dir) 0)
+                              (list (vz x-dir) (vz y-dir) (vz -dir) 0)
+                              (list 0 0 0 1)))
+               (gun-position (v+ eye-origin dir-to-player)))
+          (declare (special *game* *image-manager* *model-manager*))
+          (game-add-thing
+           *game*
+           (make-projectile *image-manager* *model-manager* gun-position :rotation rotation)))
+        ;; (format t "Attacking player at ~A, time ~Ams~%"
+        ;;         (player-position (enemy-target enemy)) (get-game-time))
+        (setf (enemy-last-attack-time-ms enemy) (get-game-time))))))
+
+(defun enemy-chase (enemy)
+  (check-type enemy enemy)
+  (with-accessors ((target-pos enemy-last-visible-target-pos)
+                   (origin enemy-position)) enemy
+    (when target-pos
+      (if (v= target-pos origin)
+          (setf target-pos nil)
+          (let* ((speed #.(shiva-float 0.025))
+                 (velocity (vscale speed (vnormalize (v- target-pos origin)))))
+            ;; TODO: This uses PLAYER-GROUND-MOVE, make a common movement function
+            (setf origin (apply-gravity (player-ground-move origin velocity))))))))
+
 (defmethod thing-think :after ((enemy enemy))
   (declare (special *player*))
   (check-type *player* player)
-  (let ((attack-cooldown-ms 2000)
-        (eye-origin (v+ (enemy-position enemy) (v 0 0.5 0)))
-        (player-center (v+ (player-position *player*) (v 0 0.5 0)))
-        (hull (smdl:bsp-model-hull smdl:*world-model*)))
-    (when (<= (enemy-last-attack-time-ms enemy) (- (get-game-time) attack-cooldown-ms))
-      (let ((dir-to-player (vnormalize (v- player-center eye-origin)))
-            (forward-dir
-             (vnormalize (vxyz (vtransform (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy)))
-                                           (v 0 0 -1 0))))))
-        (when (<= (cos (* deg->rad 60)) (vdot forward-dir (v- dir-to-player)) 1)
-          ;; TODO: Think about targeting additional points on player beside center.
-          (multiple-value-bind (mtrace hitp) (clip-hull hull eye-origin player-center)
-            (declare (ignore mtrace))
-            (unless hitp
-              (let* ((-dir (v- dir-to-player)) ; Projectile's forward dir is -Z
-                     (x-dir (vnormalize (vcross (v 0 1 0) -dir)))
-                     (y-dir (vnormalize (vcross -dir x-dir)))
-                     (rotation (mat (list (vx x-dir) (vx y-dir) (vx -dir) 0)
-                                    (list (vy x-dir) (vy y-dir) (vy -dir) 0)
-                                    (list (vz x-dir) (vz y-dir) (vz -dir) 0)
-                                    (list 0 0 0 1)))
-                     (gun-position (v+ eye-origin dir-to-player)))
-                (declare (special *game* *image-manager* *model-manager*))
-                (game-add-thing
-                 *game*
-                 (make-projectile *image-manager* *model-manager* gun-position :rotation rotation)))
-              ;; (format t "Attacking player at ~A, time ~Ams~%"
-              ;;         (player-position *player*) (get-game-time))
-              (setf (enemy-last-attack-time-ms enemy) (get-game-time)))))))))
+  (with-accessors ((target enemy-target)) enemy
+    (if target
+        (if (player-visible-p enemy target)
+            (progn
+              (setf (enemy-last-visible-target-pos enemy) (player-position target))
+              (enemy-shoot enemy))
+            (enemy-chase enemy))
+        (when (player-visible-p enemy *player*)
+          (if (not target)
+              (setf target *player*)
+              ;; Shoot or chase
+              (enemy-shoot enemy))
+          (setf (enemy-last-visible-target-pos enemy) (player-position target))))))
 
 (defun make-enemy (image-manager model-manager position &key (angle-y #.(shiva-float 0.0)))
   (check-type position (vec 3))

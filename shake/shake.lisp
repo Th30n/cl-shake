@@ -446,9 +446,8 @@
     (let* ;; Intentionally make diagonal movement faster.
         ((velocity (v+ (vscale forward-move forward-dir)
                        (vscale side-move (view-dir :right camera))))
-         ;; TODO: Seperate player position from camera.
          (camera-offset (v 0.0 0.5 0.0))
-         (origin (v- (camera-position camera) camera-offset))
+         (origin (player-position *player*))
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (player-position *player*) end-pos)
