@@ -119,27 +119,30 @@
         (player-center (v+ (player-position *player*) (v 0 0.5 0)))
         (hull (smdl:bsp-model-hull smdl:*world-model*)))
     (when (<= (enemy-last-attack-time-ms enemy) (- (get-game-time) attack-cooldown-ms))
-      ;; TODO: Think about targeting additional points on player beside center.
-      (multiple-value-bind (mtrace hitp) (clip-hull hull eye-origin player-center)
-        (declare (ignore mtrace))
-        (unless hitp
-          (let* ((dir (vnormalize (v- player-center eye-origin)))
-                 ;; Projectile's forward dir is -Z
-                 (-dir (v- dir))
-                 (x-dir (vnormalize (vcross (v 0 1 0) -dir)))
-                 (y-dir (vnormalize (vcross -dir x-dir)))
-                 (rotation (mat (list (vx x-dir) (vx y-dir) (vx -dir) 0)
-                                (list (vy x-dir) (vy y-dir) (vy -dir) 0)
-                                (list (vz x-dir) (vz y-dir) (vz -dir) 0)
-                                (list 0 0 0 1)))
-                 (gun-position (v+ eye-origin dir)))
-            (declare (special *game* *image-manager* *model-manager*))
-            (game-add-thing
-             *game*
-             (make-projectile *image-manager* *model-manager* gun-position :rotation rotation)))
-          ;; (format t "Attacking player at ~A, time ~Ams~%"
-          ;;         (player-position *player*) (get-game-time))
-          (setf (enemy-last-attack-time-ms enemy) (get-game-time)))))))
+      (let ((dir-to-player (vnormalize (v- player-center eye-origin)))
+            (forward-dir
+             (vnormalize (vxyz (vtransform (rotation (v 0 1 0) (* deg->rad (enemy-angle-y enemy)))
+                                           (v 0 0 -1 0))))))
+        (when (<= (cos (* deg->rad 60)) (vdot forward-dir (v- dir-to-player)) 1)
+          ;; TODO: Think about targeting additional points on player beside center.
+          (multiple-value-bind (mtrace hitp) (clip-hull hull eye-origin player-center)
+            (declare (ignore mtrace))
+            (unless hitp
+              (let* ((-dir (v- dir-to-player)) ; Projectile's forward dir is -Z
+                     (x-dir (vnormalize (vcross (v 0 1 0) -dir)))
+                     (y-dir (vnormalize (vcross -dir x-dir)))
+                     (rotation (mat (list (vx x-dir) (vx y-dir) (vx -dir) 0)
+                                    (list (vy x-dir) (vy y-dir) (vy -dir) 0)
+                                    (list (vz x-dir) (vz y-dir) (vz -dir) 0)
+                                    (list 0 0 0 1)))
+                     (gun-position (v+ eye-origin dir-to-player)))
+                (declare (special *game* *image-manager* *model-manager*))
+                (game-add-thing
+                 *game*
+                 (make-projectile *image-manager* *model-manager* gun-position :rotation rotation)))
+              ;; (format t "Attacking player at ~A, time ~Ams~%"
+              ;;         (player-position *player*) (get-game-time))
+              (setf (enemy-last-attack-time-ms enemy) (get-game-time)))))))))
 
 (defun make-enemy (image-manager model-manager position &key (angle-y #.(shiva-float 0.0)))
   (check-type position (vec 3))
