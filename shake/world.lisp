@@ -135,26 +135,47 @@
   (declare (type (vec 3) p1 p2))
   (declare (type shiva-float height p1f p2f))
   (if (sbsp:leaf-p node)
-      ;; Clip direct/only vertical movement, e.g. gravity.
       (if-let ((sector (hull-point-sector node (v3->v2 p2))))
+        ;; Clip vertical movement, e.g. gravity.
         (let ((floor-height (sbsp:sector-floor-height sector))
               (ceiling-height (sbsp:sector-ceiling-height sector)))
           (assert floor-height)
           (assert ceiling-height)
-          (let ((floor-hit-p (float< (vy p2) floor-height))
-                (ceiling-hit-p (float< ceiling-height (+ (vy p2) height))))
-            (if (not (or floor-hit-p ceiling-hit-p))
-                (values (make-mtrace :endpos p2) nil)
-                ;; TODO: Correctly make a fraction movement
-                (values (make-mtrace :fraction #.(shiva-float 1.0)
-                                     :normal (if floor-hit-p (v 0 1 0) (v 0 -1 0))
-                                     :endpos (v (vx p2)
-                                                (clamp (vy p2)
-                                                       floor-height
-                                                       (- ceiling-height height))
-                                                (vz p2)))
-                        t))))
+          (let ((t1 (vdot (v 0 1 0)
+                          (v- p1 (v 0 floor-height 0))))
+                (t2 (vdot (v 0 1 0)
+                          (v- p2 (v 0 floor-height 0)))))
+            ;; TODO: What if we are below the floor?
+            (if (or (and (minusp t1) (minusp t2))
+                    (and (<= 0.0 t1) (<= 0.0 t2)))
+                ;; We aren't crossing the floor, so check ceiling
+                (let ((t1 (vdot (v 0 -1 0)
+                                (v- p1 (v 0 ceiling-height 0))))
+                      (t2 (vdot (v 0 -1 0)
+                                (v- p2 (v 0 ceiling-height 0)))))
+                  ;; TODO: What if we are above the ceiling?
+                  (if (or (and (minusp t1) (minusp t2))
+                          (and (<= 0.0 t1) (<= 0.0 t2)))
+                      (values (make-mtrace :endpos p2) nil)
+                      (let* ((frac (cross-fraction t1 t2))
+                             (midf (+ p1f (* frac (- p2f p1f))))
+                             (mid (v+ p1 (vscale frac (v- p2 p1)))))
+                        (values (make-mtrace :fraction midf
+                                             :normal (v 0 1 0)
+                                             :endpos mid)
+                                t))))
+                ;; We are crossing the floor
+                (let* ((frac (cross-fraction t1 t2))
+                       (midf (+ p1f (* frac (- p2f p1f))))
+                       (mid (v+ p1 (vscale frac (v- p2 p1)))))
+                  (values (make-mtrace :fraction midf
+                                       :normal (v 0 1 0)
+                                       :endpos mid)
+                          t)))))
+        ;; Missing sector, so allow movement. TODO: We should probably have no
+        ;; missing sectors, maybe log a warning here.
         (values (make-mtrace :endpos p2) nil))
+      ;; Hull-node case
       (let ((t1 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p1)))
             (t2 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p2))))
         (cond
