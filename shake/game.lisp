@@ -176,11 +176,17 @@
   (check-type *player* player)
   (with-accessors ((target enemy-target)) enemy
     (if target
-        (if (player-visible-p enemy target)
-            (progn
-              (setf (enemy-last-visible-target-pos enemy) (player-position target))
-              (enemy-shoot enemy))
-            (enemy-chase enemy))
+        (progn
+          ;; Turn toward target
+          ;; TODO: Add max turn rate
+          (let ((dir (v- (enemy-last-visible-target-pos enemy) (enemy-position enemy))))
+            (setf (enemy-angle-y enemy)
+                  (* rad->deg (atan (vx dir) (vz dir)))))
+          (if (player-visible-p enemy target)
+              (progn
+                (setf (enemy-last-visible-target-pos enemy) (player-position target))
+                (enemy-shoot enemy))
+              (enemy-chase enemy)))
         (when (player-visible-p enemy *player*)
           (if (not target)
               (setf target *player*)
