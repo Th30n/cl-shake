@@ -67,18 +67,28 @@ and is implementation dependant."
   (with-gl-array (value-array :float (apply #'vector values))
     (%gl:clear-buffer-fv buffer drawbuffer (gl::gl-array-pointer value-array))))
 
-(defmacro map-buffer (target count type access &key (offset 0))
-  "Maps a part of a buffer bound to TARGET. Foreign TYPE and COUNT elements of
-  that type determine the map length. Optional OFFSET determines the start of
-  the buffer. Returns the mapping as a POINTER"
-  (let ((foreign-size (cffi:foreign-type-size type))
-        (access-flags (cffi:foreign-bitfield-value '%gl::mapbufferusagemask access)))
-    `(let ((length ,(if (constantp count)
-                        (* count foreign-size)
-                        `(* ,count ,foreign-size)))
-           (byte-offset ,(if (constantp offset)
-                             (* offset foreign-size)
-                             `(* ,offset ,foreign-size))))
+(defmacro map-buffer (target count access &key type (offset 0))
+  "Maps a part of a buffer bound to TARGET.  Foreign TYPE and COUNT elements
+  of that type determine the map length.  COUNT can be (:BYTES NUM) if you
+  wish to specify the count in bytes.  Optional OFFSET determines the start of
+  the buffer in elements.  Also (:BYTES NUM) is accepted.  Returns the mapping
+  as a POINTER"
+  (let* ((foreign-size (when type (cffi:foreign-type-size type)))
+         (access-flags (cffi:foreign-bitfield-value '%gl::mapbufferusagemask access))
+         (count-form (if (and (consp count) (eq :bytes (car count)))
+                         (cadr count)
+                         (progn
+                           (assert type)
+                           `(* ,count ,foreign-size))))
+         (offset-form (cond
+                        ((and (consp offset) (eq :bytes (car offset)))
+                         (cadr offset))
+                        ((and (numberp offset) (= offset 0) 0))
+                        (t
+                         (assert (or type (= offset 0)))
+                         `(* ,offset ,foreign-size)))))
+    `(let ((length ,(if (constantp count-form) (eval count-form) count-form))
+           (byte-offset ,(if (constantp offset-form) (eval offset-form) offset-form)))
        (declare (dynamic-extent length byte-offset))
        (%gl:map-buffer-range ,target byte-offset length ,access-flags))))
 
