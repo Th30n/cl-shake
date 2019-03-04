@@ -202,6 +202,7 @@
 (defstruct batch
   (vertex-array nil :type (unsigned-byte 64) :read-only t)
   (buffer nil :type (unsigned-byte 64) :read-only t)
+  (buffer-ptr (cffi:null-pointer) :read-only t)
   (id-buffer nil :type (unsigned-byte 64) :read-only t)
   (offset 0 :type fixnum)
   (texture nil :type (or null image))
@@ -226,6 +227,7 @@
     (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer) :static-draw)
     (make-batch :vertex-array vertex-array
                 :buffer (first buffers)
+                :buffer-ptr (sgl:map-buffer :array-buffer (:bytes byte-size) :map-write-bit)
                 :id-buffer (second buffers)
                 :mvp (make-array +max-batch-size+
                                  :element-type '(mat 4)
@@ -261,6 +263,7 @@
         (normal-offset (* 4 (+ 3 3)))
         (uv-offset (* 4 (+ 3 3 3))))
     (gl:bind-buffer :array-buffer (batch-buffer batch))
+    (gl:unmap-buffer :array-buffer)
     ;; positions
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil stride (cffi:null-pointer))
@@ -361,28 +364,25 @@
   (declare (type smdl::surf-triangles surface))
   (declare (type (mat 4) mvp))
   (declare (type batch batch))
-  (flet ((fill-buffer (byte-offset data size)
-           (gl:bind-buffer :array-buffer (batch-buffer batch))
-           (%gl:buffer-sub-data :array-buffer byte-offset size data)
-           (gl:bind-buffer :array-buffer 0)
-           size))
-    (with-struct (batch- offset) batch
-      (let ((gl-data (smdl::surf-triangles-verts surface))
-            (byte-size (smdl::surf-triangles-verts-byte-size surface))
-            (draw-count (smdl::surf-triangles-num-verts surface))
-            (tex-name (smdl::surf-triangles-tex-name surface)))
-        (with-struct (render-system- image-manager) *rs*
-          (let ((layer (if-let ((image (and tex-name (get-image image-manager tex-name))))
-                         (progn
-                           (unless (batch-texture batch)
-                             (setf (batch-texture batch) image))
-                           (get-image-layer image tex-name))
-                         -1)))
-            (vector-push (cons layer draw-count) (batch-layers batch))))
-        (vector-push mvp (batch-mvp batch))
-        (incf (batch-offset batch) (fill-buffer offset gl-data byte-size))
-        (incf (batch-draw-count batch) draw-count)
-        (incf (batch-objects batch))))))
+  (with-struct (batch- offset) batch
+    (let ((gl-data (smdl::surf-triangles-verts surface))
+          (byte-size (smdl::surf-triangles-verts-byte-size surface))
+          (draw-count (smdl::surf-triangles-num-verts surface))
+          (tex-name (smdl::surf-triangles-tex-name surface)))
+      (with-struct (render-system- image-manager) *rs*
+        (let ((layer (if-let ((image (and tex-name (get-image image-manager tex-name))))
+                       (progn
+                         (unless (batch-texture batch)
+                           (setf (batch-texture batch) image))
+                         (get-image-layer image tex-name))
+                       -1)))
+          (vector-push (cons layer draw-count) (batch-layers batch))))
+      (vector-push mvp (batch-mvp batch))
+      (sgl:memcpy (cffi:inc-pointer (batch-buffer-ptr batch) offset)
+                  gl-data byte-size)
+      (incf (batch-offset batch) byte-size)
+      (incf (batch-draw-count batch) draw-count)
+      (incf (batch-objects batch)))))
 
 (defun init-draw-frame (render-system)
   (or (render-system-batches render-system)
