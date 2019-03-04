@@ -23,6 +23,8 @@ and is implementation dependant."
     (ecase foreign-type
       (:float 'single-float))))
 
+(cffi:defcfun "memcpy" :pointer (dest :pointer) (src :pointer) (n :unsigned-int))
+
 (defmacro with-gl-array ((gl-array ftype arrays) &body body)
   "Bind GL-ARRAY to a GL:GL-ARRAY containing all the elements from the given
   list of ARRAYS."
@@ -65,27 +67,20 @@ and is implementation dependant."
   (with-gl-array (value-array :float (apply #'vector values))
     (%gl:clear-buffer-fv buffer drawbuffer (gl::gl-array-pointer value-array))))
 
-(defun map-buffer (target count type access &key (offset 0))
+(defmacro map-buffer (target count type access &key (offset 0))
   "Maps a part of a buffer bound to TARGET. Foreign TYPE and COUNT elements of
   that type determine the map length. Optional OFFSET determines the start of
-  the buffer. Returns the mapping as a GL:GL-ARRAY."
-  (declare (optimize (speed 3) (space 3)))
-  (let* ((foreign-size (cffi:foreign-type-size type))
-         (length (* count foreign-size))
-         (byte-offset (* offset foreign-size))
-         (access-flags (cffi:foreign-bitfield-value
-                        '%gl::mapbufferusagemask access)))
-    (gl::make-gl-array-from-pointer
-     (%gl:map-buffer-range target byte-offset length access-flags)
-     type count)))
-
-(defmacro with-mapped-buffer ((gl-array target count type access &key (offset 0))
-                              &body body)
-  `(let ((,gl-array (map-buffer ,target ,count ,type ,access :offset ,offset)))
-     (declare (dynamic-extent ,gl-array))
-     (unwind-protect
-          (progn ,@body)
-       (gl:unmap-buffer ,target))))
+  the buffer. Returns the mapping as a POINTER"
+  (let ((foreign-size (cffi:foreign-type-size type))
+        (access-flags (cffi:foreign-bitfield-value '%gl::mapbufferusagemask access)))
+    `(let ((length ,(if (constantp count)
+                        (* count foreign-size)
+                        `(* ,count ,foreign-size)))
+           (byte-offset ,(if (constantp offset)
+                             (* offset foreign-size)
+                             `(* ,offset ,foreign-size))))
+       (declare (dynamic-extent length byte-offset))
+       (%gl:map-buffer-range ,target byte-offset length ,access-flags))))
 
 (defmacro buffer-data (target usage type arrays)
   `(with-gl-array (data ,type ,arrays)

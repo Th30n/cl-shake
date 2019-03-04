@@ -25,6 +25,7 @@
            #:load-shader
            #:compile-shader
            #:map-buffer
+           #:memcpy
            #:set-draw-arrays-command
            #:uniform-matrix-4f
            #:with-gl-array
