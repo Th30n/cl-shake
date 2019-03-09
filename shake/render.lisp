@@ -154,10 +154,9 @@
 (defun gui-model-reset (gui-model)
   (setf (gui-model-vertex-count gui-model) 0)
   (gl:bind-buffer :array-buffer (gui-model-vertex-buffer gui-model))
-  (let ((byte-size #.(* +max-gui-verts+
-                        (cffi:foreign-type-size '(:struct smdl::vertex-data)))))
-    (setf (gui-model-vertex-ptr gui-model)
-          (sgl:map-buffer :array-buffer (:bytes byte-size) :map-write-bit)))
+  (setf (gui-model-vertex-ptr gui-model)
+        (sgl:map-buffer :array-buffer +max-gui-verts+ :map-write-bit
+                        :type (:struct smdl::vertex-data)))
   (gl:bind-buffer :array-buffer 0))
 
 (defun gui-model-add-quad (gui-model x y w h)

@@ -694,21 +694,29 @@
 ;; TODO: Add a common printf function which forwards to system console and our
 ;; console if it exists. This will cover the case for messages during startup
 ;; when we haven't got the renderable console yet.
-(defun console-print (console control-string &optional format-arguments)
+(defun console-print (console control-string &rest format-arguments)
   (check-type console console)
-  (push (format nil control-string format-arguments)
-        (console-reversed-lines console)))
+  (push (apply #'format nil control-string format-arguments)
+        (console-reversed-lines console))
+  ;; Return an empty result as this can be run through GUI console which
+  ;; prints the resulting values of evaluated commands.
+  nil)
 
 (defun make-console ()
   (declare (special *commands*))
   (check-type *commands* list)
   (let ((console (%make-console)))
     (add-command 'quit #'sdl2:push-quit-event)
+    (add-command 'exit #'sdl2:push-quit-event)
     (add-command 'echo (lambda (&rest args)
-                         (console-print console "~{~S~^ ~}" args)))
+                         (console-print console "~{~A~^ ~}" args)))
     (add-command 'help (lambda ()
                          (dolist (cmd *commands*)
                            (console-print console (string (car cmd))))))
+    (add-command '+ #'+)
+    (add-command '- #'-)
+    (add-command '* #'*)
+    (add-command '/ #'/)
     (add-command 'clear (lambda ()
                           (setf (console-reversed-lines console) nil)))
     console))
@@ -722,27 +730,34 @@
 
 (defun command-eval-form (console form)
   (flet ((apply-command (cmd-sym &optional args)
-           ;; TODO: ARGS are unevaluated, perhaphs change this in the future
            (let ((cmd (when (symbolp cmd-sym)
                         (find-command cmd-sym))))
              (if cmd
-                 (handler-case (apply (cdr cmd) args)
-                   (program-error (e) (console-print console "ERROR: ~A" e)))
-                 (console-print console "unkown command '~A'" cmd-sym)))))
+                 (apply (cdr cmd) (mapcar (lambda (arg)
+                                            (command-eval-form console arg)) args))
+                 (error "unkown command '~A'" cmd-sym)))))
     (cond
       ((consp form)
        (case (car form)
          (begin (dolist (subform (cdr form))
                   (command-eval-form console subform)))
+         (quote (cadr form))
          (t
           (apply-command (car form) (cdr form)))))
       ((atom form)
-       (apply-command form)))))
+       (cond
+         ((or (stringp form) (numberp form)) form)
+         (t (apply-command form)))))))
 
 (defun console-commit (console)
   (console-print console "> ~A" (console-text console))
   (let ((form (handler-case
-                  (let ((*package* (find-package :shake)))
+                  (let ((*package* (find-package :shake))
+                        (*read-eval* nil)
+                        (*readtable* (copy-readtable)))
+                    (set-macro-character #\# nil)
+                    (set-macro-character #\: nil)
+                    (set-macro-character #\| nil)
                     ;; Read all of the string so as to allow forms without top
                     ;; level parentheses. E.g. "echo arg1 arg2" will be valid
                     ;; as if "(echo arg1 arg2)".
@@ -751,11 +766,13 @@
                        then (multiple-value-list
                              (read-from-string (console-text console) nil :eof :start pos))
                        until (eq :eof form) collect form))
-                (error (e) `(echo ,(format nil "ERROR: ~A" e))))))
+                (error (e) (console-print console "ERROR: ~A" e)))))
     (unless (cdr form) (setf form (car form)))
     (setf (fill-pointer (console-text console)) 0)
     (when form
-      (command-eval-form console form))))
+      (let ((res (handler-case (command-eval-form console form)
+                   (error (e) (console-print console "ERROR: ~A" e)))))
+        (when res (console-print console "~S" res))))))
 
 (defun console-backspace (console)
   (if (/= 0 (length (console-text console)))
