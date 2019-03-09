@@ -105,4 +105,8 @@
            #:mtrace-endpos
            #:mtrace-fraction
            #:mtrace-normal
+           ;; console and commands
+           ;; TODO: These should be defined in another file, perhaps another
+           ;; package
+           #:add-command
            #:printf))

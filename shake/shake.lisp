@@ -729,12 +729,13 @@
                          (printf "~{~A~^ ~}~%" args)))
     (add-command 'help (lambda ()
                          (dolist (cmd *commands*)
-                           (printf "~A~%" (string (car cmd))))))
+                           (let ((*package* (find-package :shake)))
+                             (printf "~S~%" (car cmd))))))
     (add-command '+ #'+)
     (add-command '- #'-)
     (add-command '* #'*)
     (add-command '/ #'/)
-    (add-command 'clear #'console-clear)
+    (add-command 'clear (lambda () (console-clear console)))
     console))
 
 (defun console-append (console text)
@@ -762,7 +763,7 @@
           (apply-command (car form) (cdr form)))))
       ((atom form)
        (cond
-         ((or (stringp form) (numberp form)) form)
+         ((or (keywordp form) (stringp form) (numberp form)) form)
          (t (apply-command form)))))))
 
 (defun console-commit (console)
@@ -772,7 +773,6 @@
                         (*read-eval* nil)
                         (*readtable* (copy-readtable)))
                     (set-macro-character #\# nil)
-                    (set-macro-character #\: nil)
                     (set-macro-character #\| nil)
                     ;; Read all of the string so as to allow forms without top
                     ;; level parentheses. E.g. "echo arg1 arg2" will be valid

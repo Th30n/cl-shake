@@ -259,6 +259,11 @@
         (shake:printf "Setting swap interval not supported~%")))
     (bracket (render-system (init-render-system window render-width render-height)
                             shutdown-render-system)
+      (shake:add-command
+       'print-memory-usage (lambda () (print-memory-usage render-system)))
+      (shake:add-command
+       'print-gl-info
+       (lambda () (print-gl-info (render-system-gl-config render-system))))
       (funcall fun render-system))))
 
 (defmacro with-render-system ((render-system window render-width render-height)
