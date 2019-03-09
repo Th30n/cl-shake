@@ -81,7 +81,9 @@
 (defpackage #:shake.render
   (:nicknames #:srend)
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.debug)
-  (:export #:load-map-images
+  (:export #:draw-gui-text
+           #:draw-gui-quad
+           #:load-map-images
            #:gl-config
            #:print-gl-info
            #:print-memory-usage

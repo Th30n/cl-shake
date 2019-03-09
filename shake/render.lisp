@@ -126,6 +126,88 @@
 (defun bind-framebuffer (target framebuffer)
   (gl:bind-framebuffer target (gl-framebuffer-id framebuffer)))
 
+(defconstant +max-gui-verts+ 100)
+
+(defstruct gui-model
+  "Stores surfaces for rendering the 2D GUI.  Surfaces are built dynamically
+  during a frame."
+  (vertex-array nil :type (unsigned-byte 64) :read-only t)
+  (vertex-buffer nil :type (unsigned-byte 64) :read-only t)
+  (vertex-ptr (cffi:null-pointer))
+  (vertex-count 0 :type fixnum))
+
+(defun init-gui-model ()
+  (let ((vertex-array (gl:gen-vertex-array))
+        (vertex-buffer (gl:gen-buffer))
+        (byte-size #.(* +max-gui-verts+
+                        (cffi:foreign-type-size '(:struct smdl::vertex-data)))))
+    (gl:bind-buffer :array-buffer vertex-buffer)
+    (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer) :static-draw)
+    (gl:bind-buffer :array-buffer 0)
+    (make-gui-model :vertex-array vertex-array
+                    :vertex-buffer vertex-buffer)))
+
+(defun free-gui-model (gui-model)
+  (gl:delete-buffers (list (gui-model-vertex-buffer gui-model)))
+  (gl:delete-vertex-arrays (list (gui-model-vertex-array gui-model))))
+
+(defun gui-model-reset (gui-model)
+  (setf (gui-model-vertex-count gui-model) 0)
+  (gl:bind-buffer :array-buffer (gui-model-vertex-buffer gui-model))
+  (let ((byte-size #.(* +max-gui-verts+
+                        (cffi:foreign-type-size '(:struct smdl::vertex-data)))))
+    (setf (gui-model-vertex-ptr gui-model)
+          (sgl:map-buffer :array-buffer (:bytes byte-size) :map-write-bit)))
+  (gl:bind-buffer :array-buffer 0))
+
+(defun gui-model-add-quad (gui-model x y w h)
+  (declare (optimize (speed 3) (space 3)))
+  ;; TODO: Investigate why is this function consing
+  (check-type gui-model gui-model)
+  (check-type x single-float)
+  (check-type y single-float)
+  (check-type w single-float)
+  (check-type h single-float)
+  (if (>= (+ 6 (gui-model-vertex-count gui-model)) +max-gui-verts+)
+      (format t "WARNING: exceeded +MAX-GUI-VERTS+!~%")
+      (let ((ptr (cffi:inc-pointer (gui-model-vertex-ptr gui-model)
+                                   (* #.(cffi:foreign-type-size '(:struct smdl::vertex-data))
+                                      (gui-model-vertex-count gui-model))))
+            (top-left (smdl::make-l-vertex-data :position (v x y 0)))
+            (bottom-left (smdl::make-l-vertex-data :position (v x (+ y h) 0)))
+            (top-right (smdl::make-l-vertex-data :position (v (+ x w) y 0)))
+            (bottom-right (smdl::make-l-vertex-data :position (v (+ x w) (+ y h) 0))))
+        (declare (dynamic-extent ptr top-left bottom-left top-right bottom-right))
+        (incf (gui-model-vertex-count gui-model) 6)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 0) top-left)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 1) bottom-left)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 2) bottom-right)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 3) top-left)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 4) top-right)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 5) bottom-right))))
+
+(defun gui-model-draw (gui-model)
+  (gl:bind-vertex-array (gui-model-vertex-array gui-model))
+  (let ((stride #.(cffi:foreign-type-size '(:struct smdl::vertex-data)))
+        (color-offset (* 4 3))
+        (normal-offset (* 4 (+ 3 3)))
+        (uv-offset (* 4 (+ 3 3 3))))
+    (gl:bind-buffer :array-buffer (gui-model-vertex-buffer gui-model))
+    (gl:unmap-buffer :array-buffer)
+    ;; positions
+    (gl:enable-vertex-attrib-array 0)
+    (gl:vertex-attrib-pointer 0 3 :float nil stride (cffi:null-pointer))
+    ;; colors
+    (gl:enable-vertex-attrib-array 1)
+    (gl:vertex-attrib-pointer 1 3 :float nil stride color-offset)
+    ;; normals
+    (gl:enable-vertex-attrib-array 3)
+    (gl:vertex-attrib-pointer 3 3 :float nil stride normal-offset)
+    ;; uvs
+    (gl:enable-vertex-attrib-array 2)
+    (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset)
+    (gl:draw-arrays :triangles 0 (gui-model-vertex-count gui-model))))
+
 (declaim (inline make-render-system))
 (defstruct render-system
   "Rendering related global variables and constants."
@@ -141,7 +223,8 @@
   (image-manager nil :type image-manager)
   (prog-manager nil :type prog-manager)
   (framebuffer nil :type gl-framebuffer)
-  (swap-timer (shake::make-timer :name "Draw & Swap") :type shake::timer))
+  (swap-timer (shake::make-timer :name "Draw & Swap") :type shake::timer)
+  (gui-model nil :type gui-model))
 
 (declaim (inline init-render-system))
 (declaim (ftype (function (t fixnum fixnum) render-system) init-render-system))
@@ -151,6 +234,7 @@
                         :image-manager (init-image-manager)
                         :prog-manager (init-prog-manager)
                         :framebuffer (init-gl-framebuffer render-width render-height)
+                        :gui-model (init-gui-model)
                         :window window
                         :win-width width
                         :win-height height
@@ -158,9 +242,10 @@
                         :rend-height render-height)))
 
 (defun shutdown-render-system (render-system)
-  (with-struct (render-system- image-manager prog-manager framebuffer)
+  (with-struct (render-system- image-manager prog-manager framebuffer gui-model)
       render-system
     (free-framebuffer framebuffer)
+    (free-gui-model gui-model)
     (shutdown-image-manager image-manager)
     (shutdown-prog-manager prog-manager)))
 
@@ -468,6 +553,20 @@
     (push (make-debug-text :char-string text :x pos-x :y pos-y :scale scale)
           (render-system-debug-text-list *rs*))))
 
+(defun draw-gui-quad (x y w h)
+  (check-type *rs* render-system)
+  (check-type x real)
+  (check-type y real)
+  (check-type w real)
+  (check-type h real)
+  (gui-model-add-quad (render-system-gui-model *rs*)
+                      (coerce x 'single-float) (coerce y 'single-float)
+                      (coerce w 'single-float) (coerce h 'single-float)))
+
+(defun draw-gui-text (text &key x y (scale 1.0s0))
+  ;; TODO: Don't use debug text drawing
+  (draw-text text :x x :y y :scale scale))
+
 (defun char->font-cell-pos (char font)
   "Returns the char position in pixels for the given font."
   (with-struct (font- cell-size chars-per-line start-char-code) font
@@ -526,10 +625,29 @@
   (let ((*batches* (init-draw-frame render-system))
         (*rs* render-system)
         (prog-manager (render-system-prog-manager render-system)))
+    (gui-model-reset (render-system-gui-model render-system))
     (multiple-value-prog1 (funcall fun)
       (shake::with-timer ((render-system-swap-timer render-system))
         (finish-draw-frame render-system)
         (gl:disable :depth-test)
+        ;; GUI
+        (let ((shader-prog (get-program prog-manager "pass" "color"))
+              (mvp (ortho 0.0 (render-system-rend-width render-system)
+                            (render-system-rend-height render-system) 0.0
+                            -1.0 1.0)))
+          (bind-program prog-manager shader-prog)
+          (sgl:with-uniform-locations shader-prog (mvp tex-layer)
+            (cffi:with-foreign-object (layer-array :int)
+              (cffi:with-foreign-object (mvp-array :float (* 4 4))
+                (setf (cffi:mem-aref layer-array :int) -1)
+                ;; Set the mvp
+                (dotimes (ix (* 4 4))
+                  (setf (cffi:mem-aref mvp-array :float ix)
+                        (coerce (row-major-aref mvp ix) 'single-float)))
+                (%gl:uniform-1iv tex-layer-loc 1 layer-array)
+                (%gl:uniform-matrix-4fv mvp-loc 1 t mvp-array)))))
+        (gui-model-draw (render-system-gui-model render-system))
+        ;; Debug text on top everything
         (show-debug-text render-system)
         (setf (render-system-debug-text-list render-system) nil)
         ;; Draw our framebuffer to window

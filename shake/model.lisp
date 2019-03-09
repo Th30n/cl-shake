@@ -20,6 +20,7 @@
   ;; TODO: Texture should be wired differently
   (tex-name nil :type (or null string)))
 
+(declaim (inline make-l-vertex-data))
 (defstruct l-vertex-data
   (position (v 0 0 0) :type (vec 3) :read-only t)
   (color (v 0 0 0) :type (vec 3) :read-only t)
