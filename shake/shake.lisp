@@ -670,6 +670,54 @@
 (defmacro with-init ((render-system window) &body body)
   `(call-with-init (lambda (,render-system ,window) ,@body)))
 
+(defstruct console
+  (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
+  (reversed-lines nil)
+  (active-p nil :type boolean))
+
+(defun console-append (console text)
+  (check-type console console)
+  (check-type text (or string character))
+  (if (characterp text)
+      (vector-push-extend text (console-text console))
+      (loop for c across text do (console-append console c))))
+
+(defun console-commit (console)
+  (push (concatenate 'string "> " (console-text console))
+        (console-reversed-lines console))
+  (let ((form (handler-case (let ((*package* (find-package :shake)))
+                              (read-from-string (console-text console)))
+                (error (e) `(echo ,(format nil "ERROR: ~A" e))))))
+    (setf (fill-pointer (console-text console)) 0)
+    (cond
+      ((consp form)
+       (case (car form)
+         (echo (push (format nil "~{~A~^ ~}" (cdr form)) (console-reversed-lines console)))
+         (t (push "unkown command" (console-reversed-lines console)))))
+      ((atom form)
+       (case form
+         (quit (sdl2:push-quit-event))
+         (t (push "unkown command" (console-reversed-lines console))))))))
+
+(defun console-backspace (console)
+  (if (/= 0 (length (console-text console)))
+      (vector-pop (console-text console))))
+
+(defun console-draw (console)
+  (loop for line in (console-reversed-lines console)
+     and y from (+ (floor *rend-height* 2) 16) to *rend-height* by 16 do
+       (srend:draw-gui-text line :x 2 :y y))
+  (srend:draw-gui-text (format nil "> ~A" (console-text console))
+                       :x 2 :y (floor *rend-height* 2)))
+
+(defun console-handle-keydown (console keysym)
+  (assert (console-active-p console))
+  (cond
+    ((eq :scancode-return (sdl2:scancode keysym))
+     (console-commit console))
+    ((eq :scancode-backspace (sdl2:scancode keysym))
+     (console-backspace console))))
+
 (defun main ()
   (with-init (render-system win)
     (smdl:with-model-manager model-manager
@@ -683,7 +731,8 @@
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
                (game (make-game))
-               (*player* nil))
+               (*player* nil)
+               (console (make-console)))
           (declare (special *player*))
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
@@ -698,16 +747,26 @@
                              (member :minimized
                                      (sdl2:get-window-flags win))))
             (start-game-loop)
+            (sdl2:stop-text-input)
             (sdl2:with-event-loop (:method :poll)
               (:quit () t)
+              (:textinput
+               (:text utf8-code)
+               (console-append console (if (<= 0 utf8-code 255) (code-char utf8-code) #\?)))
               (:keydown
                (:keysym keysym)
                (when input-focus-p
-                 (press-game-key (sdl2:scancode keysym))))
+                 (when (eq :scancode-grave (sdl2:scancode keysym))
+                   (if (console-active-p console) (sdl2:stop-text-input) (sdl2:start-text-input))
+                   (zap #'not (console-active-p console)))
+                 (if (console-active-p console)
+                     (console-handle-keydown console keysym)
+                     (press-game-key (sdl2:scancode keysym)))))
               (:keyup
                (:keysym keysym)
                (when input-focus-p
-                 (release-game-key (sdl2:scancode keysym))))
+                 (unless (console-active-p console)
+                   (release-game-key (sdl2:scancode keysym)))))
               (:mousemotion
                (:xrel xrel :yrel yrel)
                (when input-focus-p
@@ -738,6 +797,9 @@
                              (render-view *player* camera
                                           (srend::render-system-image-manager render-system)
                                           model-manager (game-render-things game)))
+                           (when (console-active-p console)
+                             (srend:draw-gui-quad 0 0 *rend-width* (* 0.5 *rend-height*))
+                             (console-draw console))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))
