@@ -508,6 +508,7 @@
       (let ((pos (sbsp:map-thing-pos thing))
             (angle (sbsp:map-thing-angle thing)))
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
+        (setf (camera-rotation camera) (q 0 0 0 1))
         (nrotate-camera angle #.(shiva-float 0.0) camera)
         (return (make-player :position (v2->v3 pos)))))))
 
@@ -814,6 +815,20 @@
     ((eq :scancode-backspace (sdl2:scancode keysym))
      (console-backspace console))))
 
+(defun restart-map (game camera render-system model-manager)
+  (declare (special *player* smdl:*world-model*))
+  (check-type smdl:*world-model* smdl:bsp-model)
+  (check-type game game)
+  (check-type camera camera)
+  (check-type render-system srend:render-system)
+  (check-type model-manager smdl::model-manager)
+  (setf (game-think-things game) nil)
+  (setf (game-render-things game) nil)
+  (setf *player*
+        (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera))
+  (spawn-things game (srend::render-system-image-manager render-system)
+                model-manager smdl:*world-model*))
+
 (defun main ()
   (with-init (render-system win)
     (declare (special *console*))
@@ -832,11 +847,25 @@
                (*player* nil))
           (declare (special *player*))
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
-          (srend:print-memory-usage render-system)
           (setf *player*
                 (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera))
           (spawn-things game (srend::render-system-image-manager render-system)
                         model-manager smdl:*world-model*)
+          (srend:print-memory-usage render-system)
+          (add-command 'restart-map
+                       (lambda ()
+                         (restart-map game camera render-system model-manager)
+                         (printf "Restarting map...~%")))
+          (add-command 'tbkfa
+                       (lambda ()
+                         (let ((all-weapons (list (make-shotgun (srend::render-system-image-manager render-system)
+                                                                model-manager (v 0 0 0)))))
+                           (dolist (weapon all-weapons)
+                             ;; TODO: This is copy-pasta
+                             (push weapon (inventory-weapons (player-inventory *player*)))
+                             (unless (player-current-weapon *player*)
+                               (setf (player-current-weapon *player*) weapon))))
+                         (printf "Very Happy Ammo Added~%")))
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))
