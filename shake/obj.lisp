@@ -343,6 +343,6 @@ f 3/1/5 7/4/5 8/3/5
                                 (obj-normal-vertices obj)))
            ((string= "f" (token-string token))
             (read-faces tokenizer obj))
-           (t nil ;; (format t "Ignoring ~S~%" token)
+           (t nil ;; (shake:printf "Ignoring ~S~%" token)
             )))
         (otherwise (error "Unexpected token ~S" token))))))

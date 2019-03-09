@@ -651,23 +651,24 @@
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
-  ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
-  ;; executed inside that thread.
-  (sdl2:with-init (:everything)
-    (reset-game-keys)
-    (with-data-dirs *base-dir*
-      (set-gl-attrs)
-      (let* ((*win-width* 1024) (*win-height* 768)
-             (*rend-width* *win-width*) (*rend-height* *win-height*)
-             (*commands* nil))
-        (declare (special *commands*))
-        (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
-                                  :flags '(:opengl))
-          (srend:with-render-system
-              (render-system window *rend-width* *rend-height*)
-            (sdl2:set-relative-mouse-mode 1)
-            (srend:print-gl-info (srend:render-system-gl-config render-system))
-            (funcall function render-system window)))))))
+  (let* ((*commands* nil)
+         (*console* (make-console)))
+    (declare (special *commands* *console*))
+    ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
+    ;; executed inside that thread.
+    (sdl2:with-init (:everything)
+      (reset-game-keys)
+      (with-data-dirs *base-dir*
+        (set-gl-attrs)
+        (let* ((*win-width* 1024) (*win-height* 768)
+               (*rend-width* *win-width*) (*rend-height* *win-height*))
+          (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
+                                    :flags '(:opengl))
+            (srend:with-render-system
+                (render-system window *rend-width* *rend-height*)
+              (sdl2:set-relative-mouse-mode 1)
+              (srend:print-gl-info (srend:render-system-gl-config render-system))
+              (funcall function render-system window))))))))
 
 (defmacro with-init ((render-system window) &body body)
   `(call-with-init (lambda (,render-system ,window) ,@body)))
@@ -691,16 +692,32 @@
   (reversed-lines nil)
   (active-p nil :type boolean))
 
-;; TODO: Add a common printf function which forwards to system console and our
-;; console if it exists. This will cover the case for messages during startup
-;; when we haven't got the renderable console yet.
 (defun console-print (console control-string &rest format-arguments)
   (check-type console console)
-  (push (apply #'format nil control-string format-arguments)
-        (console-reversed-lines console))
+  (let ((string (apply #'format nil control-string format-arguments))
+        (start-pos 0))
+    (loop for c across string and end-pos from 1
+       when (or (= end-pos (length string)) (char= #\Newline c))
+       do (push (subseq string start-pos (if (char= #\Newline c)
+                                             (1- end-pos)
+                                             end-pos))
+                (console-reversed-lines console))
+         (setf start-pos end-pos)))
   ;; Return an empty result as this can be run through GUI console which
   ;; prints the resulting values of evaluated commands.
   nil)
+
+(defun printf (control-string &rest format-arguments)
+  (declare (special *console*))
+  (check-type *console* console)
+  ;; Log to stdout
+  (apply #'format t control-string format-arguments)
+  ;; Echo to our console
+  (apply #'console-print *console* control-string format-arguments))
+
+(defun console-clear (console)
+  (check-type console console)
+  (setf (console-reversed-lines console) nil))
 
 (defun make-console ()
   (declare (special *commands*))
@@ -709,16 +726,15 @@
     (add-command 'quit #'sdl2:push-quit-event)
     (add-command 'exit #'sdl2:push-quit-event)
     (add-command 'echo (lambda (&rest args)
-                         (console-print console "~{~A~^ ~}" args)))
+                         (printf "~{~A~^ ~}~%" args)))
     (add-command 'help (lambda ()
                          (dolist (cmd *commands*)
-                           (console-print console (string (car cmd))))))
+                           (printf "~A~%" (string (car cmd))))))
     (add-command '+ #'+)
     (add-command '- #'-)
     (add-command '* #'*)
     (add-command '/ #'/)
-    (add-command 'clear (lambda ()
-                          (setf (console-reversed-lines console) nil)))
+    (add-command 'clear #'console-clear)
     console))
 
 (defun console-append (console text)
@@ -750,7 +766,7 @@
          (t (apply-command form)))))))
 
 (defun console-commit (console)
-  (console-print console "> ~A" (console-text console))
+  (printf "> ~A~%" (console-text console))
   (let ((form (handler-case
                   (let ((*package* (find-package :shake))
                         (*read-eval* nil)
@@ -766,13 +782,13 @@
                        then (multiple-value-list
                              (read-from-string (console-text console) nil :eof :start pos))
                        until (eq :eof form) collect form))
-                (error (e) (console-print console "ERROR: ~A" e)))))
+                (error (e) (printf "ERROR: ~A~%" e)))))
     (unless (cdr form) (setf form (car form)))
     (setf (fill-pointer (console-text console)) 0)
     (when form
       (let ((res (handler-case (command-eval-form console form)
-                   (error (e) (console-print console "ERROR: ~A" e)))))
-        (when res (console-print console "~S" res))))))
+                   (error (e) (printf "ERROR: ~A~%" e)))))
+        (when res (printf "~S~%" res))))))
 
 (defun console-backspace (console)
   (if (/= 0 (length (console-text console)))
@@ -788,6 +804,9 @@
 (defun console-handle-keydown (console keysym)
   (assert (console-active-p console))
   (cond
+    ((and (eq :scancode-l (sdl2:scancode keysym))
+          (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
+     (console-clear console))
     ((eq :scancode-return (sdl2:scancode keysym))
      (console-commit console))
     ((eq :scancode-backspace (sdl2:scancode keysym))
@@ -795,6 +814,8 @@
 
 (defun main ()
   (with-init (render-system win)
+    (declare (special *console*))
+    (check-type *console* console)
     (smdl:with-model-manager model-manager
       (with-resources "main"
         (load-main-resources render-system)
@@ -806,8 +827,7 @@
                (frame-timer (make-timer :name "Main Loop"))
                (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
                (game (make-game))
-               (*player* nil)
-               (console (make-console)))
+               (*player* nil))
           (declare (special *player*))
           (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
           (srend:print-memory-usage render-system)
@@ -827,20 +847,20 @@
               (:quit () t)
               (:textinput
                (:text utf8-code)
-               (console-append console (if (<= 0 utf8-code 255) (code-char utf8-code) #\?)))
+               (console-append *console* (if (<= 0 utf8-code 255) (code-char utf8-code) #\?)))
               (:keydown
                (:keysym keysym)
                (when input-focus-p
                  (when (eq :scancode-grave (sdl2:scancode keysym))
-                   (if (console-active-p console) (sdl2:stop-text-input) (sdl2:start-text-input))
-                   (zap #'not (console-active-p console)))
-                 (if (console-active-p console)
-                     (console-handle-keydown console keysym)
+                   (if (console-active-p *console*) (sdl2:stop-text-input) (sdl2:start-text-input))
+                   (zap #'not (console-active-p *console*)))
+                 (if (console-active-p *console*)
+                     (console-handle-keydown *console* keysym)
                      (press-game-key (sdl2:scancode keysym)))))
               (:keyup
                (:keysym keysym)
                (when input-focus-p
-                 (unless (console-active-p console)
+                 (unless (console-active-p *console*)
                    (release-game-key (sdl2:scancode keysym)))))
               (:mousemotion
                (:xrel xrel :yrel yrel)
@@ -872,9 +892,9 @@
                              (render-view *player* camera
                                           (srend::render-system-image-manager render-system)
                                           model-manager (game-render-things game)))
-                           (when (console-active-p console)
+                           (when (console-active-p *console*)
                              (srend:draw-gui-quad 0 0 *rend-width* (* 0.5 *rend-height*))
-                             (console-draw console))
+                             (console-draw *console*))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))

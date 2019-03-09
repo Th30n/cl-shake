@@ -68,14 +68,13 @@
                            max-texture-size max-3d-texture-size
                            max-array-texture-layers)
       gl-config
-    (format t "GL Vendor: ~S~%" vendor)
-    (format t "GL Renderer: ~S~%" renderer)
-    (format t "GL Version: ~S~%" version-string)
-    (format t "GLSL Version: ~S~%" glsl-version-string)
-    (format t "Max texture size: ~S~%" max-texture-size)
-    (format t "Max 3D texture size: ~S~%" max-3d-texture-size)
-    (format t "Max array texture layers: ~S~%" max-array-texture-layers)
-    (finish-output)))
+    (shake:printf "GL Vendor: ~S~%" vendor)
+    (shake:printf "GL Renderer: ~S~%" renderer)
+    (shake:printf "GL Version: ~S~%" version-string)
+    (shake:printf "GLSL Version: ~S~%" glsl-version-string)
+    (shake:printf "Max texture size: ~S~%" max-texture-size)
+    (shake:printf "Max 3D texture size: ~S~%" max-3d-texture-size)
+    (shake:printf "Max array texture layers: ~S~%" max-array-texture-layers)))
 
 (defstruct debug-text
   (char-string nil :type string :read-only t)
@@ -168,7 +167,7 @@
   (check-type w single-float)
   (check-type h single-float)
   (if (>= (+ 6 (gui-model-vertex-count gui-model)) +max-gui-verts+)
-      (format t "WARNING: exceeded +MAX-GUI-VERTS+!~%")
+      (shake:printf "WARNING: exceeded +MAX-GUI-VERTS+!~%")
       (let ((ptr (cffi:inc-pointer (gui-model-vertex-ptr gui-model)
                                    (* #.(cffi:foreign-type-size '(:struct smdl::vertex-data))
                                       (gui-model-vertex-count gui-model))))
@@ -257,7 +256,7 @@
         ;; Turn off V-Sync
         (sdl2:gl-set-swap-interval 0)
       (error () ;; sdl2 doesn't export sdl-error
-        (format t "Setting swap interval not supported~%")))
+        (shake:printf "Setting swap interval not supported~%")))
     (bracket (render-system (init-render-system window render-width render-height)
                             shutdown-render-system)
       (funcall fun render-system))))
@@ -277,7 +276,7 @@
   (with-struct (image-manager- images)
       (render-system-image-manager render-system)
     (let ((image-usage (reduce #'+ (mapcar #'image-storage-size images))))
-      (format t "Total image allocation: ~:D bytes~%" image-usage))))
+      (shake:printf "Total image allocation: ~:D bytes~%" image-usage))))
 
 (defconstant +max-batch-size+ 512
   "Maximum count of objects in a batch. This should be consistent across

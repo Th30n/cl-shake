@@ -310,10 +310,10 @@ and return the default model."
             ((string= "bsp" ext)
              (bspfile->model (sbsp:read-bspfile file)))
             (t
-             (format t "Unknown model format ~S" model-fname)
+             (shake:printf "Unknown model format ~S" model-fname)
              (make-default-model)))))
     (sdata:data-file-error (c)
-      (princ c)
+      (shake:printf "~A~%" c)
       (make-default-model))))
 
 (defun free-model (model)

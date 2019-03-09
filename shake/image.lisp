@@ -179,7 +179,7 @@ textures."
               (sdl2:free-surface binary-image)))
         ;; TODO: Other errors?
         (sdata:data-file-error (c)
-          (princ c)
+          (shake:printf "~A~%" c)
           (image-manager-missing-image image-manager)))))
 
 (defun load-map-images (image-manager image-names)

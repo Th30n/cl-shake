@@ -104,4 +104,5 @@
            #:mtrace
            #:mtrace-endpos
            #:mtrace-fraction
-           #:mtrace-normal))
+           #:mtrace-normal
+           #:printf))

@@ -155,7 +155,7 @@
           (game-add-thing
            *game*
            (make-projectile *image-manager* *model-manager* gun-position :rotation rotation)))
-        ;; (format t "Attacking player at ~A, time ~Ams~%"
+        ;; (printf "Attacking player at ~A, time ~Ams~%"
         ;;         (player-position (enemy-target enemy)) (get-game-time))
         (setf (enemy-last-attack-time-ms enemy) (get-game-time))))))
 
