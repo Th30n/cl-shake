@@ -679,7 +679,9 @@
   (check-type symbol symbol)
   (check-type function function)
   ;; TODO: Issue a warning if already exists
-  (pushnew (cons symbol function) *commands* :key #'car))
+  (when (find symbol *commands* :key #'car)
+    (printf "WARNING: redefining command '~S'~%" symbol))
+  (push (cons symbol function) *commands*))
 
 (defun find-command (symbol)
   (declare (special *commands*))
@@ -709,11 +711,12 @@
 
 (defun printf (control-string &rest format-arguments)
   (declare (special *console*))
-  (check-type *console* console)
   ;; Log to stdout
   (apply #'format t control-string format-arguments)
   ;; Echo to our console
-  (apply #'console-print *console* control-string format-arguments))
+  (when (boundp '*console*)
+    (check-type *console* console)
+    (apply #'console-print *console* control-string format-arguments)))
 
 (defun console-clear (console)
   (check-type console console)
