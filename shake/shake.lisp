@@ -658,7 +658,9 @@
     (with-data-dirs *base-dir*
       (set-gl-attrs)
       (let* ((*win-width* 1024) (*win-height* 768)
-             (*rend-width* *win-width*) (*rend-height* *win-height*))
+             (*rend-width* *win-width*) (*rend-height* *win-height*)
+             (*commands* nil))
+        (declare (special *commands*))
         (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
                                   :flags '(:opengl))
           (srend:with-render-system
@@ -670,10 +672,46 @@
 (defmacro with-init ((render-system window) &body body)
   `(call-with-init (lambda (,render-system ,window) ,@body)))
 
-(defstruct console
+(defun add-command (symbol function)
+  (declare (special *commands*))
+  (check-type *commands* list)
+  (check-type symbol symbol)
+  (check-type function function)
+  ;; TODO: Issue a warning if already exists
+  (pushnew (cons symbol function) *commands* :key #'car))
+
+(defun find-command (symbol)
+  (declare (special *commands*))
+  (check-type *commands* list)
+  (check-type symbol symbol)
+  (find symbol *commands* :key #'car))
+
+(defstruct (console (:constructor %make-console))
   (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
   (reversed-lines nil)
   (active-p nil :type boolean))
+
+;; TODO: Add a common printf function which forwards to system console and our
+;; console if it exists. This will cover the case for messages during startup
+;; when we haven't got the renderable console yet.
+(defun console-print (console control-string &optional format-arguments)
+  (check-type console console)
+  (push (format nil control-string format-arguments)
+        (console-reversed-lines console)))
+
+(defun make-console ()
+  (declare (special *commands*))
+  (check-type *commands* list)
+  (let ((console (%make-console)))
+    (add-command 'quit #'sdl2:push-quit-event)
+    (add-command 'echo (lambda (&rest args)
+                         (console-print console "~{~S~^ ~}" args)))
+    (add-command 'help (lambda ()
+                         (dolist (cmd *commands*)
+                           (console-print console (string (car cmd))))))
+    (add-command 'clear (lambda ()
+                          (setf (console-reversed-lines console) nil)))
+    console))
 
 (defun console-append (console text)
   (check-type console console)
@@ -682,22 +720,42 @@
       (vector-push-extend text (console-text console))
       (loop for c across text do (console-append console c))))
 
-(defun console-commit (console)
-  (push (concatenate 'string "> " (console-text console))
-        (console-reversed-lines console))
-  (let ((form (handler-case (let ((*package* (find-package :shake)))
-                              (read-from-string (console-text console)))
-                (error (e) `(echo ,(format nil "ERROR: ~A" e))))))
-    (setf (fill-pointer (console-text console)) 0)
+(defun command-eval-form (console form)
+  (flet ((apply-command (cmd-sym &optional args)
+           ;; TODO: ARGS are unevaluated, perhaphs change this in the future
+           (let ((cmd (when (symbolp cmd-sym)
+                        (find-command cmd-sym))))
+             (if cmd
+                 (handler-case (apply (cdr cmd) args)
+                   (program-error (e) (console-print console "ERROR: ~A" e)))
+                 (console-print console "unkown command '~A'" cmd-sym)))))
     (cond
       ((consp form)
        (case (car form)
-         (echo (push (format nil "~{~A~^ ~}" (cdr form)) (console-reversed-lines console)))
-         (t (push "unkown command" (console-reversed-lines console)))))
+         (begin (dolist (subform (cdr form))
+                  (command-eval-form console subform)))
+         (t
+          (apply-command (car form) (cdr form)))))
       ((atom form)
-       (case form
-         (quit (sdl2:push-quit-event))
-         (t (push "unkown command" (console-reversed-lines console))))))))
+       (apply-command form)))))
+
+(defun console-commit (console)
+  (console-print console "> ~A" (console-text console))
+  (let ((form (handler-case
+                  (let ((*package* (find-package :shake)))
+                    ;; Read all of the string so as to allow forms without top
+                    ;; level parentheses. E.g. "echo arg1 arg2" will be valid
+                    ;; as if "(echo arg1 arg2)".
+                    (loop for (form pos) = (multiple-value-list
+                                            (read-from-string (console-text console) nil :eof))
+                       then (multiple-value-list
+                             (read-from-string (console-text console) nil :eof :start pos))
+                       until (eq :eof form) collect form))
+                (error (e) `(echo ,(format nil "ERROR: ~A" e))))))
+    (unless (cdr form) (setf form (car form)))
+    (setf (fill-pointer (console-text console)) 0)
+    (when form
+      (command-eval-form console form))))
 
 (defun console-backspace (console)
   (if (/= 0 (length (console-text console)))
