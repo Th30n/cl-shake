@@ -866,6 +866,14 @@
                              (unless (player-current-weapon *player*)
                                (setf (player-current-weapon *player*) weapon))))
                          (printf "Very Happy Ammo Added~%")))
+          (add-command 'my-pos
+                       (lambda ()
+                         (let* ((pos-2d (v3->v2 (player-position *player*)))
+                                (map-hull (smdl:bsp-model-hull smdl:*world-model*))
+                                (sector (hull-point-sector map-hull pos-2d))
+                                (contents (hull-point-contents map-hull pos-2d)))
+                           (printf "~A ~A~%~A~%"
+                                   (player-position *player*) contents sector))))
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))

@@ -28,7 +28,8 @@
 
 (defun hull-point-leaf (hull point)
   "Traverse the HULL to the leaf where POINT is located and return it."
-  (declare (type (vec 2) point))
+  (check-type hull (or sbsp:leaf sbsp:node))
+  (check-type point (vec 2))
   (if (sbsp:leaf-p hull)
       hull
       (ecase (sbsp:determine-side (sbsp:node-line hull) point)
@@ -40,7 +41,8 @@
 (defun hull-point-contents (hull point)
   "Traverse the HULL to the leaf where POINT is located and return
   LEAF-CONTENTS. Secondary value is a parent NODE."
-  (declare (type (vec 2) point))
+  (check-type hull (or sbsp:leaf sbsp:node))
+  (check-type point (vec 2))
   (let ((leaf (hull-point-leaf hull point)))
     (values (sbsp:leaf-contents leaf) leaf)))
 
