@@ -47,9 +47,9 @@
 
 (defstruct map-thing
   "A thing on a map. Contains slots POS and ANGLE for spawn position.  If a
-  thing is brush based (e.g. a door or a platorm), they are stored in BRUSHES
+  thing is brush based (e.g. a door or a platform), they are stored in BRUSHES
   slot.  The TYPE slot determines the thing type."
-  (type nil :type (member :player-spawn :shotgun :enemy))
+  (type nil :type (member :player-spawn :shotgun :enemy :door))
   (pos (v 0 0) :type (vec 2))
   (angle #.(shiva-float 0.0)
          :type (shiva-float #.(shiva-float 0.0) #.(shiva-float 360d0)))

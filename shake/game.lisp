@@ -335,3 +335,71 @@
        :wireframep t))
     ;; Render the projectile model
     (srend:render-surface (smdl::obj-model-verts (projectile-model projectile)) mvp)))
+
+(defclass door (thing)
+  ((brush :initform nil :type sbrush:brush
+          :initarg :brush :accessor door-brush)
+   (hull :initform nil :type (or sbsp:node sbsp:leaf)
+         :initarg :hull :accessor door-hull)
+   (last-open-time-ms :initform nil :type (or null fixnum)
+                      :initarg :last-open-time-ms :accessor door-last-open-time-ms)))
+
+(defmethod game-add-thing :after (game (door door))
+  (push door (game-render-things game)))
+
+(defmethod thing-think :after ((door door))
+  (let ((sector (sbsp:sidedef-back-sector
+                 (first (sbrush:brush-surfaces (door-brush door))))))
+    (with-accessors ((last-open-time-ms door-last-open-time-ms)) door
+      (if (not last-open-time-ms)
+          (setf (sbsp:sector-ceiling-height sector) (sbsp:sector-floor-height sector))
+          (let ((opened-ms (- (get-game-time) last-open-time-ms)))
+            (cond
+              ((<= opened-ms 4000)
+               (setf (sbsp:sector-ceiling-height sector)
+                     (shiva-float (min (/ opened-ms 2000.0) 1.0))))
+              ((<= 4000 opened-ms 6000)
+               (setf (sbsp:sector-ceiling-height sector)
+                     (shiva-float (max (- 1.0 (/ (- opened-ms 4000) 2000.0))
+                                       (sbsp:sector-floor-height sector)))))
+              (t
+               (setf last-open-time-ms nil))))))))
+
+(defun make-door (brush)
+  (check-type brush sbrush:brush)
+  ;; Assert is just for testing the plain brush
+  (unless (notany #'sbsp:sidedef-back-sector (sbrush:brush-surfaces brush))
+    (printf "WARNING: door already has back sector~%"))
+  (let ((sector (sbsp:make-sector)))
+    (dolist (sidedef (sbrush:brush-surfaces brush))
+      (setf (sbsp:sidedef-back-sector sidedef) sector)))
+  (make-instance 'door
+                 :brush brush
+                 :hull (sbsp:build-bsp
+                        (sbrush:prepare-brushes-for-bsp
+                         (list (sbrush:expand-brush brush :square sbsp::+clip-square+))))))
+
+(defun door-render (door camera)
+  (check-type door door)
+  (check-type camera camera)
+  (let ((mvp (m* (camera-projection-matrix camera)
+                 (camera-view-transform camera))))
+    (dolist (surf (sbrush:brush-surfaces (door-brush door)))
+      (let ((geometry (smdl::sidedef->surf-triangles surf)))
+        (srend:render-surface geometry mvp)
+        (smdl::free-surf-triangles geometry)))
+    (let* ((lines (mapcar (lambda (surf)
+                            (sbsp:lineseg-orig-line (sbsp:sidedef-lineseg surf)))
+                          (sbrush:brush-surfaces (door-brush door))))
+           (sector (sbsp:sidedef-back-sector
+                    (first (sbrush:brush-surfaces (door-brush door)))))
+           (ceiling-height (sbsp:sector-ceiling-height sector))
+           (ceiling-geometry (smdl::polygon->surf-triangles lines ceiling-height)))
+      (srend:render-surface ceiling-geometry mvp)
+      (smdl::free-surf-triangles ceiling-geometry))))
+
+(defun door-open (door)
+  (check-type door door)
+  (with-accessors ((last-open-time-ms door-last-open-time-ms)) door
+    (unless last-open-time-ms
+      (setf last-open-time-ms (get-game-time)))))

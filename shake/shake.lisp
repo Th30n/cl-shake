@@ -275,12 +275,29 @@
 
 (defun build-ticcmd ()
   (declare (special *player*))
+  (declare (special *game*))
+  (declare (special *camera*))
   (check-type *player* player)
   ;; XXX: Hacked toggling PLAYER-WEAPON-HIDDEN-P, use appropriate on-key-down
   ;; event. Also, is this the right place to do the toggle?
   (when (game-key-down-p :scancode-h)
     (zap #'not (player-weapon-hidden-p *player*))
     (release-game-key :scancode-h))
+  (when (game-key-down-p :scancode-space)
+    (let* (;; Offset origin as if camera
+           (origin (v+ (player-position *player*) (v 0 0.5 0)))
+           (use-dest (v+ origin (vscale 0.5 (vnormalize (view-dir :forward *camera*))))))
+      (dolist (thing (game-think-things *game*))
+        (when (subtypep (type-of thing) 'door)
+          (multiple-value-bind (mtrace hitp)
+              (clip-hull (door-hull thing) origin
+                         (mtrace-endpos
+                          (clip-hull (smdl:bsp-model-hull smdl:*world-model*)
+                                     origin use-dest))
+                         :ignore-empty-leaves t)
+            (declare (ignore mtrace))
+            (when hitp (door-open thing))))))
+    (release-game-key :scancode-space))
   (let ((xrel (car *mouse*))
         ;; Invert the Y movement.
         (yrel (- (cdr *mouse*)))
@@ -436,6 +453,7 @@
 
 (defun player-move (camera forward-move side-move &key (noclip nil))
   (declare (special *player*))
+  (declare (special *game*))
   (check-type *player* player)
   ;; TODO: Consolidate player and camera
   (check-type camera camera)
@@ -451,7 +469,16 @@
          (end-pos (v+ origin velocity)))
       (if noclip
           (setf (player-position *player*) end-pos)
+          ;; TODO: Resolve collision detection with everything properly.
           (let ((destination (apply-gravity (player-ground-move origin velocity))))
+            (dolist (thing (game-think-things *game*))
+              (when (subtypep (type-of thing) 'door)
+                (multiple-value-bind (mtrace hitp)
+                    (clip-hull (door-hull thing) origin destination
+                               :height #.(shiva-float 0.5)
+                               :ignore-empty-leaves t)
+                  (when hitp
+                    (setf destination (mtrace-endpos mtrace))))))
             (player-touch-triggers *player* origin destination)
             (setf (player-position *player*) destination)))
       (setf (camera-position camera)
@@ -535,7 +562,11 @@
          (game-add-thing game
                          (make-enemy image-manager model-manager
                                      (v2->v3 pos-2d floor-height)
-                                     :angle-y angle-y)))))))
+                                     :angle-y angle-y)))
+        (:door
+         (assert (= 1 (list-length (sbsp:map-thing-brushes thing))))
+         (game-add-thing game
+                         (make-door (first (sbsp:map-thing-brushes thing)))))))))
 
 (defun hit-enemy-p (start end)
   (declare (special *game*))
@@ -648,7 +679,8 @@
     (ctypecase render-thing
       (weapon (weapon-render render-thing camera model-manager))
       (enemy (enemy-render render-thing camera model-manager))
-      (projectile (projectile-render render-thing camera model-manager)))))
+      (projectile (projectile-render render-thing camera model-manager))
+      (door (door-render render-thing camera)))))
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
@@ -854,8 +886,8 @@
           (srend:print-memory-usage render-system)
           (add-command 'restart-map
                        (lambda ()
-                         (restart-map game camera render-system model-manager)
-                         (printf "Restarting map...~%")))
+                         (printf "Restarting map...~%")
+                         (restart-map game camera render-system model-manager)))
           (add-command 'tbkfa
                        (lambda ()
                          (let ((all-weapons (list (make-shotgun (srend::render-system-image-manager render-system)
@@ -919,8 +951,9 @@
                        ;; global.
                        (let ((*image-manager* (srend::render-system-image-manager render-system))
                              (*model-manager* model-manager)
-                             (*game* game))
-                         (declare (special *image-manager* *model-manager* *game*))
+                             (*game* game)
+                             (*camera* camera))
+                         (declare (special *image-manager* *model-manager* *game* *camera*))
                          (try-run-tics #'build-ticcmd
                                        (lambda (ticcmd)
                                          (run-tic game camera ticcmd))))

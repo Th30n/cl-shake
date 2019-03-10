@@ -46,6 +46,12 @@
   (let ((leaf (hull-point-leaf hull point)))
     (values (sbsp:leaf-contents leaf) leaf)))
 
+(defvar *ignore-empty-leaves* nil
+  "If T hull clip functions will treat reaching a leaf with :CONTENTS-EMPTY as
+  success, regardless of potential blockage due to height difference.  This is
+  primarily used to test colliding into a solid BSP model, i.e. brush based
+  things.")
+
 (defun hull-point-sector (hull-node point)
   "Get the hull SECTOR which contains the POINT. Returns NIL if no sector
   found, this is the case when the point is inside a solid leaf."
@@ -60,11 +66,14 @@
 
 (defun crossp (hull-node point height)
   "Return T if the POINT can cross into a non-solid space."
-  (when-let* ((sector (hull-point-sector hull-node (v3->v2 point)))
-              (floor-height (sbsp:sector-floor-height sector))
-              (ceiling-height (sbsp:sector-ceiling-height sector)))
-    (and (float>= ceiling-height (+ (vy point) height))
-         (float>= (vy point) floor-height))))
+  (if (and *ignore-empty-leaves*
+           (eq (hull-point-contents hull-node (v3->v2 point)) :contents-empty))
+      t
+      (when-let* ((sector (hull-point-sector hull-node (v3->v2 point)))
+                  (floor-height (sbsp:sector-floor-height sector))
+                  (ceiling-height (sbsp:sector-ceiling-height sector)))
+        (and (float>= ceiling-height (+ (vy point) height))
+             (float>= (vy point) floor-height)))))
 
 (defparameter *dist-epsilon*
   #-shiva-double-float 5s-6
@@ -137,46 +146,49 @@
   (declare (type (vec 3) p1 p2))
   (declare (type shiva-float height p1f p2f))
   (if (sbsp:leaf-p node)
-      (if-let ((sector (hull-point-sector node (v3->v2 p2))))
-        ;; Clip vertical movement, e.g. gravity.
-        (let ((floor-height (sbsp:sector-floor-height sector))
-              (ceiling-height (sbsp:sector-ceiling-height sector)))
-          (assert floor-height)
-          (assert ceiling-height)
-          (let ((t1 (vdot (v 0 1 0)
-                          (v- p1 (v 0 floor-height 0))))
-                (t2 (vdot (v 0 1 0)
-                          (v- p2 (v 0 floor-height 0)))))
-            ;; TODO: What if we are below the floor?
-            (if (or (and (minusp t1) (minusp t2))
-                    (and (<= 0.0 t1) (<= 0.0 t2)))
-                ;; We aren't crossing the floor, so check ceiling
-                (let ((t1 (vdot (v 0 -1 0)
-                                (v- p1 (v 0 ceiling-height 0))))
-                      (t2 (vdot (v 0 -1 0)
-                                (v- p2 (v 0 ceiling-height 0)))))
-                  ;; TODO: What if we are above the ceiling?
-                  (if (or (and (minusp t1) (minusp t2))
-                          (and (<= 0.0 t1) (<= 0.0 t2)))
-                      (values (make-mtrace :endpos p2) nil)
-                      (let* ((frac (cross-fraction t1 t2))
-                             (midf (+ p1f (* frac (- p2f p1f))))
-                             (mid (v+ p1 (vscale frac (v- p2 p1)))))
-                        (values (make-mtrace :fraction midf
-                                             :normal (v 0 1 0)
-                                             :endpos mid)
-                                t))))
-                ;; We are crossing the floor
-                (let* ((frac (cross-fraction t1 t2))
-                       (midf (+ p1f (* frac (- p2f p1f))))
-                       (mid (v+ p1 (vscale frac (v- p2 p1)))))
-                  (values (make-mtrace :fraction midf
-                                       :normal (v 0 1 0)
-                                       :endpos mid)
-                          t)))))
-        ;; Missing sector, so allow movement. TODO: We should probably have no
-        ;; missing sectors, maybe log a warning here.
-        (values (make-mtrace :endpos p2) nil))
+      (if (and *ignore-empty-leaves*
+               (eq :contents-empty (hull-point-contents node (v3->v2 p2))))
+          (values (make-mtrace :endpos p2) nil)
+          (if-let ((sector (hull-point-sector node (v3->v2 p2))))
+            ;; Clip vertical movement, e.g. gravity.
+            (let ((floor-height (sbsp:sector-floor-height sector))
+                  (ceiling-height (sbsp:sector-ceiling-height sector)))
+              (assert floor-height)
+              (assert ceiling-height)
+              (let ((t1 (vdot (v 0 1 0)
+                              (v- p1 (v 0 floor-height 0))))
+                    (t2 (vdot (v 0 1 0)
+                              (v- p2 (v 0 floor-height 0)))))
+                ;; TODO: What if we are below the floor?
+                (if (or (and (minusp t1) (minusp t2))
+                        (and (<= 0.0 t1) (<= 0.0 t2)))
+                    ;; We aren't crossing the floor, so check ceiling
+                    (let ((t1 (vdot (v 0 -1 0)
+                                    (v- p1 (v 0 (- ceiling-height height) 0))))
+                          (t2 (vdot (v 0 -1 0)
+                                    (v- p2 (v 0 (- ceiling-height height) 0)))))
+                      ;; TODO: What if we are above the ceiling?
+                      (if (or (and (minusp t1) (minusp t2))
+                              (and (<= 0.0 t1) (<= 0.0 t2)))
+                          (values (make-mtrace :endpos p2) nil)
+                          (let* ((frac (cross-fraction t1 t2))
+                                 (midf (+ p1f (* frac (- p2f p1f))))
+                                 (mid (v+ p1 (vscale frac (v- p2 p1)))))
+                            (values (make-mtrace :fraction midf
+                                                 :normal (v 0 1 0)
+                                                 :endpos mid)
+                                    t))))
+                    ;; We are crossing the floor
+                    (let* ((frac (cross-fraction t1 t2))
+                           (midf (+ p1f (* frac (- p2f p1f))))
+                           (mid (v+ p1 (vscale frac (v- p2 p1)))))
+                      (values (make-mtrace :fraction midf
+                                           :normal (v 0 1 0)
+                                           :endpos mid)
+                              t)))))
+            ;; Missing sector, so allow movement. TODO: We should probably have no
+            ;; missing sectors, maybe log a warning here.
+            (values (make-mtrace :endpos p2) nil)))
       ;; Hull-node case
       (let ((t1 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p1)))
             (t2 (sbsp:dist-line-point (sbsp:node-line node) (v3->v2 p2))))
@@ -190,15 +202,19 @@
           (t
            (split-hull-check hull height node t1 t2 p1 p2 p1f p2f))))))
 
-(defun clip-hull (hull p1 p2 &key (height #.(shiva-float 0.0)))
+(defun clip-hull (hull p1 p2 &key (height #.(shiva-float 0.0)) ignore-empty-leaves)
   "Checks the HULL for the nearest collision on the way from P1 to P2. Returns
   the MTRACE of the final movement. The secondary value is T if there were
-  collisions."
+  collisions.  If IGNORE-EMPTY-LEAVES is T, the movement automatically
+  succeeds if it manages to get to a leaf with :CONTENTS-EMPTY."
   (check-type hull (or sbsp:node sbsp:leaf))
   (check-type p1 (vec 3))
   (check-type p2 (vec 3))
   (check-type height (shiva-float #.(shiva-float 0.0)))
-  (recursive-hull-check hull p1 p2 height))
+  (check-type ignore-empty-leaves boolean)
+  (let ((*ignore-empty-leaves* ignore-empty-leaves))
+    (declare (special *ignore-empty-leaves*))
+    (recursive-hull-check hull p1 p2 height)))
 
 (declaim (inline make-oobb))
 (defstruct oobb
