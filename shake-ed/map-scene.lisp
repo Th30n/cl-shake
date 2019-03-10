@@ -654,7 +654,9 @@
         (q+:add-item scene item)
         (map-scene-add-brush scene item (make-mbrush :brush brush))))
     (dolist (thing (sbsp:map-file-things map-file))
-      (add-thing-to-scene scene thing))))
+      (unless (eq :door (sbsp:map-thing-type thing))
+        ;; TODO: Handle doors, i.e. brush based things
+        (add-thing-to-scene scene thing)))))
 
 (defun sidedef-for-lineitem (scene lineitem)
   (when-let ((mbrush (brush-for-graphics-item scene (q+:parent-item lineitem))))
