@@ -167,7 +167,7 @@
   (check-type w single-float)
   (check-type h single-float)
   (if (>= (+ 6 (gui-model-vertex-count gui-model)) +max-gui-verts+)
-      (shake:printf "WARNING: exceeded +MAX-GUI-VERTS+!~%")
+      (shake:print-warning "exceeded +MAX-GUI-VERTS+!~%")
       (let ((ptr (cffi:inc-pointer (gui-model-vertex-ptr gui-model)
                                    (* #.(cffi:foreign-type-size '(:struct smdl::vertex-data))
                                       (gui-model-vertex-count gui-model))))
@@ -256,7 +256,7 @@
         ;; Turn off V-Sync
         (sdl2:gl-set-swap-interval 0)
       (error () ;; sdl2 doesn't export sdl-error
-        (shake:printf "Setting swap interval not supported~%")))
+        (shake:print-error "setting swap interval not supported~%")))
     (bracket (render-system (init-render-system window render-width render-height)
                             shutdown-render-system)
       (shake:add-command

@@ -369,7 +369,7 @@
   (check-type brush sbrush:brush)
   ;; Assert is just for testing the plain brush
   (unless (notany #'sbsp:sidedef-back-sector (sbrush:brush-surfaces brush))
-    (printf "WARNING: door already has back sector~%"))
+    (print-warning "door already has back sector~%"))
   (let ((sector (sbsp:make-sector)))
     (dolist (sidedef (sbrush:brush-surfaces brush))
       (setf (sbsp:sidedef-back-sector sidedef) sector)))

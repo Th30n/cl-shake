@@ -684,12 +684,14 @@
 
 (defun call-with-init (function)
   "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
-  (let* ((*commands* nil)
-         (*console* (make-console)))
-    (declare (special *commands* *console*))
-    ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
-    ;; executed inside that thread.
-    (sdl2:with-init (:everything)
+  ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
+  ;; executed inside that thread.
+  (sdl2:with-init (:everything)
+    (let* ((*commands* nil)
+           (*console* (make-console))
+           (*last-printed-error* nil)
+           (*last-printed-warning* nil))
+      (declare (special *commands* *console* *last-printed-error* *last-printed-warning*))
       (reset-game-keys)
       (with-data-dirs *base-dir*
         (set-gl-attrs)
@@ -713,7 +715,7 @@
   (check-type function function)
   ;; TODO: Issue a warning if already exists
   (when (find symbol *commands* :key #'car)
-    (printf "WARNING: redefining command '~S'~%" symbol))
+    (print-warning "redefining command '~S'~%" symbol))
   (push (cons symbol function) *commands*))
 
 (defun find-command (symbol)
@@ -750,6 +752,22 @@
   (when (boundp '*console*)
     (check-type *console* console)
     (apply #'console-print *console* control-string format-arguments)))
+
+(defun print-error (control-string &rest format-arguments)
+  (declare (special *last-printed-error*))
+  (let ((msg (apply #'format nil control-string format-arguments)))
+    (prog1
+        (when (or (not *last-printed-error*) (string/= msg *last-printed-error*))
+          (printf "ERROR: ~A" msg))
+      (setf *last-printed-error* msg))))
+
+(defun print-warning (control-string &rest format-arguments)
+  (declare (special *last-printed-warning*))
+  (let ((msg (apply #'format nil control-string format-arguments)))
+    (prog1
+        (when (or (not *last-printed-warning*) (string/= msg *last-printed-warning*))
+          (printf "WARNING: ~A" msg))
+      (setf *last-printed-warning* msg))))
 
 (defun console-clear (console)
   (check-type console console)
@@ -817,12 +835,12 @@
                        then (multiple-value-list
                              (read-from-string (console-text console) nil :eof :start pos))
                        until (eq :eof form) collect form))
-                (error (e) (printf "ERROR: ~A~%" e)))))
+                (error (e) (print-error "~A~%" e)))))
     (unless (cdr form) (setf form (car form)))
     (setf (fill-pointer (console-text console)) 0)
     (when form
       (let ((res (handler-case (command-eval-form console form)
-                   (error (e) (printf "ERROR: ~A~%" e)))))
+                   (error (e) (print-error "~A~%" e)))))
         (when res (printf "~S~%" res))))))
 
 (defun console-backspace (console)

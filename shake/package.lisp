@@ -109,4 +109,6 @@
            ;; TODO: These should be defined in another file, perhaps another
            ;; package
            #:add-command
+           #:print-error
+           #:print-warning
            #:printf))
