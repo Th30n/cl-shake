@@ -105,6 +105,7 @@
            #:mtrace-endpos
            #:mtrace-fraction
            #:mtrace-normal
+           #:mtrace-start-solid-p
            ;; console and commands
            ;; TODO: These should be defined in another file, perhaps another
            ;; package

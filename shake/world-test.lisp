@@ -48,7 +48,7 @@
           (mtrace (shake:clip-hull hull p1 p2)))
      ,@body))
 
-(defmacro test-clip-hull (p1 p2 &key fraction endpos normal)
+(defmacro test-clip-hull (p1 p2 &key fraction endpos normal start-solid-p)
   `(let-mtrace ,p1 ,p2
      ,@(when fraction
              (list
@@ -59,7 +59,8 @@
          :test (lambda (a b)
                  (if (null a)
                      (null b)
-                     (and b (v= a b)))))))
+                     (and b (v= a b)))))
+     (is (shake:mtrace-start-solid-p mtrace) ,start-solid-p)))
 
 (subtest "hull-point-contents"
   (let* ((surfs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))
@@ -80,7 +81,13 @@
      :fraction 0.5d0 :endpos (v 0d0 0d0 -0.5d0) :normal (v 1d0 0d0 0d0))
     (test-clip-hull
      (v -0.5d0 0d0 -1.5d0) (v -0.5d0 0d0 0.5d0)
-     :fraction 0.25d0 :endpos (v -0.5d0 0d0 -1d0) :normal (v 0d0 0d0 -1d0))))
+     :fraction 0.25d0 :endpos (v -0.5d0 0d0 -1d0) :normal (v 0d0 0d0 -1d0))
+    (test-clip-hull
+     (v -0.5d0 0d0 0d0) (v -0.5d0 0d0 -0.5d0)
+     :fraction 0d0 :endpos (v -0.5d0 0d0 0d0) :normal (v 0d0 0d0 1d0))
+    (test-clip-hull
+     (v -0.5d0 0d0 -0.01d0) (v -0.5d0 0d0 -0.5d0)
+     :fraction 0d0 :endpos (v -0.5d0 0d0 -0.01d0) :start-solid-p t)))
 
 (subtest "pathological clip-hull"
   (let* ((segs (mapcar #'sbsp:linedef->sidedef *square-linedefs*))

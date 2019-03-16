@@ -365,13 +365,15 @@
         ;; XXX: Maybe use time-left to scale climb velocity?
         (let ((climb-endpos (player-climb-move origin velocity hull))
               (slide-endpos
-               (let ((time-left (- 1.0 (mtrace-fraction mtrace)))
-                     (new-origin (mtrace-endpos mtrace))
-                     (new-vel (clip-velocity velocity
-                                             (mtrace-normal mtrace))))
-                 (mtrace-endpos
-                  (clip-hull hull new-origin (v+ new-origin (vscale time-left new-vel))
-                             :height height)))))
+               (if (mtrace-start-solid-p mtrace)
+                   (mtrace-endpos mtrace)
+                   (let ((time-left (- 1.0 (mtrace-fraction mtrace)))
+                         (new-origin (mtrace-endpos mtrace))
+                         (new-vel (clip-velocity velocity
+                                                 (mtrace-normal mtrace))))
+                     (mtrace-endpos
+                      (clip-hull hull new-origin (v+ new-origin (vscale time-left new-vel))
+                                 :height height))))))
           (if (float> (vdistsq (v3->v2 origin) (v3->v2 climb-endpos))
                       (vdistsq (v3->v2 origin) (v3->v2 slide-endpos)))
               climb-endpos
