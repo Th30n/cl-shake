@@ -223,10 +223,21 @@
 	  (setf (out ii col) (tmp ii))))
    out))
 
+(defun vf (out &rest elements)
+  (declare (dynamic-extent elements))
+  (check-type out (simple-array shiva-float))
+  (let* ((n (list-length elements)))
+    (assert (<= n (array-dimension out 0)))
+    (iter (for i from 0)
+          (declare (type fixnum i))
+	  (for elt in elements)
+	  (setf (aref out i) (shiva-float elt)))
+    out))
+
 (defun v (&rest elements)
   "Create a vector of `SHIVA-FLOAT' and fill it with ELEMENTS."
   (declare (dynamic-extent elements))
-  (let* ((n (length elements))
+  (let* ((n (list-length elements))
 	 (vector (make-array n :element-type 'shiva-float)))
     (iter (for i from 0)
           (declare (type fixnum i))
@@ -264,11 +275,18 @@
 (define-swizzles (x y z) (x y z) (x y z))
 (define-swizzles (r g b) (r g b) (r g b))
 
+(declaim (inline v3->v2))
 (defun v3->v2 (v)
   "Convert VEC 3 to VEC 2 by dropping the y axis."
   (declare (type (vec 3) v))
   (v (vx v) (vz v)))
 
+(defun v2->v3f (out v &optional (y #.(shiva-float 0.0)))
+  (check-type out (vec 3))
+  (check-type v (vec 2))
+  (vf out (vx v) y (vy v)))
+
+(declaim (inline v2->v3))
 (defun v2->v3 (v &optional (y (shiva-float 0.0)))
   "Convert VEC 2 to VEC 3 by adding the y axis, set to 0."
   (declare (type (vec 2) v))

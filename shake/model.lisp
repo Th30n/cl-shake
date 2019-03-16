@@ -54,7 +54,7 @@
     (flet ((vec-to-foreign (v ptr)
              ;; NOTE: cffi:lisp-array-to-foreign cannot be used since we
              ;; convert Lisp double array to C float array.
-             (loop for i from 0 below (array-total-size v) do
+             (loop for i fixnum from 0 below (array-total-size v) do
                   (setf (cffi:mem-aref ptr :float i)
                         (coerce (aref v i) 'single-float)))))
       (vec-to-foreign (l-vertex-data-position vd) position)
@@ -67,7 +67,7 @@
      (flet ((vec-to-foreign (v ptr)
               ;; NOTE: cffi:lisp-array-to-foreign cannot be used since we
               ;; convert Lisp double array to C float array.
-              (loop for i from 0 below (array-total-size v) do
+              (loop for i fixnum from 0 below (array-total-size v) do
                    (setf (cffi:mem-aref ptr :float i)
                          (coerce (aref v i) 'single-float)))))
        (vec-to-foreign (l-vertex-data-position ,vd) position)
@@ -103,90 +103,107 @@
   (min-bounds (v 0 0 0) :type (vec 3) :read-only t)
   (max-bounds (v 0 0 0) :type (vec 3) :read-only t))
 
-(defun make-triangles (sidedef)
+(declaim (ftype (function (sbsp::sidedef) (values shiva-float shiva-float)) sidedef-uv))
+(defun sidedef-uv (sidedef)
+  ;; NOTE: This function doesn't cons, so keep it as such.
+  (let ((texinfo (sbsp:sidedef-texinfo sidedef)))
+    (if (or (null texinfo) (eq :caulk texinfo))
+        (values #.(shiva-float 0) #.(shiva-float 1))
+        (ecase (sbsp:texinfo-draw-mode texinfo)
+          (:tile
+           (with-struct (lineseg- start end orig-line)
+               (sbsp:sidedef-lineseg sidedef)
+             ;; Winding is clockwise (right to left), so reverse the
+             ;; texture.
+             (values (vdist start (linedef-end orig-line))
+                     (vdist end (linedef-end orig-line)))))
+          (:scale-to-fit
+           (with-struct (lineseg- t-start t-end)
+               (sbsp:sidedef-lineseg sidedef)
+             ;; Reverse the coordinates, due to vertex winding.
+             (values (- #.(shiva-float 1) t-start) (- #.(shiva-float 1) t-end))))))))
+
+(defun sidedef-fill-vertex-data (sidedef ptr)
+  ;; NOTE: This function conses very little. SB-PROFILE sometimes reports
+  ;; consing, because it tracks GC page level allocation, so after multiple
+  ;; invocations will this will actually be reported as consing.
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
     (let* ((front-sector (sbsp:sidedef-front-sector sidedef))
            (back-sector (sbsp:sidedef-back-sector sidedef))
            (floor-bottom (aif front-sector
                               (sbsp:sector-floor-height it)
-                              0))
+                              #.(shiva-float 0)))
            (floor-top (aif back-sector
                            (sbsp:sector-floor-height it)
-                           1))
+                           #.(shiva-float 1)))
            (ceiling-top (aif front-sector
                              (sbsp:sector-ceiling-height it)
-                             1))
+                             #.(shiva-float 1)))
            (ceiling-bottom (aif back-sector
                                 (sbsp:sector-ceiling-height it)
-                                1)))
-      (when (float< (shiva-float floor-top)
-                    (shiva-float floor-bottom))
+                                #.(shiva-float 1))))
+      (when (float< (shiva-float floor-top) (shiva-float floor-bottom))
         (rotatef floor-bottom floor-top))
-      (when (float< (shiva-float ceiling-top)
-                    (shiva-float ceiling-bottom))
+      (when (float< (shiva-float ceiling-top) (shiva-float ceiling-bottom))
         (rotatef ceiling-bottom ceiling-top))
-      (append
-       (let ((start-3d-bot (v2->v3 start floor-bottom))
-             (end-3d-bot (v2->v3 end floor-bottom))
-             (start-3d-top (v2->v3 start floor-top))
-             (end-3d-top (v2->v3 end floor-top)))
-         (list start-3d-top end-3d-top start-3d-bot
-               start-3d-bot end-3d-top end-3d-bot))
-       (when (or front-sector back-sector)
-         (let ((start-3d-bot (v2->v3 start ceiling-bottom))
-               (end-3d-bot (v2->v3 end ceiling-bottom))
-               (start-3d-top (v2->v3 start ceiling-top))
-               (end-3d-top (v2->v3 end ceiling-top)))
-           (list start-3d-top end-3d-top start-3d-bot
-                 start-3d-bot end-3d-top end-3d-bot)))))))
-
-(defun make-texcoords (sidedef)
-  (let ((texinfo (sbsp:sidedef-texinfo sidedef)))
-    (unless (or (null texinfo) (eq :caulk texinfo))
-      (let ((texcoord-bounds
-             (ecase (sbsp:texinfo-draw-mode texinfo)
-               (:tile
-                (with-struct (lineseg- start end orig-line)
-                    (sbsp:sidedef-lineseg sidedef)
-                  ;; Winding is clockwise (right to left), so reverse the
-                  ;; texture.
-                  (cons (vdist start (linedef-end orig-line))
-                        (vdist end (linedef-end orig-line)))))
-               (:scale-to-fit
-                (with-struct (lineseg- t-start t-end)
-                    (sbsp:sidedef-lineseg sidedef)
-                  ;; Reverse the coordinates, due to vertex winding.
-                  (cons (- 1d0 t-start) (- 1d0 t-end)))))))
-        (destructuring-bind (u-start . u-end) texcoord-bounds
-          (mapcar (lambda (uv) (v+ (sbsp:texinfo-offset texinfo) uv))
-                  (list (v u-start 0) (v u-end 0) (v u-start 1)
-                        (v u-start 1) (v u-end 0) (v u-end 1))))))))
+      (multiple-value-bind (u-start u-end) (sidedef-uv sidedef)
+        (flet ((set-data (index pos u v)
+                 (let* ((uv (make-array 2 :element-type 'shiva-float))
+                        (data
+                         (make-l-vertex-data
+                          :position pos
+                          :normal (v2->v3 (sbsp:lineseg-normal (sbsp:sidedef-lineseg sidedef)))
+                          :uv uv
+                          :color (sbsp:sidedef-color sidedef))))
+                   (declare (dynamic-extent uv data))
+                   (vf uv u v)
+                   ;; NOTE: This conses for some reason
+                   (setf (cffi:mem-aref ptr '(:struct vertex-data) index) data))))
+          (let ((start-3d-bot (make-array 3 :element-type 'shiva-float))
+                (end-3d-bot (make-array 3 :element-type 'shiva-float))
+                (start-3d-top (make-array 3 :element-type 'shiva-float))
+                (end-3d-top (make-array 3 :element-type 'shiva-float)))
+            (declare (dynamic-extent start-3d-bot end-3d-bot start-3d-top end-3d-top))
+            (v2->v3f start-3d-bot start floor-bottom)
+            (v2->v3f end-3d-bot end floor-bottom)
+            (v2->v3f start-3d-top start floor-top)
+            (v2->v3f end-3d-top end floor-top)
+            (set-data 0 start-3d-top u-start 0)
+            (set-data 1 end-3d-top u-end 0)
+            (set-data 2 start-3d-bot u-start 1)
+            (set-data 3 start-3d-bot u-start 1)
+            (set-data 4 end-3d-top u-end 0)
+            (set-data 5 end-3d-bot u-end 1))
+          (when (or front-sector back-sector)
+            (let ((start-3d-bot (make-array 3 :element-type 'shiva-float))
+                  (end-3d-bot (make-array 3 :element-type 'shiva-float))
+                  (start-3d-top (make-array 3 :element-type 'shiva-float))
+                  (end-3d-top (make-array 3 :element-type 'shiva-float)))
+              (declare (dynamic-extent start-3d-bot end-3d-bot start-3d-top end-3d-top))
+              (v2->v3f start-3d-bot start ceiling-bottom)
+              (v2->v3f end-3d-bot end ceiling-bottom)
+              (v2->v3f start-3d-top start ceiling-top)
+              (v2->v3f end-3d-top end ceiling-top)
+              (set-data 6 start-3d-top u-start 0)
+              (set-data 7 end-3d-top u-end 0)
+              (set-data 8 start-3d-bot u-start 1)
+              (set-data 9 start-3d-bot u-start 1)
+              (set-data 10 end-3d-top u-end 0)
+              (set-data 11 end-3d-bot u-end 1))))))))
 
 (defun sidedef->surf-triangles (sidedef)
-  (let* ((positions (make-triangles sidedef))
-         (tex-name (aif (sbsp:sidedef-texinfo sidedef)
+  (let* ((tex-name (aif (sbsp:sidedef-texinfo sidedef)
                         (string-downcase (sbsp:texinfo-name it))))
-         (num-verts (list-length positions))
-         (verts (cffi:foreign-alloc '(:struct vertex-data) :count num-verts))
-         (texcoords (or (make-texcoords sidedef)
-                        (make-list 6 :initial-element (v 0 0)))))
-    (when (or (sbsp:sidedef-front-sector sidedef)
-              (sbsp:sidedef-back-sector sidedef))
-      (setf texcoords (append texcoords (copy-list texcoords))))
-    (loop for pos in positions
-       and uv in texcoords
-       and i from 0 do
-         (setf (cffi:mem-aref verts '(:struct vertex-data) i)
-               (make-l-vertex-data
-                :position pos
-                :color (sbsp:sidedef-color sidedef)
-                :normal (v2->v3 (sbsp:lineseg-normal
-                                 (sbsp:sidedef-lineseg sidedef)))
-                :uv uv)))
+         (num-verts (if (or (sbsp:sidedef-front-sector sidedef)
+                            (sbsp:sidedef-back-sector sidedef))
+                        12
+                        6))
+         (verts-ptr (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+    (sidedef-fill-vertex-data sidedef verts-ptr)
     (make-surf-triangles :num-verts num-verts
                          :verts-byte-size (* num-verts (cffi:foreign-type-size
                                                         '(:struct vertex-data)))
-                         :verts verts
+                         :verts verts-ptr
                          :tex-name tex-name)))
 
 (defun polygon->surf-triangles (polygon height &key (color (v 1 0 0)))

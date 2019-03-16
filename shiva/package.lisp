@@ -24,8 +24,8 @@
   (:export #:shiva-float
            #:float= #:float> #:float>= #:float< #:float<=
            #:rad->deg #:deg->rad
-           #:vec #:v #:vx #:vy #:vz #:vw
-           #:v3->v2 #:v2->v3
+           #:vec #:v #:vf #:vx #:vy #:vz #:vw
+           #:v3->v2 #:v2->v3 #:v2->v3f
            #:v- #:v+ #:v= #:vnorm #:vnormalize
            #:vscale #:vdot #:vcross #:vtransform #:vrotate
            #:v3dot
