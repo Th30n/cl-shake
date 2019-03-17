@@ -392,9 +392,11 @@
                ;; reverse the split order
                (cons (cdr splitted) (car splitted)))))))))
 
-(defun partition-surfaces (splitter surfaces)
+(defun partition-surfaces (splitter surfaces &key same-to-back-p)
   "Partition SURFACES by given SPLITTER and return front, back surfaces and on
-splitter lines. This process may create additional surfaces."
+splitter lines. This process may create additional surfaces. If SAME-TO-BACK-P
+is T, surfaces that are on the same line as splitter are treated as back
+surfaces. Otherwise same facing go to front, opposite to back."
   (declare (type linedef splitter) (type list surfaces))
   (let (front
         back
@@ -410,7 +412,9 @@ splitter lines. This process may create additional surfaces."
                  (push (lineseg-orig-line lineseg) on-splitter)
                  (if (v= (linedef-normal splitter) (lineseg-normal lineseg))
                      ;; same facing go to the front
-                     (push surf front)
+                     (if same-to-back-p
+                         (push surf back)
+                         (push surf front))
                      ;; opposite facing go in the back
                      (progn
                        (assert (v= (v- (linedef-normal splitter))
@@ -567,8 +571,6 @@ One of:
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
               (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
-                ;; TODO: (back) SECTOR may be NIL, but we still have
-                ;; FRONT-SECTORS. Investigate why this happens.
                 (assert (every (curry #'equalp sector) front-sectors))
                 (make-leaf :bounds bounds :surfaces rest
                            :subsector

@@ -132,6 +132,64 @@ direction."
             (float>= (sector-floor-height s1) (sector-floor-height s2))
             (float<= (sector-ceiling-height s1) (sector-ceiling-height s2)))))))
 
+(defun surf-on-brush-p (surf brush)
+  (check-type surf sidedef)
+  (check-type brush brush)
+  (dolist (split-surf (brush-surfaces brush))
+    (let ((split-line (lineseg-orig-line (sidedef-lineseg split-surf))))
+      (multiple-value-bind (num den)
+          (sbsp::line-intersect-ratio split-line (sidedef-lineseg surf))
+        (when (and (float= den (shiva-float 0.0))
+                   (float= num (shiva-float 0.0))
+                   (v= (linedef-normal split-line) (lineseg-normal (sidedef-lineseg surf))))
+          (return-from surf-on-brush-p t))))))
+
+(defun sidedef-merge-contents (surf brush)
+  (check-type surf sidedef)
+  (check-type brush brush)
+  (let ((front-sector (sidedef-front-sector surf))
+        (back-sector (sidedef-back-sector surf))
+        (in-sector (sidedef-back-sector
+                    (first (brush-surfaces brush)))))
+    ;; Due to comparison ordering, we may set sector multiple times, so take
+    ;; the one with the highest priorty.
+    (if (surf-on-brush-p surf brush)
+        ;; If we have same surf as BRUSH, then we only need to overwrite
+        ;; back sector, because front sector is pointing *outside* of BRUSH.
+        (setf front-sector (make-sector))
+        (progn
+          (setf (sidedef-front-sector surf)
+                (sbsp::copy-sector (if front-sector front-sector in-sector)))
+          (setf front-sector (sidedef-front-sector surf))))
+
+    (if back-sector
+        (progn
+          (setf (sidedef-back-sector surf) (sbsp::copy-sector back-sector))
+          (setf back-sector (sidedef-back-sector surf)))
+        ;; Nil sector never gets overwritten
+        ;; TODO: No nil sectors
+        ;; TODO: Contents priority
+        (setf back-sector (make-sector)))
+
+    ;; Higher floor overrides lower
+    (when (float> (sector-floor-height in-sector) (sector-floor-height front-sector))
+      (setf (sector-floor-height front-sector) (sector-floor-height in-sector))
+      (setf (sector-floor-texinfo front-sector) (sector-floor-texinfo in-sector)))
+    (when (float> (sector-floor-height in-sector) (sector-floor-height back-sector))
+      (setf (sector-floor-height back-sector) (sector-floor-height in-sector))
+      (setf (sector-floor-texinfo back-sector) (sector-floor-texinfo in-sector)))
+    ;; Lower ceiling overrides higher
+    (when (float< (sector-ceiling-height in-sector) (sector-ceiling-height front-sector))
+      (setf (sector-ceiling-height front-sector) (sector-ceiling-height in-sector))
+      (setf (sector-ceiling-texinfo front-sector) (sector-ceiling-texinfo in-sector)))
+    (when (float< (sector-ceiling-height in-sector) (sector-ceiling-height back-sector))
+      (setf (sector-ceiling-height back-sector) (sector-ceiling-height in-sector))
+      (setf (sector-ceiling-texinfo back-sector) (sector-ceiling-texinfo in-sector)))
+    ;; TODO: Ambient light?
+    )
+  surf)
+
+;; TODO: Test this function *thoroughly*!
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
   ready for binary space partitioning."
@@ -146,66 +204,30 @@ direction."
             (dolist (split-surf (brush-surfaces b2))
               (let ((split-line (lineseg-orig-line (sidedef-lineseg split-surf))))
                 (multiple-value-bind (new-outside new-inside)
-                    (sbsp:partition-surfaces split-line inside)
+                    ;; TODO: This kills shared surfaces when consuming, it
+                    ;; shouldn't happen always :/
+                    (sbsp:partition-surfaces split-line inside :same-to-back-p t)
                   (unionf outside new-outside :test #'equalp)
                   (setf inside new-inside))))
             ;; Keep the inside surfaces if we can't continue in another brush.
-            (when (not (brush-consume-p b2 b1))
-              (unionf outside
-                      (mapcar (lambda (surf)
-                                (let ((front-sector (sidedef-front-sector surf))
-                                      (back-sector (sidedef-back-sector surf))
-                                      (in-sector (sidedef-back-sector
-                                                  (first (brush-surfaces b2)))))
-                                  ;; Due to comparison ordering, we may set
-                                  ;; sector multiple times, so take the one
-                                  ;; with the highest priorty.
-                                  (setf (sidedef-front-sector surf)
-                                        (sbsp::copy-sector
-                                         (if front-sector front-sector in-sector)))
-                                  (setf front-sector (sidedef-front-sector surf))
-
-                                  (if back-sector
-                                      (progn
-                                        (setf (sidedef-back-sector surf)
-                                              (sbsp::copy-sector back-sector))
-                                        (setf back-sector (sidedef-back-sector surf)))
-                                      ;; Nil sector never gets overwritten
-                                      ;; TODO: No nil sectors
-                                      ;; TODO: Contents priority
-                                      (setf back-sector (make-sector)))
-
-                                  ;; Higher floor overrides lower
-                                  (when (float> (sector-floor-height in-sector)
-                                                (sector-floor-height front-sector))
-                                    (setf (sector-floor-height front-sector)
-                                          (sector-floor-height in-sector))
-                                    (setf (sector-floor-texinfo front-sector)
-                                          (sector-floor-texinfo in-sector)))
-                                  (when (float> (sector-floor-height in-sector)
-                                                (sector-floor-height back-sector))
-                                    (setf (sector-floor-height back-sector)
-                                          (sector-floor-height in-sector))
-                                    (setf (sector-floor-texinfo back-sector)
-                                          (sector-floor-texinfo in-sector)))
-                                  ;; Lower ceiling overrides higher
-                                  (when (float< (sector-ceiling-height in-sector)
-                                                (sector-ceiling-height front-sector))
-                                    (setf (sector-ceiling-height front-sector)
-                                          (sector-ceiling-height in-sector))
-                                    (setf (sector-ceiling-texinfo front-sector)
-                                          (sector-ceiling-texinfo in-sector)))
-                                  (when (float< (sector-ceiling-height in-sector)
-                                                (sector-ceiling-height back-sector))
-                                    (setf (sector-ceiling-height back-sector)
-                                          (sector-ceiling-height in-sector))
-                                    (setf (sector-ceiling-texinfo back-sector)
-                                          (sector-ceiling-texinfo in-sector)))
-                                  ;; TODO: Ambient light?
-                                  )
-                                surf)
-                              inside)
-                      :test #'equalp))))
+            (if (not (brush-consume-p b2 b1))
+                (unionf outside (mapcar (lambda (surf)
+                                          (sidedef-merge-contents surf b2))
+                                        inside)
+                        :test #'equalp)
+                ;; Restore killed shared surfaces, but overwrite our contents
+                ;; with those of b2, because we are consumed by it.
+                (unionf outside
+                        (loop for surf in inside
+                           when (surf-on-brush-p surf b2)
+                           collect (if (sidedef-back-sector
+                                        (first (brush-surfaces b2)))
+                                       (prog1 (sidedef-merge-contents surf b2)
+                                         (assert (equalp (sidedef-back-sector surf)
+                                                         (sidedef-back-sector (first (brush-surfaces b2))))))
+                                       (prog1 surf
+                                         (setf (sidedef-back-sector surf) nil))))
+                        :test #'equalp))))
         (appendf surfs outside)))
     surfs))
 
