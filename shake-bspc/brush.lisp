@@ -116,22 +116,6 @@
     (make-brush :surfaces (mapcar #'translate-surf (brush-surfaces brush))
                 :contents (brush-contents brush))))
 
-(defun brush-lower-p (b1 b2)
-  "Return BRUSH B1 if its floor height is lower of B2. If brush B2 has no
-  floor, it is always higher than B1 unless B1 also has no floor."
-  (flet ((brush-sectors (brush)
-           (mapcar #'sidedef-back-sector (brush-surfaces brush))))
-    (let* ((sectors1 (brush-sectors b1))
-           (s1 (first sectors1))
-           (sectors2 (brush-sectors b2))
-           (s2 (first sectors2)))
-      (dolist (sectors (list sectors1 sectors2))
-        (assert (every (curry #'equalp (car sectors)) (cdr sectors))))
-      (when (or (and (not s2) s1)
-                (and s1 s2 (float> (sector-floor-height s2)
-                                   (sector-floor-height s1))))
-        b1))))
-
 (defun brush-consume-p (b1 b2)
   "Return T if BRUSH B2 can be merged into B1, i.e. B1 consumes B2. Note, the
 relation is not symmetrical, because certain properties allow consuming in one
@@ -140,16 +124,13 @@ direction."
            (mapcar #'sidedef-back-sector (brush-surfaces brush))))
     (let* ((s1 (first (brush-sectors b1)))
            (s2 (first (brush-sectors b2))))
-      ;;(when (and s1 s2) (break))
       (or
        ;; Nil sector consumes all
        (not s1)
-       ;; Consume all lower sectors
-       (brush-lower-p b2 b1)
-       ;; Consume if s2 has same contents as s1
+       ;; Consume lower sectors and (TODO) if s2 has same contents as s1
        (and s1 s2
-            (float= (sector-ceiling-height s1) (sector-ceiling-height s2))
-            (float= (sector-floor-height s1) (sector-floor-height s2)))))))
+            (float>= (sector-floor-height s1) (sector-floor-height s2))
+            (float<= (sector-ceiling-height s1) (sector-ceiling-height s2)))))))
 
 (defun prepare-brushes-for-bsp (brushes)
   "Takes a list of BRUSHES, performs clipping, merging and returns SIDEDEFs
@@ -160,8 +141,6 @@ direction."
             inside)
         (dolist (b2 brushes)
           (unless (eq b1 b2)
-              ;; (or (eq b1 b2)
-              ;;     (brush-lower-p b2 b1))
             (shiftf inside outside nil)
             ;; Clip brush b1 against b2.
             (dolist (split-surf (brush-surfaces b2))
@@ -175,20 +154,55 @@ direction."
               (unionf outside
                       (mapcar (lambda (surf)
                                 (let ((front-sector (sidedef-front-sector surf))
-                                      (back-sector (sidedef-back-sector
-                                                    (first (brush-surfaces b2)))))
+                                      (back-sector (sidedef-back-sector surf))
+                                      (in-sector (sidedef-back-sector
+                                                  (first (brush-surfaces b2)))))
                                   ;; Due to comparison ordering, we may set
-                                  ;; front-sector multiple times, so take the
-                                  ;; one with the highest priorty.
-                                  (when (or (not front-sector)
-                                            (float> (sector-floor-height
-                                                     back-sector)
-                                                    (sector-floor-height
-                                                     front-sector)))
-                                    ;; TODO: What about same floor, but
-                                    ;; different ceiling or other?
-                                    (setf (sidedef-front-sector surf)
-                                          back-sector)))
+                                  ;; sector multiple times, so take the one
+                                  ;; with the highest priorty.
+                                  (setf (sidedef-front-sector surf)
+                                        (sbsp::copy-sector
+                                         (if front-sector front-sector in-sector)))
+                                  (setf front-sector (sidedef-front-sector surf))
+
+                                  (if back-sector
+                                      (progn
+                                        (setf (sidedef-back-sector surf)
+                                              (sbsp::copy-sector back-sector))
+                                        (setf back-sector (sidedef-back-sector surf)))
+                                      ;; Nil sector never gets overwritten
+                                      ;; TODO: No nil sectors
+                                      ;; TODO: Contents priority
+                                      (setf back-sector (make-sector)))
+
+                                  ;; Higher floor overrides lower
+                                  (when (float> (sector-floor-height in-sector)
+                                                (sector-floor-height front-sector))
+                                    (setf (sector-floor-height front-sector)
+                                          (sector-floor-height in-sector))
+                                    (setf (sector-floor-texinfo front-sector)
+                                          (sector-floor-texinfo in-sector)))
+                                  (when (float> (sector-floor-height in-sector)
+                                                (sector-floor-height back-sector))
+                                    (setf (sector-floor-height back-sector)
+                                          (sector-floor-height in-sector))
+                                    (setf (sector-floor-texinfo back-sector)
+                                          (sector-floor-texinfo in-sector)))
+                                  ;; Lower ceiling overrides higher
+                                  (when (float< (sector-ceiling-height in-sector)
+                                                (sector-ceiling-height front-sector))
+                                    (setf (sector-ceiling-height front-sector)
+                                          (sector-ceiling-height in-sector))
+                                    (setf (sector-ceiling-texinfo front-sector)
+                                          (sector-ceiling-texinfo in-sector)))
+                                  (when (float< (sector-ceiling-height in-sector)
+                                                (sector-ceiling-height back-sector))
+                                    (setf (sector-ceiling-height back-sector)
+                                          (sector-ceiling-height in-sector))
+                                    (setf (sector-ceiling-texinfo back-sector)
+                                          (sector-ceiling-texinfo in-sector)))
+                                  ;; TODO: Ambient light?
+                                  )
                                 surf)
                               inside)
                       :test #'equalp))))

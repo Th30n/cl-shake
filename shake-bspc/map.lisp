@@ -112,7 +112,9 @@
                    :things things)))
 
 (define-condition invalid-map-file-error (error)
-  ((message :initform "" :initarg :message :reader message)))
+  ((message :initform "" :initarg :message :reader message))
+  (:report (lambda (e stream)
+             (write-line (message e) stream))))
 
 (defun check-map-file (map-file)
   (let ((player-spawn-count 0))

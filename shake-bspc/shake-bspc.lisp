@@ -206,6 +206,7 @@
   ;; TODO: Share this, instead of duplicating.
   (orig-sector nil :type (or null sector)))
 
+;; TODO: COPY-SIDEDEF should probably also copy sectors
 (defstruct sidedef
   "A side definition for a line segment."
   (lineseg nil :type lineseg)
@@ -552,6 +553,7 @@ One of:
               (convex-hull-p (mapcar #'linedef->lineseg convex-region))))
   (if (null surfaces)
       (progn
+        ;; TODO: sector contents
         (make-leaf :bounds bounds :contents :contents-solid
                    :subsector (make-subsector :lines convex-region
                                               :orig-sector sector)))
@@ -565,6 +567,8 @@ One of:
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
               (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
+                ;; TODO: (back) SECTOR may be NIL, but we still have
+                ;; FRONT-SECTORS. Investigate why this happens.
                 (assert (every (curry #'equalp sector) front-sectors))
                 (make-leaf :bounds bounds :surfaces rest
                            :subsector
