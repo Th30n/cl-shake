@@ -331,11 +331,15 @@
 (defconstant +step-height+ #.(shiva-float 0.375d0) "Height of a stair step.")
 
 (defun player-climb-move (origin velocity hull)
-  (let ((step-origin (v+ origin (v 0.0 +step-height+ 0.0)))
-        (height #.(shiva-float 0.5)))
-    (if (/= 1.0 (mtrace-fraction (clip-hull hull origin step-origin :height height)))
+  (let* ((step-origin (v+ origin (v 0.0 +step-height+ 0.0)))
+         (height #.(shiva-float 0.5))
+         (climb-mtrace (clip-hull hull origin step-origin :height height)))
+    (if (/= 1.0 (mtrace-fraction climb-mtrace))
         ;; Unable to move up to climb a stair.
-        origin
+        ;; origin
+        (mtrace-endpos (clip-hull hull (mtrace-endpos climb-mtrace)
+                                  (v+ (mtrace-endpos climb-mtrace) velocity)
+                                  :height height))
         ;; Try climbing a stair with regular movement.
         ;; XXX: What if we need to climb again?
         (mtrace-endpos (clip-hull hull step-origin (v+ step-origin velocity)
