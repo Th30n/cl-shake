@@ -74,7 +74,7 @@
                     (floor-height (sbsp:sector-floor-height sector))
                     (ceiling-height (sbsp:sector-ceiling-height sector)))
           (and (or *ignore-empty-leaves* (not (eq contents :contents-solid)))
-               (float>= ceiling-height (+ (vy point) height))
+               (float<= (+ (vy point) height) ceiling-height)
                (float>= (vy point) floor-height))))))
 
 (defparameter *dist-epsilon*
