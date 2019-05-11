@@ -105,6 +105,26 @@
         (setf midf (+ p1f (* frac (- p2f p1f)))
               mid (v+ p1 (vscale frac (v- p2 p1)))))))
 
+(defun adjust-midf-vertical (hull p1 p2 p1f p2f mid midf frac height)
+  "Returns adjusted splitting fraction MIDF as the primary value, and adjusted
+  MID point as the secondary. Adjustment is done such that the split point is
+  moved inside of the sector's vertical bounds if it ended up outside due to
+  floating point errors."
+  (flet ((insidep ()
+           (let* ((sector (hull-point-sector hull (v3->v2 mid)))
+                  (floor-height (sbsp:sector-floor-height sector))
+                  (ceiling-height (sbsp:sector-ceiling-height sector)))
+             (and (float>= (vy mid) floor-height)
+                  (float<= (+ (vy mid) height) ceiling-height)))))
+    (do ()
+        ((insidep)
+         (values midf mid))
+      (decf frac #.(shiva-float 0.01d0))
+      (if (minusp frac)
+          (return (values midf mid))
+          (setf midf (+ p1f (* frac (- p2f p1f)))
+                mid (v+ p1 (vscale frac (v- p2 p1))))))))
+
 (defun split-hull-check (hull height node t1 t2 p1 p2 p1f p2f)
   "Check for collision on both sides of given hull NODE. T1 and T2 are
   distances to splitting node line for points P1 and P2. P1F and P2F are
@@ -188,18 +208,22 @@
                          (let* ((frac (cross-fraction t1 t2))
                                 (midf (+ p1f (* frac (- p2f p1f))))
                                 (mid (v+ p1 (vscale frac (v- p2 p1)))))
-                           (values (make-mtrace :fraction midf
-                                                :normal (v 0 1 0)
-                                                :endpos mid)
-                                   t))))
+                           (multiple-value-bind (adj-midf adj-mid)
+                               (adjust-midf-vertical hull p1 p2 p1f p2f mid midf frac height)
+                             (values (make-mtrace :fraction adj-midf
+                                                  :normal (v 0 1 0)
+                                                  :endpos adj-mid)
+                                     t)))))
                    ;; We are crossing the floor
                    (let* ((frac (cross-fraction t1 t2))
                           (midf (+ p1f (* frac (- p2f p1f))))
                           (mid (v+ p1 (vscale frac (v- p2 p1)))))
-                     (values (make-mtrace :fraction midf
-                                          :normal (v 0 1 0)
-                                          :endpos mid)
-                             t))))))
+                     (multiple-value-bind (adj-midf adj-mid)
+                         (adjust-midf-vertical hull p1 p2 p1f p2f mid midf frac height)
+                       (values (make-mtrace :fraction adj-midf
+                                            :normal (v 0 1 0)
+                                            :endpos adj-mid)
+                               t)))))))
           ;; Missing sector, so allow movement. TODO: We should probably
           ;; have no missing sectors, maybe log a warning here.
           (t (values (make-mtrace :endpos p2) nil))))
