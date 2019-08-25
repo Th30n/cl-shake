@@ -35,3 +35,9 @@
                (:file "game")
                (:file "shake"))
   :in-order-to ((test-op (test-op shake-test))))
+
+(defsystem "shake/executable"
+  :build-operation program-op
+  :build-pathname "shake-command"
+  :entry-point "shake::main"
+  :depends-on ("shake"))
