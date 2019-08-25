@@ -688,32 +688,6 @@
       (projectile (projectile-render render-thing camera model-manager))
       (door (door-render render-thing camera)))))
 
-(defun call-with-init (function)
-  "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
-  ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
-  ;; executed inside that thread.
-  (sdl2:with-init (:everything)
-    (let* ((*commands* nil)
-           (*console* (make-console))
-           (*last-printed-error* nil)
-           (*last-printed-warning* nil))
-      (declare (special *commands* *console* *last-printed-error* *last-printed-warning*))
-      (reset-game-keys)
-      (with-data-dirs *base-dir*
-        (set-gl-attrs)
-        (let* ((*win-width* 1024) (*win-height* 768)
-               (*rend-width* *win-width*) (*rend-height* *win-height*))
-          (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
-                                    :flags '(:opengl))
-            (srend:with-render-system
-                (render-system window *rend-width* *rend-height*)
-              (sdl2:set-relative-mouse-mode 1)
-              (srend:print-gl-info (srend:render-system-gl-config render-system))
-              (funcall function render-system window))))))))
-
-(defmacro with-init ((render-system window) &body body)
-  `(call-with-init (lambda (,render-system ,window) ,@body)))
-
 (defun add-command (symbol function)
   (declare (special *commands*))
   (check-type *commands* list)
@@ -729,6 +703,36 @@
   (check-type *commands* list)
   (check-type symbol symbol)
   (find symbol *commands* :key #'car))
+
+(defun call-with-init (function)
+  "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
+  ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
+  ;; executed inside that thread.
+  (sdl2:with-init (:everything)
+    (let* ((*commands* nil)
+           (*console* (make-console))
+           (*last-printed-error* nil)
+           (*last-printed-warning* nil))
+      (declare (special *commands* *console* *last-printed-error* *last-printed-warning*))
+      (reset-game-keys)
+      (add-command 'base-dir (lambda () (printf "'~A'" *base-dir*)))
+      (add-command 'pwd (lambda () (printf "'~A'" (uiop:getcwd))))
+      (with-data-dirs *base-dir*
+        (add-command 'data-search-paths
+                     (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
+        (set-gl-attrs)
+        (let* ((*win-width* 1024) (*win-height* 768)
+               (*rend-width* *win-width*) (*rend-height* *win-height*))
+          (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
+                                    :flags '(:opengl))
+            (srend:with-render-system
+                (render-system window *rend-width* *rend-height*)
+              (sdl2:set-relative-mouse-mode 1)
+              (srend:print-gl-info (srend:render-system-gl-config render-system))
+              (funcall function render-system window))))))))
+
+(defmacro with-init ((render-system window) &body body)
+  `(call-with-init (lambda (,render-system ,window) ,@body)))
 
 (defstruct (console (:constructor %make-console))
   (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
