@@ -875,19 +875,34 @@
     ((eq :scancode-backspace (sdl2:scancode keysym))
      (console-backspace console))))
 
-(defun restart-map (game camera render-system model-manager)
+(defun restart-map (map-model game camera render-system model-manager)
+  "Restart the map and return PLAYER."
   (declare (special *player* smdl:*world-model*))
-  (check-type smdl:*world-model* smdl:bsp-model)
+  (check-type map-model smdl:bsp-model)
   (check-type game game)
   (check-type camera camera)
   (check-type render-system srend:render-system)
   (check-type model-manager smdl::model-manager)
   (setf (game-think-things game) nil)
   (setf (game-render-things game) nil)
-  (setf *player*
-        (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera))
-  (spawn-things game (srend::render-system-image-manager render-system)
-                model-manager smdl:*world-model*))
+  (prog1 (spawn-player (smdl:bsp-model-things map-model) camera)
+    (spawn-things game (srend::render-system-image-manager render-system)
+                  model-manager map-model)))
+
+(defun load-map (map-fname game camera render-system model-manager)
+  "Load a map from MAP-FNAME bsp file and return map model and player. Fills
+the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
+  (check-type map-fname string)
+  (check-type game game)
+  (check-type camera camera)
+  (check-type render-system srend:render-system)
+  (check-type model-manager smdl::model-manager)
+  (let ((map-model (smdl:get-model model-manager map-fname)))
+    ;; TODO: Handle map-model defaulted.
+    (check-type map-model smdl:bsp-model)
+    (load-map-textures render-system (smdl:bsp-model-nodes map-model))
+    (values map-model
+            (restart-map map-model game camera render-system model-manager))))
 
 (defun main ()
   (with-init (render-system win)
@@ -902,20 +917,25 @@
                                        #.(shiva-float 100d0)))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
                (frame-timer (make-timer :name "Main Loop"))
-               (smdl:*world-model* (smdl:get-model model-manager "test.bsp"))
                (game (make-game))
                (*player* nil))
           (declare (special *player*))
-          (load-map-textures render-system (smdl:bsp-model-nodes smdl:*world-model*))
-          (setf *player*
-                (spawn-player (smdl:bsp-model-things smdl:*world-model*) camera))
-          (spawn-things game (srend::render-system-image-manager render-system)
-                        model-manager smdl:*world-model*)
+          (multiple-value-setq (smdl:*world-model* *player*)
+            (load-map "test.bsp" game camera render-system model-manager))
           (srend:print-memory-usage render-system)
           (add-command 'restart-map
                        (lambda ()
                          (printf "Restarting map...~%")
-                         (restart-map game camera render-system model-manager)))
+                         (setf *player* (restart-map smdl:*world-model* game camera
+                                                     render-system model-manager))
+                         (printf "Restarted map.~%")))
+          (add-command 'load-map
+                       (lambda (map-fname)
+                         (printf "Loading map '~A'...~%" map-fname)
+                         ;; TODO: Unload old map models and things
+                         (multiple-value-setq (smdl:*world-model* *player*)
+                           (load-map map-fname game camera render-system model-manager))
+                         (printf "Loaded '~A'.~%" map-fname)))
           (add-command 'tbkfa
                        (lambda ()
                          (let ((all-weapons (list (make-shotgun (srend::render-system-image-manager render-system)

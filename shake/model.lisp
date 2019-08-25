@@ -384,7 +384,7 @@ and return the default model."
   (setf (gethash name (model-manager-models model-manager)) model))
 
 (defun get-model (model-manager name)
-  (declare (type model-manager model-manager)
-           (type string name))
+  (check-type model-manager model-manager)
+  (check-type name string)
   (or (gethash name (model-manager-models model-manager))
       (add-model model-manager (load-model name) :name name)))
