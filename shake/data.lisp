@@ -58,12 +58,21 @@
   #-(or sbcl cmu lispworks openmcl allegro clisp)
   (error "file-exists-p not implemented"))
 
+(defun call-with-data-dirs (basedir fun)
+  "Sets up the environment for searching data files. BASEDIR is added to a
+  list of search paths, which by default contains the current directory."
+  (let ((*search-paths* (union (list (uiop:getcwd))
+                               (list (pathname-as-directory basedir))
+                               :test #'uiop:pathname-equal)))
+    (declare (special *search-paths*))
+    (funcall fun)))
+
 (defmacro with-data-dirs (basedir &body body)
   "Sets up the environment for searching data files. BASEDIR is added to a
   list of search paths, which by default contains the current directory."
-  `(let ((*search-paths* (list #p"" (pathname-as-directory ,basedir))))
-     (declare (special *search-paths*))
-     ,@body))
+  `(call-with-data-dirs ,basedir (lambda ()
+                                   (declare (special *search-paths*))
+                                   ,@body)))
 
 (define-condition data-file-error (error)
   ((filename :initarg :filename :reader data-file-error-filename)
