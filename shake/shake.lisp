@@ -629,7 +629,7 @@
             (zap (lambda (x) (* 0.25 x)) (aref mvp 2 2))
             (zap (lambda (x) (* 0.25 x)) (aref mvp 2 3))
             (srend:render-surface
-             (smdl::obj-model-verts (smdl:get-model model-manager "../shotgun.obj"))
+             (smdl::obj-model-verts (smdl:get-model model-manager "shotgun.obj"))
              mvp))))
       ;; XXX: Placeholder for rendering shot, this should be done elsewhere.
       ;; Alternate fire (projectile)
