@@ -736,8 +736,10 @@
 
 (defstruct (console (:constructor %make-console))
   (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
+  ;; TODO: Set maximum number of stored lines.
   (reversed-lines nil)
-  (active-p nil :type boolean))
+  (active-p nil :type boolean)
+  (display-from-line 0 :type fixnum))
 
 (defun console-print (console control-string &rest format-arguments)
   (check-type console console)
@@ -831,6 +833,7 @@
 
 (defun console-commit (console)
   (printf "> ~A~%" (console-text console))
+  (setf (console-display-from-line console) 0)
   (let ((form (handler-case
                   (let ((*package* (find-package :shake))
                         (*read-eval* nil)
@@ -858,9 +861,14 @@
       (vector-pop (console-text console))))
 
 (defun console-draw (console)
-  (loop for line in (console-reversed-lines console)
-     and y from (+ (floor *rend-height* 2) 16) to *rend-height* by 16 do
-       (srend:draw-gui-text line :x 2 :y y))
+  (let ((start-y (+ (floor *rend-height* 2) 16)))
+    (when (/= 0 (console-display-from-line console))
+      (srend::draw-gui-text "^ ^ ^ SCROLLBACK ^ ^ ^" :x 2 :y start-y)
+      (incf start-y 16))
+    (loop for line in (nthcdr (console-display-from-line console)
+                              (console-reversed-lines console))
+          and y from start-y to *rend-height* by 16 do
+            (srend:draw-gui-text line :x 2 :y y)))
   (srend:draw-gui-text (format nil "> ~A" (console-text console))
                        :x 2 :y (floor *rend-height* 2)))
 
@@ -873,7 +881,21 @@
     ((eq :scancode-return (sdl2:scancode keysym))
      (console-commit console))
     ((eq :scancode-backspace (sdl2:scancode keysym))
-     (console-backspace console))))
+     (console-backspace console))
+    ((eq :scancode-pageup (sdl2:scancode keysym))
+     (zap (lambda (line)
+            (min (+ line 2) (1- (list-length (console-reversed-lines console)))))
+          (console-display-from-line console)))
+    ((eq :scancode-pagedown (sdl2:scancode keysym))
+     (zap (lambda (line) (max 0 (- line 2)))
+          (console-display-from-line console)))
+    ((and (eq :scancode-home (sdl2:scancode keysym))
+          (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
+     (setf (console-display-from-line console)
+           (1- (list-length (console-reversed-lines console)))))
+    ((and (eq :scancode-end (sdl2:scancode keysym))
+          (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
+     (setf (console-display-from-line console) 0))))
 
 (defun restart-map (map-model game camera render-system model-manager)
   "Restart the map and return PLAYER."
