@@ -99,9 +99,9 @@
 (declaim (inline make-obj-model))
 (defstruct obj-model
   "A 3D model obtained from Wavefront OBJ file."
-  (verts nil :type surf-triangles :read-only t)
-  (min-bounds (v 0 0 0) :type (vec 3) :read-only t)
-  (max-bounds (v 0 0 0) :type (vec 3) :read-only t))
+  (verts nil :type surf-triangles)
+  (min-bounds (v 0 0 0) :type (vec 3))
+  (max-bounds (v 0 0 0) :type (vec 3)))
 
 (declaim (ftype (function (sbsp::sidedef) (values shiva-float shiva-float)) sidedef-uv))
 (defun sidedef-uv (sidedef)
@@ -349,6 +349,30 @@ and return the default model."
                           (dolist (surf surfaces)
                             (free-surf-triangles (surface-geometry surf))))))))))
 
+(defun reload-model (model model-fname)
+  "Try to reload a MODEL from MODEL-FNAME.  In case of error, print the error
+and return leave MODEL unchanged."
+  (check-type model obj-model)
+  (check-type model-fname string)
+  (shake:printf "Reloading model '~A'~%" model-fname)
+  (handler-case
+      (with-data-file (file model-fname)
+        (let ((ext (pathname-type model-fname)))
+          (cond
+            ((string= "obj" ext)
+             (let ((new-model (obj->model (sobj:read-obj file))))
+               (free-model model)
+               (setf (surf-triangles-tex-name (obj-model-verts new-model))
+                     (surf-triangles-tex-name (obj-model-verts model)))
+               (setf (obj-model-verts model) (obj-model-verts new-model))
+               (setf (obj-model-min-bounds model) (obj-model-min-bounds new-model))
+               (setf (obj-model-max-bounds model) (obj-model-max-bounds new-model))))
+            (t
+             (shake:print-error "unknown model format ~S" model-fname))))
+        (shake:printf "Reloaded model '~A'~%" model-fname))
+    (sdata:data-file-error (c)
+      (shake:print-error "~A~%" c))))
+
 (declaim (inline make-model-manager))
 (defstruct model-manager
   "All model loading and unloading should go through this."
@@ -388,3 +412,9 @@ and return the default model."
   (check-type name string)
   (or (gethash name (model-manager-models model-manager))
       (add-model model-manager (load-model name) :name name)))
+
+(defun model-manager-reload-models (model-manager)
+  (check-type model-manager model-manager)
+  (maphash (lambda (model-fname model)
+             (when (obj-model-p model) (reload-model model model-fname)))
+           (model-manager-models model-manager)))

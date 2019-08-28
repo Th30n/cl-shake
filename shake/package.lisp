@@ -69,6 +69,7 @@
            #:surface-geometry
            #:with-model-manager
            #:model-manager-default-model
+           #:model-manager-reload-models
            #:get-model)
   (:import-from #:sbsp
                 #:lineseg-start
