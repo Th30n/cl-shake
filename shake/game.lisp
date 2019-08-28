@@ -403,3 +403,64 @@
   (with-accessors ((last-open-time-ms door-last-open-time-ms)) door
     (unless last-open-time-ms
       (setf last-open-time-ms (get-game-time)))))
+
+(defclass test-model-thing (thing)
+  ((model :initform nil :type smdl::obj-model
+          :initarg :model :accessor test-model-thing-model)
+   (center :initform (v 0 0 0) :type (vec 3)
+           :initarg :center :accessor test-model-thing-center)
+   (position :initform (v 0 0 0) :type (vec 3)
+             :initarg :position :accessor test-model-thing-position)
+   (scale :initform #.(shiva-float 1.0) :type shiva-float
+          :initarg :scale :accessor test-model-thing-scale)
+   (rotation :initform (shiva::midentity4) :type (mat 4)
+             :initarg :rotation :accessor test-model-thing-rotation)
+   (bounds-scale :initform (v 1 1 1) :type (vec 3)
+                 :initarg :bounds-scale :accessor test-model-thing-bounds-scale)
+   (image-file :initform nil :initarg :image-file :type string
+               :accessor test-model-thing-image-file)))
+
+(defmethod game-add-thing :after (game (test-model test-model-thing))
+  (push test-model (game-render-things game)))
+
+(defun make-test-model-thing (image-manager model-manager position
+                              &key (rotation (shiva::midentity4)) image-file model-file)
+  (check-type position (vec 3))
+  (check-type image-file string)
+  (check-type model-file string)
+  (srend::load-image-from-file image-manager image-file)
+  (let* ((model (smdl:get-model model-manager model-file))
+         (center (vscale 0.5 (v+ (smdl::obj-model-max-bounds model)
+                                 (smdl::obj-model-min-bounds model))))
+         (scale #.(shiva-float 1))
+         (bounds-scale (vscale 0.5
+                               (v- (smdl::obj-model-max-bounds model)
+                                   (smdl::obj-model-min-bounds model)))))
+    (make-instance 'test-model-thing
+                   :image-file image-file
+                   :model model
+                   :scale scale
+                   :center center
+                   :position position
+                   :rotation rotation
+                   :bounds-scale bounds-scale)))
+
+(defun test-model-thing-view-transform (test-model)
+  (check-type test-model test-model-thing)
+  (let ((pos (test-model-thing-position test-model))
+        (scale (test-model-thing-scale test-model))
+        (rotation (test-model-thing-rotation test-model)))
+    (m* (m* (translation :x (vx pos) :y (vy pos) :z (vz pos))
+            rotation)
+        (scale :x scale :y scale :z scale))))
+
+(defun test-model-thing-render (test-model camera)
+  (check-type test-model test-model-thing)
+  (check-type camera camera)
+  (let* ((view-project (m* (camera-projection-matrix camera)
+                           (camera-view-transform camera)))
+         (mvp (m* view-project (test-model-thing-view-transform test-model))))
+    ;; Render the test model
+    (setf (smdl::surf-triangles-tex-name (smdl::obj-model-verts (test-model-thing-model test-model)))
+          (test-model-thing-image-file test-model))
+    (srend:render-surface (smdl::obj-model-verts (test-model-thing-model test-model)) mvp)))

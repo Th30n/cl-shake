@@ -686,7 +686,8 @@
       (weapon (weapon-render render-thing camera model-manager))
       (enemy (enemy-render render-thing camera model-manager))
       (projectile (projectile-render render-thing camera model-manager))
-      (door (door-render render-thing camera)))))
+      (door (door-render render-thing camera))
+      (test-model-thing (test-model-thing-render render-thing camera)))))
 
 (defun add-command (symbol function)
   (declare (special *commands*))
@@ -942,6 +943,26 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                (game (make-game))
                (*player* nil))
           (declare (special *player*))
+          (add-command 'spawn-test-model
+                       (lambda (model-file image-file)
+                         (let ((test-model (make-test-model-thing
+                                            (srend::render-system-image-manager render-system)
+                                            model-manager
+                                            (camera-position camera)
+                                            :rotation (q->mat (camera-rotation camera))
+                                            :image-file image-file
+                                            :model-file model-file)))
+                           (game-add-thing game test-model)
+                           test-model)))
+          (add-command 'remove-test-models
+                       (lambda ()
+                         (setf (game-think-things game) (remove-if (lambda (thing)
+                                                                     (typep thing 'test-model-thing))
+                                                                   (game-think-things game)))
+                         (setf (game-render-things game) (remove-if (lambda (thing)
+                                                                      (typep thing 'test-model-thing))
+                                                                    (game-render-things game)))
+                         nil))
           (multiple-value-setq (smdl:*world-model* *player*)
             (load-map "test.bsp" game camera render-system model-manager))
           (srend:print-memory-usage render-system)
