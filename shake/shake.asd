@@ -28,6 +28,7 @@
                (:file "data")
                (:file "render-progs")
                (:file "obj")
+               (:file "fbx")
                (:file "model")
                (:file "world")
                (:file "image")

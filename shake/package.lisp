@@ -55,6 +55,10 @@
            #:vref-texture
            #:vertex-val))
 
+(defpackage #:shake.fbx
+  (:nicknames #:sfbx)
+  (:use #:cl #:shiva))
+
 (defpackage #:shake.model
   (:nicknames #:smdl)
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.data)
