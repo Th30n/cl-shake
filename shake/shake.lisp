@@ -40,7 +40,14 @@
   and rotation as a quaternion."
   (projection nil :type projection)
   (position (v 0 0 0) :type (vec 3))
-  (rotation (q 0 0 0 1) :type quat))
+  ;; degrees
+  (angles (v 0 0) :type (vec 2)))
+
+(defun camera-rotation (camera)
+  "Return camera angles as a quaternion."
+  ;; TODO: Direct conversion from euler angles to quaternion.
+  (q* (qrotation (v 0 1 0) (* deg->rad (vx (camera-angles camera))))
+      (qrotation (v 1 0 0) (* deg->rad (vy (camera-angles camera))))))
 
 (defun camera-view-transform (camera)
   "Returns a matrix which transforms from world to camera space."
@@ -142,20 +149,18 @@
 (defun nrotate-camera (xrel yrel camera)
   "Rotate the CAMERA for XREL degrees around the world Y axis and YREL degrees
   around the local X axis. The vertical angle is clamped."
-  (let* ((xrot (q* (qrotation (v 0 1 0) (* deg->rad (- xrel)))
-                   (camera-rotation camera)))
-         (old-v-angle (* rad->deg (q->euler-x xrot)))
-         (v-angle-diff yrel))
-    (cond
-      ((>= old-v-angle #.(shiva-float 90d0))
-       (decf old-v-angle #.(shiva-float 180d0)))
-      ((<= old-v-angle #.(shiva-float -90d0))
-       (incf old-v-angle #.(shiva-float 180d0))))
-    (let ((v-angle (clamp (+ old-v-angle v-angle-diff)
-                          #.(shiva-float -89d0) #.(shiva-float 89d0))))
-      (setf (camera-rotation camera)
-            (q* xrot (qrotation (v 1 0 0) (* deg->rad (- v-angle old-v-angle)))))
-      camera)))
+  (prog1 camera
+    (zap (lambda (old-y)
+           (clamp (+ old-y yrel) #.(shiva-float -89d0) #.(shiva-float 89d0)))
+         (vy (camera-angles camera)))
+    (zap (lambda (old-x)
+           (let ((new-x (- old-x xrel)))
+             (* #.(shiva-float 360d0)
+                (nth-value 1
+                           (if (< new-x #.(shiva-float 0d0))
+                               (floor (/ new-x #.(shiva-float 360d0)))
+                               (truncate (/ new-x #.(shiva-float 360d0))))))))
+         (vx (camera-angles camera)))))
 
 (defun view-dir (dir-name camera)
   (let ((dir (ecase dir-name
@@ -541,8 +546,7 @@
       (let ((pos (sbsp:map-thing-pos thing))
             (angle (sbsp:map-thing-angle thing)))
         (setf (camera-position camera) (v (vx pos) 0.5 (vy pos)))
-        (setf (camera-rotation camera) (q 0 0 0 1))
-        (nrotate-camera angle #.(shiva-float 0.0) camera)
+        (setf (camera-angles camera) (v angle #.(shiva-float 0d0)))
         (return (make-player :position (v2->v3 pos)))))))
 
 (defun spawn-things (game image-manager model-manager map-model)
@@ -998,8 +1002,10 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                                 (map-hull (smdl:bsp-model-hull smdl:*world-model*))
                                 (sector (hull-point-sector map-hull pos-2d))
                                 (contents (hull-point-contents map-hull pos-2d)))
-                           (printf "~A ~A~%~A~%"
-                                   (player-position *player*) contents sector))))
+                           (printf "POS: ~A~%ANGLE: ~A~%~A~%~A~%"
+                                   (player-position *player*)
+                                   (camera-angles camera)
+                                   contents sector))))
           (symbol-macrolet ((input-focus-p
                              (member :input-focus
                                      (sdl2:get-window-flags win)))
