@@ -21,7 +21,10 @@
               :initform (make-instance 'edk.data:boxed-symbol :value :tile))))
 
 (edk.data:defdata sector ()
-  ((floor-height :type edk.data:boxed-double :initarg :floor-height
+  ((contents :type edk.data:boxed-symbol :initarg :contents
+             :reader sector-contents
+             :initform (make-instance 'edk.data:boxed-symbol :value :contents-empty))
+   (floor-height :type edk.data:boxed-double :initarg :floor-height
                  :reader sector-floor-height
                  :initform (make-instance 'edk.data:boxed-double))
    (ceiling-height :type edk.data:boxed-double :initarg :ceiling-height

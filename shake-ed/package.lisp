@@ -30,6 +30,7 @@
            #:mbrush-brush
            #:mbrush-rotation
            #:sector
+           #:sector-contents
            #:sector-floor-height
            #:sector-ceiling-height
            #:texture

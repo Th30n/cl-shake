@@ -108,6 +108,7 @@
 (defmethod initialize-instance :after ((ed sector-editor) &key)
   (setf (edk.forms:layout-info ed)
         '(edk.forms:top-down
+          (:edit contents edk.forms:selector nil :contents-empty :contents-solid)
           (edk.forms:left-right
            (:form floor-height-lbl edk.forms:label "Floor height")
            (:edit floor-height edk.forms:double-spinner
@@ -118,19 +119,25 @@
             :min -5 :max 5 :step 0.125)))))
 
 (defmethod (setf sector-editor-brushes) (new-brushes (ed sector-editor))
-  (let ((sector-accessors (list #'sector-floor-height #'sector-ceiling-height)))
+  (let ((sector-accessors (list #'sector-floor-height #'sector-ceiling-height
+                                #'sector-contents)))
     (unobserve-slots (edk.forms:editor-data ed) sector-accessors :tag ed)
     (with-slots (brushes) ed
       (setf brushes new-brushes)
       (if (not brushes)
           (setf (edk.forms:editor-data ed) nil)
-          (let ((back-sector
+          (let ((contents (and brushes
+                               (sbrush:brush-contents (mbrush-brush (car brushes)))))
+                (back-sector
                  (and brushes
                       (sbsp:sidedef-back-sector
                        (car (sbrush:brush-surfaces (mbrush-brush (car brushes))))))))
             (setf (edk.forms:editor-data ed)
                   (make-instance
-                   'sector :floor-height
+                   'sector
+                   :contents (make-instance 'edk.data:boxed-symbol
+                                            :value (or contents :contents-empty))
+                   :floor-height
                    (make-instance 'edk.data:boxed-double
                                   :value (if back-sector
                                              (sbsp:sector-floor-height back-sector)
@@ -143,6 +150,9 @@
     (flet ((sector-changed ()
              (with-slots (brushes) ed
                (when brushes
+                 (dolist (mbrush brushes)
+                   (setf (sbrush:brush-contents (mbrush-brush mbrush))
+                         (edk.data:value (sector-contents (edk.forms:editor-data ed)))))
                  (let ((sidedefs
                         (loop for mbrush in brushes appending
                              (sbrush:brush-surfaces (mbrush-brush mbrush)))))
