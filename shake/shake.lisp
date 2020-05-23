@@ -736,6 +736,9 @@
                                     :flags '(:opengl))
             (srend:with-render-system
                 (render-system window *rend-width* *rend-height*)
+              (add-command 'set-fullscreen
+                           (lambda (flag)
+                             (sdl2:set-window-fullscreen window flag)))
               (sdl2:set-relative-mouse-mode 1)
               (srend:print-gl-info (srend:render-system-gl-config render-system))
               (funcall function render-system window))))))))
@@ -838,7 +841,10 @@
           (apply-command (car form) (cdr form)))))
       ((atom form)
        (cond
-         ((or (keywordp form) (stringp form) (numberp form)) form)
+         ((or (keywordp form) (stringp form) (numberp form)
+              (null form) (eq t form))
+          form)
+         ;; Treat other symbols as single argument command.
          (t (apply-command form)))))))
 
 (defun console-commit (console)
