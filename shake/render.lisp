@@ -46,6 +46,7 @@
   (max-texture-size nil :type integer :read-only t)
   (max-3d-texture-size nil :type integer :read-only t)
   (max-array-texture-layers nil :type integer :read-only t)
+  (max-vertex-uniform-components nil :type integer :read-only t)
   (multi-draw-indirect-p nil :type boolean :read-only t)
   (base-instance-p nil :type boolean :read-only t))
 
@@ -59,6 +60,7 @@
    :max-texture-size (gl:get-integer :max-texture-size)
    :max-3d-texture-size (gl:get-integer :max-3d-texture-size)
    :max-array-texture-layers (gl:get-integer :max-array-texture-layers)
+   :max-vertex-uniform-components (gl:get-integer :max-vertex-uniform-components)
    :multi-draw-indirect-p (gl:extension-present-p "GL_ARB_multi_draw_indirect")
    :base-instance-p (gl:extension-present-p "GL_ARB_base_instance")))
 
@@ -66,7 +68,8 @@
   "Print basic OpenGL information."
   (with-struct (gl-config- vendor renderer version-string glsl-version-string
                            max-texture-size max-3d-texture-size
-                           max-array-texture-layers)
+                           max-array-texture-layers max-vertex-uniform-components
+                           multi-draw-indirect-p base-instance-p)
       gl-config
     (shake:printf "GL Vendor: ~S~%" vendor)
     (shake:printf "GL Renderer: ~S~%" renderer)
@@ -74,7 +77,10 @@
     (shake:printf "GLSL Version: ~S~%" glsl-version-string)
     (shake:printf "Max texture size: ~S~%" max-texture-size)
     (shake:printf "Max 3D texture size: ~S~%" max-3d-texture-size)
-    (shake:printf "Max array texture layers: ~S~%" max-array-texture-layers)))
+    (shake:printf "Max array texture layers: ~S~%" max-array-texture-layers)
+    (shake:printf "Max vertex uniform components: ~S~%" max-vertex-uniform-components)
+    (shake:printf "GL_ARB_multi_draw_indirect: ~S~%" multi-draw-indirect-p)
+    (shake:printf "GL_ARB_base_instance: ~S~%" base-instance-p)))
 
 (defstruct debug-text
   (char-string nil :type string :read-only t)
@@ -204,7 +210,8 @@
     ;; uvs
     (gl:enable-vertex-attrib-array 2)
     (gl:vertex-attrib-pointer 2 2 :float nil stride uv-offset)
-    (gl:draw-arrays :triangles 0 (gui-model-vertex-count gui-model))))
+    (gl:draw-arrays :triangles 0 (gui-model-vertex-count gui-model))
+    (gl:bind-buffer :array-buffer 0)))
 
 (declaim (inline make-render-system))
 (defstruct render-system
@@ -306,29 +313,34 @@
   ;; T if this batch should be drawn in wireframe mode.
   (wireframe-p nil :type boolean)
   (free-p nil :type boolean)
-  (ready-p nil :type boolean))
+  (ready-p nil :type boolean)
+  (mapped-p nil :type boolean))
 
 (defun init-batch (byte-size &key wireframep)
   (let ((buffers (gl:gen-buffers 2))
         (vertex-array (gl:gen-vertex-array)))
     (gl:bind-buffer :array-buffer (first buffers))
     (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer) :static-draw)
-    (make-batch :vertex-array vertex-array
-                :buffer (first buffers)
-                :buffer-ptr (sgl:map-buffer :array-buffer (:bytes byte-size) :map-write-bit)
-                :id-buffer (second buffers)
-                :mvp (make-array +max-batch-size+
-                                 :element-type '(mat 4)
-                                 :fill-pointer 0)
-                :layers (make-array +max-batch-size+
-                                    :element-type '(cons fixnum fixnum)
-                                    :fill-pointer 0)
-                :max-bytes byte-size
-                :wireframe-p wireframep)))
+    (prog1
+        (make-batch :vertex-array vertex-array
+                    :buffer (first buffers)
+                    :buffer-ptr (sgl:map-buffer :array-buffer (:bytes byte-size) :map-write-bit)
+                    :mapped-p t
+                    :id-buffer (second buffers)
+                    :mvp (make-array +max-batch-size+
+                                     :element-type '(mat 4)
+                                     :fill-pointer 0)
+                    :layers (make-array +max-batch-size+
+                                        :element-type '(cons fixnum fixnum)
+                                        :fill-pointer 0)
+                    :max-bytes byte-size
+                    :wireframe-p wireframep)
+      (gl:bind-buffer :array-buffer 0))))
 
 (defun free-batch (batch)
   (declare (optimize (speed 3) (space 3)))
   (check-type batch batch)
+  (assert (not (batch-mapped-p batch)))
   (with-struct (batch- vertex-array buffer id-buffer) batch
     (let ((buffers (list buffer id-buffer))
           (vertex-arrays (list vertex-array)))
@@ -339,8 +351,9 @@
       ;; number of arguments.
       (gl:delete-buffers buffers)
       (gl:delete-vertex-arrays vertex-arrays))
-    (setf (batch-free-p batch) t
-          (batch-ready-p batch) nil)))
+    (setf (batch-free-p batch) t)
+    (setf (batch-ready-p batch) nil)
+    (setf (batch-mapped-p batch) nil)))
 
 (defun finish-batch (batch gl-config)
   (declare (optimize (speed 3) (speed 3)))
@@ -352,6 +365,7 @@
         (uv-offset (* 4 (+ 3 3 3))))
     (gl:bind-buffer :array-buffer (batch-buffer batch))
     (gl:unmap-buffer :array-buffer)
+    (setf (batch-mapped-p batch) nil)
     ;; positions
     (gl:enable-vertex-attrib-array 0)
     (gl:vertex-attrib-pointer 0 3 :float nil stride (cffi:null-pointer))
@@ -393,6 +407,7 @@
   (assert (not (batch-free-p batch)))
   (unless (batch-ready-p batch)
     (finish-batch batch gl-config))
+  (assert (not (batch-mapped-p batch)))
   (gl:bind-vertex-array (batch-vertex-array batch))
   (let ((layers (batch-layers batch))
         (layer-count (length (batch-layers batch)))
