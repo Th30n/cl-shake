@@ -62,7 +62,17 @@
   "Return directory of our executable image or NIL if not run from image."
   (when uiop:*image-dumped-p*
     (cond
-      ((uiop:os-windows-p) (error "EXECUTABLE-DIR not implemented on windows!"))
+      ((uiop:os-windows-p)
+       (uiop:pathname-directory-pathname
+        (cffi:with-foreign-pointer-as-string (name-ptr 260)
+          (let ((res (cffi:foreign-funcall "GetModuleFileNameA"
+                                           :pointer (cffi:null-pointer)
+                                           (:pointer :char) name-ptr
+                                           :int 260
+                                           :int)))
+            (if (= res 260) (error "Insufficient buffer size for GetModuleFileName"))
+            (if (= res 0) (error "GetModuleFileName failed with error code: ~A"
+                                 (cffi:foreign-funcall "GetLastError" :int)))))))
       ((eq :linux (uiop:operating-system))
        (uiop:pathname-directory-pathname (uiop:resolve-symlinks "/proc/self/exe")))
       (t (error "EXECUTABLE-DIR not supported on ~A" (uiop:operating-system))))))
