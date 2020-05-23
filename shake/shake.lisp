@@ -183,6 +183,7 @@
      (:draw () (if deleted
                    (error "Trying to render with deleted point-renderer.")
                    (progn (gl:bind-vertex-array vao)
+                          (gl:bind-buffer :array-buffer 0)
                           (gl:draw-arrays :points 0 1))))
      (:delete () (unless deleted
                    (gl:delete-vertex-arrays (list vao))
