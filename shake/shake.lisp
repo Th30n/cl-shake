@@ -738,6 +738,8 @@
                 (render-system window *rend-width* *rend-height*)
               (add-command 'set-fullscreen
                            (lambda (flag)
+                             "Set window to real :FULLSCREEN or to :DESKTOP to just take the desktop size (i.e. borderless fullscreen).
+Use 0 or NIL for windowed mode."
                              (sdl2:set-window-fullscreen window flag)))
               (sdl2:set-relative-mouse-mode 1)
               (srend:print-gl-info (srend:render-system-gl-config render-system))
@@ -799,16 +801,11 @@
   (setf (console-display-from-line console) 0))
 
 (defun make-console ()
-  (declare (special *commands*))
-  (check-type *commands* list)
   (let ((console (%make-console)))
     (add-command 'quit #'sdl2:push-quit-event)
     (add-command 'exit #'sdl2:push-quit-event)
     (add-command 'echo (lambda (&rest args)
                          (printf "~{~A~^ ~}~%" args)))
-    (add-command 'help (lambda ()
-                         (let ((*package* (find-package :shake)))
-                           (printf "~{~S~%~}" (stable-sort (mapcar #'car *commands*) #'string<)))))
     (add-command '+ #'+)
     (add-command '- #'-)
     (add-command '* #'*)
@@ -824,19 +821,29 @@
       (loop for c across text do (console-append console c))))
 
 (defun command-eval-form (console form)
+  (declare (special *commands*))
+  (check-type *commands* list)
   (flet ((apply-command (cmd-sym &optional args)
            (let ((cmd (when (symbolp cmd-sym)
                         (find-command cmd-sym))))
              (if cmd
                  (apply (cdr cmd) (mapcar (lambda (arg)
                                             (command-eval-form console arg)) args))
-                 (error "unkown command '~A'" cmd-sym)))))
+                 (error "unkown command '~A'" cmd-sym))))
+         (help-command (&optional cmd-sym)
+           (if cmd-sym
+               (if-let ((cmd (find-command cmd-sym)))
+                 (printf "~A" (documentation (cdr cmd) 'function)))
+               (let ((*package* (find-package :shake)))
+                 (printf "~{~S~%~}" (stable-sort (mapcar #'car *commands*)
+                                                 #'string<))))))
     (cond
       ((consp form)
        (case (car form)
          (begin (dolist (subform (cdr form))
                   (command-eval-form console subform)))
          (quote (cadr form))
+         (help (apply #'help-command (cdr form)))
          (t
           (apply-command (car form) (cdr form)))))
       ((atom form)
@@ -844,6 +851,7 @@
          ((or (keywordp form) (stringp form) (numberp form)
               (null form) (eq t form))
           form)
+         ((eq 'help form) (help-command))
          ;; Treat other symbols as single argument command.
          (t (apply-command form)))))))
 
