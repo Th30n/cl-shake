@@ -191,7 +191,9 @@
   (floor-texinfo nil :type (or null texinfo))
   (ceiling-height #.(shiva-float 1.0) :type shiva-float)
   (ceiling-texinfo nil :type (or null texinfo))
-  (ambient-light (v 0 0 0) :type (vec 3)))
+  (ambient-light (v 0 0 0) :type (vec 3))
+  ;; contents are not serialized here
+  (contents nil))
 
 (define-disk-struct sector
   (floor-height float64)
@@ -207,13 +209,21 @@
   (orig-sector nil :type (or null sector)))
 
 ;; TODO: COPY-SIDEDEF should probably also copy sectors
-(defstruct sidedef
+(defstruct (sidedef (:copier %copy-sidedef))
   "A side definition for a line segment."
   (lineseg nil :type lineseg)
   (front-sector nil :type (or null sector))
   (back-sector nil :type (or null sector))
   (color (v 1 0 1) :type (vec 3))
   (texinfo nil))
+
+(defun copy-sidedef (sidedef)
+  (let ((copy (%copy-sidedef sidedef)))
+    (zap (lambda (sector) (when sector (copy-sector sector)))
+         (sidedef-front-sector copy))
+    (zap (lambda (sector) (when sector (copy-sector sector)))
+         (sidedef-back-sector copy))
+    copy))
 
 (define-disk-struct sidedef
   (lineseg lineseg)
@@ -557,8 +567,8 @@ One of:
               (convex-hull-p (mapcar #'linedef->lineseg convex-region))))
   (if (null surfaces)
       (progn
-        ;; TODO: sector contents
-        (make-leaf :bounds bounds :contents :contents-solid
+        (assert (and sector (sector-contents sector)))
+        (make-leaf :bounds bounds :contents (sector-contents sector)
                    :subsector (make-subsector :lines convex-region
                                               :orig-sector sector)))
       (multiple-value-bind
@@ -571,11 +581,17 @@ One of:
             (progn
               (assert (convex-hull-p (mapcar #'sidedef-lineseg rest)))
               (let ((front-sectors (mapcar #'sidedef-front-sector rest)))
+                (assert front-sectors)
                 (assert (every (curry #'equalp sector) front-sectors))
                 (make-leaf :bounds bounds :surfaces rest
+                           :contents (if sector
+                                         (sector-contents sector)
+                                         :contents-empty)
                            :subsector
                            (make-subsector :lines convex-region
-                                           :orig-sector sector))))
+                                           :orig-sector (if sector
+                                                            sector
+                                                            (make-sector :contents :contents-empty))))))
             ;; Split the remaining into front and back.
             (let ((splitter (lineseg-orig-line (sidedef-lineseg splitter-surf))))
               (multiple-value-bind

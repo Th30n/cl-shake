@@ -36,10 +36,12 @@
            #:sector
            #:sector-p
            #:make-sector
+           #:copy-sector
            #:sector-ceiling-height
            #:sector-ceiling-texinfo
            #:sector-floor-height
            #:sector-floor-texinfo
+           #:sector-contents
            ;; side definition
            #:sidedef
            #:sidedef-p

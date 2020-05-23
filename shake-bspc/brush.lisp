@@ -19,14 +19,14 @@
 
 (in-package #:shake-bspc.brush)
 
-(defstruct (brush (:constructor make-brush-raw))
+(defstruct (brush (:constructor %make-brush))
   "A convex polygon defining a geometry with contents.
   SURFACES is a list of SIDEDEFs defining the polygon.
   CONTENTS can be one of:
   * :CONTENTS-EMPTY
   * :CONTENTS-SOLID"
   surfaces
-  (contents :contents-solid))
+  (contents :contents-solid :type (member :contents-solid :contents-empty)))
 
 (defun brush-lines (brush)
   (mapcar (compose #'lineseg-orig-line #'sidedef-lineseg)
@@ -36,10 +36,21 @@
   ((lines :initarg :lines :reader lines)))
 
 (defun make-brush (&key surfaces (contents :contents-solid))
-  (when surfaces
-    (let ((sector (sidedef-back-sector (car surfaces)))
-          (back-sectors (mapcar #'sidedef-back-sector (cdr surfaces))))
-      (assert (every (curry #'equalp sector) back-sectors))))
+  (check-type surfaces cons)
+  (let ((sector (sidedef-back-sector (car surfaces)))
+        (back-sectors (mapcar #'sidedef-back-sector (cdr surfaces))))
+    (assert (every (curry #'equalp sector) back-sectors))
+    (unless sector
+      (let ((default-sector (make-sector :contents contents)))
+        (dolist (surf surfaces)
+          (setf (sidedef-back-sector surf) default-sector)))
+      (setf sector (sidedef-back-sector (car surfaces)))
+      (setf back-sectors (mapcar #'sidedef-back-sector (cdr surfaces))))
+    (if (sector-contents sector)
+        (assert (eq (sector-contents sector) contents))
+        (progn
+          (setf (sector-contents sector) contents)
+          (dolist (s back-sectors) (setf (sector-contents s) contents)))))
   (if-let (side (sbsp:convex-hull-p (mapcar #'sidedef-lineseg surfaces)))
     (flet ((flip-line (surf)
              (zap (lambda (line)
@@ -47,12 +58,12 @@
                       (make-linedef :start end :end start)))
                   (lineseg-orig-line (sidedef-lineseg surf)))
              surf))
-      (make-brush-raw :surfaces
-                      (if (eq side :back)
-                          surfaces
-                          ;; Flip the order so that normals point outwards.
-                          (mapcar #'flip-line (reverse surfaces)))
-                      :contents contents))
+      (%make-brush :surfaces
+                   (if (eq side :back)
+                       surfaces
+                       ;; Flip the order so that normals point outwards.
+                       (mapcar #'flip-line (reverse surfaces)))
+                   :contents contents))
     (error 'non-convex-brush-error
            :lines (mapcar (compose #'lineseg-orig-line #'sidedef-lineseg)
                           surfaces))))
@@ -124,15 +135,18 @@ direction."
            (mapcar #'sidedef-back-sector (brush-surfaces brush))))
     (let* ((s1 (first (brush-sectors b1)))
            (s2 (first (brush-sectors b2))))
+      (assert (and s1 (sector-contents s1)))
+      (assert (and s2 (sector-contents s2)))
       (or
-       ;; Nil sector consumes all
+       ;; Nil sector consumes all. TODO: No nil sectors
        (not s1)
-       ;; Consume lower sectors and (TODO) if s2 has same contents as s1
+       ;; Consume lower sectors and if s2 has the same contents as s1
        (and s1 s2
+            (eq (sector-contents s1) (sector-contents s2))
             (float>= (sector-floor-height s1) (sector-floor-height s2))
             (float<= (sector-ceiling-height s1) (sector-ceiling-height s2)))))))
 
-(defun surf-on-brush-p (surf brush)
+(defun surf-on-brush-p (surf brush &key (only-same-facing-p t))
   (check-type surf sidedef)
   (check-type brush brush)
   (dolist (split-surf (brush-surfaces brush))
@@ -141,7 +155,9 @@ direction."
           (sbsp::line-intersect-ratio split-line (sidedef-lineseg surf))
         (when (and (float= den (shiva-float 0.0))
                    (float= num (shiva-float 0.0))
-                   (v= (linedef-normal split-line) (lineseg-normal (sidedef-lineseg surf))))
+                   (or (not only-same-facing-p)
+                       (v= (linedef-normal split-line)
+                           (lineseg-normal (sidedef-lineseg surf)))))
           (return-from surf-on-brush-p t))))))
 
 (defun sidedef-merge-contents (surf brush)
@@ -151,26 +167,40 @@ direction."
         (back-sector (sidedef-back-sector surf))
         (in-sector (sidedef-back-sector
                     (first (brush-surfaces brush)))))
+    (assert (sector-contents in-sector))
+    (assert (and back-sector (sector-contents back-sector)))
+    (assert (every (lambda (surf) (equalp in-sector (sidedef-back-sector surf)))
+                   (brush-surfaces brush)))
     ;; Due to comparison ordering, we may set sector multiple times, so take
     ;; the one with the highest priorty.
     (if (surf-on-brush-p surf brush)
         ;; If we have same surf as BRUSH, then we only need to overwrite
         ;; back sector, because front sector is pointing *outside* of BRUSH.
-        (setf front-sector (make-sector))
+        (setf front-sector
+              (make-sector :contents (if front-sector
+                                         (sector-contents front-sector)
+                                         :contents-empty)))
         (progn
           (setf (sidedef-front-sector surf)
-                (sbsp::copy-sector (if front-sector front-sector in-sector)))
+                (sbsp:copy-sector (if front-sector front-sector in-sector)))
           (setf front-sector (sidedef-front-sector surf))))
+    (assert (and front-sector (sector-contents front-sector)))
 
-    (if back-sector
+    (assert (sector-contents back-sector))
+    (if (and (not (surf-on-brush-p surf brush))
+             (surf-on-brush-p surf brush :only-same-facing-p nil))
+        ;; If we have same surf as BRUSH, but opposite facing, then don't
+        ;; overwrite back sector.
+        (setf back-sector (sbsp:copy-sector back-sector))
         (progn
-          (setf (sidedef-back-sector surf) (sbsp::copy-sector back-sector))
-          (setf back-sector (sidedef-back-sector surf)))
-        ;; Nil sector never gets overwritten
-        ;; TODO: No nil sectors
-        ;; TODO: Contents priority
-        (setf back-sector (make-sector)))
+          (setf (sidedef-back-sector surf) (sbsp:copy-sector back-sector))
+          (setf back-sector (sidedef-back-sector surf))))
+    ;; TODO: No nil sectors
+    ;; TODO: Contents priority
 
+    (when (eq (brush-contents brush) :contents-solid)
+      (setf (sector-contents front-sector) (brush-contents brush))
+      (setf (sector-contents back-sector) (brush-contents brush)))
     ;; Higher floor overrides lower
     (when (float> (sector-floor-height in-sector) (sector-floor-height front-sector))
       (setf (sector-floor-height front-sector) (sector-floor-height in-sector))
@@ -195,7 +225,7 @@ direction."
   ready for binary space partitioning."
   (let (surfs)
     (dolist (b1 brushes)
-      (let ((outside (brush-surfaces b1))
+      (let ((outside (mapcar #'copy-sidedef (brush-surfaces b1)))
             inside)
         (dolist (b2 brushes)
           (unless (eq b1 b2)
@@ -219,14 +249,8 @@ direction."
                 ;; with those of b2, because we are consumed by it.
                 (unionf outside
                         (loop for surf in inside
-                           when (surf-on-brush-p surf b2)
-                           collect (if (sidedef-back-sector
-                                        (first (brush-surfaces b2)))
-                                       (prog1 (sidedef-merge-contents surf b2)
-                                         (assert (equalp (sidedef-back-sector surf)
-                                                         (sidedef-back-sector (first (brush-surfaces b2))))))
-                                       (prog1 surf
-                                         (setf (sidedef-back-sector surf) nil))))
+                              when (surf-on-brush-p surf b2)
+                                collect (sidedef-merge-contents surf b2))
                         :test #'equalp))))
         (appendf surfs outside)))
     surfs))
@@ -260,7 +284,7 @@ direction."
   Minkowski sum of the brush polygon and the square polygon."
   (let* ((half-size (* 0.5 (shiva-float square)))
          (hull-size (list half-size (- half-size)))
-         (back-sector (sidedef-back-sector (first (brush-surfaces brush)))))
+         (back-sector (sbsp:copy-sector (sidedef-back-sector (first (brush-surfaces brush))))))
     (labels ((add-square (point)
                (cons point (map-product (lambda (x y) (v+ point (v x y)))
                                         hull-size hull-size)))
