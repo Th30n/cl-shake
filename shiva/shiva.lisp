@@ -17,9 +17,13 @@
 (in-package #:shiva)
 (declaim (optimize (speed 3)))
 
-#-shiva-double-float
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (pushnew :shiva-single-float *features*))
+  #-shiva-double-float
+  (pushnew :shiva-single-float *features*)
+  #+shiva-double-float
+  (pushnew :shiva-double-float *features*)
+  (assert (not (and (member :shiva-single-float *features*)
+                    (member :shiva-double-float *features*)))))
 
 #+shiva-double-float
 (deftype shiva-float (&optional min max) `(double-float ,min ,max))
