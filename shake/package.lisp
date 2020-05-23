@@ -30,6 +30,7 @@
   (:use #:cl #:alexandria #:shake-utils)
   (:export #:data-path
            #:data-file-error
+           #:exe-dir
            #:with-data-dirs
            #:with-data-file
            ;; resource management

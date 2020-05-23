@@ -58,6 +58,15 @@
   #-(or sbcl cmu lispworks openmcl allegro clisp)
   (error "file-exists-p not implemented"))
 
+(defun exe-dir ()
+  "Return directory of our executable image or NIL if not run from image."
+  (when uiop:*image-dumped-p*
+    (cond
+      ((uiop:os-windows-p) (error "EXECUTABLE-DIR not implemented on windows!"))
+      ((eq :linux (uiop:operating-system))
+       (uiop:pathname-directory-pathname (uiop:resolve-symlinks "/proc/self/exe")))
+      (t (error "EXECUTABLE-DIR not supported on ~A" (uiop:operating-system))))))
+
 (defun call-with-data-dirs (basedir fun)
   "Sets up the environment for searching data files. BASEDIR is added to a
   list of search paths, which by default contains the current directory."

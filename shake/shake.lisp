@@ -2,7 +2,7 @@
 
 (in-package #:shake)
 
-;; TODO: How does this work with executable image?
+;; NOTE: This does not work with executable image.
 (defvar *base-dir*
   #.(uiop:pathname-directory-pathname (or *compile-file-truename* *load-truename*))
   "Directory pathname where this file is located.")
@@ -717,10 +717,13 @@
     (let* ((*commands* nil)
            (*console* (make-console))
            (*last-printed-error* nil)
-           (*last-printed-warning* nil))
+           (*last-printed-warning* nil)
+           ;; Make *BASE-DIR* our EXE-DIR in executable images.
+           (*base-dir* (or (sdata:exe-dir) *base-dir*)))
       (declare (special *commands* *console* *last-printed-error* *last-printed-warning*))
       (reset-game-keys)
       (add-command 'base-dir (lambda () (printf "'~A'" *base-dir*)))
+      (add-command 'exe-dir (lambda () (printf "'~A'" (sdata:exe-dir))))
       (add-command 'pwd (lambda () (printf "'~A'" (uiop:getcwd))))
       (with-data-dirs *base-dir*
         (add-command 'data-search-paths
