@@ -1133,9 +1133,9 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
 (defun render-view (player camera image-manager model-manager render-things)
   (gl:enable :depth-test)
   ;; TODO: Enable this when we correctly generate CCW faces for .bsp models.
-  ;; (gl:enable :cull-face)
-  ;; (gl:cull-face :back)
-  ;; (gl:front-face :ccw)
+  (gl:enable :cull-face)
+  (gl:cull-face :back)
+  (gl:front-face :ccw)
   (gl:depth-func :less)
   (render-world camera smdl:*world-model*)
   ;; Draw "crosshair"

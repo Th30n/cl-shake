@@ -181,8 +181,8 @@
         (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 1) bottom-left)
         (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 2) bottom-right)
         (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 3) top-left)
-        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 4) top-right)
-        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 5) bottom-right))))
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 4) bottom-right)
+        (setf (cffi:mem-aref ptr '(:struct smdl::vertex-data) 5) top-right))))
 
 (defun gui-model-draw (gui-model)
   (gl:bind-vertex-array (gui-model-vertex-array gui-model))
