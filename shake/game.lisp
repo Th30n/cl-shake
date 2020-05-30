@@ -370,14 +370,25 @@
   ;; Assert is just for testing the plain brush
   (unless (notany #'sbsp:sidedef-back-sector (sbrush:brush-surfaces brush))
     (print-warning "door already has back sector~%"))
-  (let ((sector (sbsp:make-sector)))
+  (let ((sector (sbsp:make-sector :contents :contents-solid)))
+    ;; Set the same instance on all sides, so we can mutate them all at once.
     (dolist (sidedef (sbrush:brush-surfaces brush))
-      (setf (sbsp:sidedef-back-sector sidedef) sector)))
-  (make-instance 'door
-                 :brush brush
-                 :hull (sbsp:build-bsp
-                        (sbrush:prepare-brushes-for-bsp
-                         (list (sbrush:expand-brush brush :square sbsp::+clip-square+))))))
+      (setf (sbsp:sidedef-back-sector sidedef) sector))
+    (let ((hull (sbsp:build-bsp
+                 (sbrush:prepare-brushes-for-bsp
+                  (list (sbrush:expand-brush brush :square sbsp::+clip-square+))))))
+      ;; Set the same instance to clip hull, so it's mutated as above.
+      (sbsp:bsp-trav hull
+                     (lambda (front back)
+                       (declare (ignore front back)))
+                     (lambda (leaf)
+                       (when (eq (sbsp:leaf-contents leaf) :contents-solid)
+                         (assert (equalp (sbsp::subsector-orig-sector (sbsp::leaf-subsector leaf)) sector))
+                         (setf (sbsp::subsector-orig-sector (sbsp::leaf-subsector leaf))
+                               sector))))
+      (make-instance 'door
+                     :brush brush
+                     :hull hull))))
 
 (defun door-render (door camera)
   (check-type door door)
