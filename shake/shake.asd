@@ -26,6 +26,7 @@
   :components ((:file "package")
                (:file "debug")
                (:file "data")
+               (:file "cmd")
                (:file "render-progs")
                (:file "obj")
                (:file "fbx")
