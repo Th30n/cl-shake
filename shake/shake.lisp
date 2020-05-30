@@ -7,11 +7,6 @@
   #.(uiop:pathname-directory-pathname (or *compile-file-truename* *load-truename*))
   "Directory pathname where this file is located.")
 
-(defvar *win-width* nil "Current window width in pixels")
-(defvar *win-height* nil "Current window height in pixels")
-(defvar *rend-width* nil "Current rendering width in pixels")
-(defvar *rend-height* nil "Current rendering height in pixels")
-
 (declaim (inline make-plane))
 (defstruct plane
   (normal nil :type (vec 3) :read-only t)
@@ -37,7 +32,7 @@
 
 (defstruct camera
   "A camera structure, storing the projection matrix, position in world space
-  and rotation as a quaternion."
+  and rotation as Euler angles."
   (projection nil :type projection)
   (position (v 0 0 0) :type (vec 3))
   ;; degrees
@@ -193,9 +188,9 @@
 
 (defun draw-timer-stats (timer &key (x 0) (y -20))
   (with-struct (timer- name max avg) timer
-    (srend::draw-text (format nil "~A: ~,2Fms (avg) ~,2Fms (max)"
-                              name (* 1s3 avg) (* 1s3 max))
-                      :x x :y y)))
+    (srend:draw-text (format nil "~A: ~,2Fms (avg) ~,2Fms (max)"
+                             name (* 1s3 avg) (* 1s3 max))
+                     :x x :y y)))
 
 (declaim (type (unsigned-byte 32) +max-frame-skip+ +ticrate+
                *last-tic* *base-time* *gametic*))
@@ -711,7 +706,7 @@
   (find symbol *commands* :key #'car))
 
 (defun call-with-init (function)
-  "Initialize everything and run FUNCTION with RENDER-SYSTEM and WINDOW arguments."
+  "Initialize everything and run FUNCTION with RENDER-SYSTEM argument."
   ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
   ;; executed inside that thread.
   (sdl2:with-init (:everything)
@@ -729,24 +724,11 @@
       (with-data-dirs *base-dir*
         (add-command 'data-search-paths
                      (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
-        (set-gl-attrs)
-        (let* ((*win-width* 1024) (*win-height* 768)
-               (*rend-width* *win-width*) (*rend-height* *win-height*))
-          (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height*
-                                    :flags '(:opengl))
-            (srend:with-render-system
-                (render-system window *rend-width* *rend-height*)
-              (add-command 'set-fullscreen
-                           (lambda (flag)
-                             "Set window to real :FULLSCREEN or to :DESKTOP to just take the desktop size (i.e. borderless fullscreen).
-Use 0 or NIL for windowed mode."
-                             (sdl2:set-window-fullscreen window flag)))
-              (sdl2:set-relative-mouse-mode 1)
-              (srend:print-gl-info (srend:render-system-gl-config render-system))
-              (funcall function render-system window))))))))
+          (srend:with-render-system (render-system)
+            (funcall function render-system))))))
 
-(defmacro with-init ((render-system window) &body body)
-  `(call-with-init (lambda (,render-system ,window) ,@body)))
+(defmacro with-init ((render-system) &body body)
+  `(call-with-init (lambda (,render-system) ,@body)))
 
 (defstruct (console (:constructor %make-console))
   (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
@@ -884,17 +866,20 @@ Use 0 or NIL for windowed mode."
   (if (/= 0 (length (console-text console)))
       (vector-pop (console-text console))))
 
-(defun console-draw (console)
-  (let ((start-y (+ (floor *rend-height* 2) 16)))
-    (when (/= 0 (console-display-from-line console))
-      (srend::draw-gui-text "^ ^ ^ SCROLLBACK ^ ^ ^" :x 2 :y start-y)
-      (incf start-y 16))
-    (loop for line in (nthcdr (console-display-from-line console)
-                              (console-reversed-lines console))
-          and y from start-y to *rend-height* by 16 do
-            (srend:draw-gui-text line :x 2 :y y)))
-  (srend:draw-gui-text (format nil "> ~A" (console-text console))
-                       :x 2 :y (floor *rend-height* 2)))
+(defun console-draw (console render-system)
+  ;; TODO: Use virtual screen height
+  (let ((win-height (srend:render-system-rend-height render-system))
+        (scale 1))
+    (let ((start-y (+ (floor win-height 2) (* 16 scale))))
+      (when (/= 0 (console-display-from-line console))
+        (srend:draw-gui-text "^ ^ ^ SCROLLBACK ^ ^ ^" :x 2 :y start-y)
+        (incf start-y (* 16 scale)))
+      (loop for line in (nthcdr (console-display-from-line console)
+                                (console-reversed-lines console))
+            and y from start-y to win-height by (* 16 scale) do
+              (srend:draw-gui-text line :x 2 :y y :scale scale)))
+    (srend:draw-gui-text (format nil "> ~A" (console-text console))
+                         :x 2 :y (floor win-height 2) :scale scale)))
 
 (defun console-handle-keydown (console keysym)
   (assert (console-active-p console))
@@ -953,14 +938,17 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
             (restart-map map-model game camera render-system model-manager))))
 
 (defun main ()
-  (with-init (render-system win)
+  (with-init (render-system)
     (declare (special *console*))
     (check-type *console* console)
     (smdl:with-model-manager model-manager
       (with-resources "main"
         (load-main-resources render-system)
-        (let* ((proj (make-perspective (* deg->rad #.(shiva-float 60d0))
-                                       (/ *win-width* *win-height*)
+        (let* ((win (srend::render-system-window render-system))
+               (aspect (/ (srend:render-system-rend-width render-system)
+                          (srend:render-system-rend-height render-system)))
+               (proj (make-perspective (* deg->rad #.(shiva-float 60d0))
+                                       aspect
                                        #.(shiva-float 0.01d0)
                                        #.(shiva-float 100d0)))
                (camera (make-camera :projection proj :position (v 1 0.5 8)))
@@ -1082,26 +1070,16 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                          (srend:with-draw-frame (render-system)
                            (let ((*game* game))
                              (declare (special *game*))
-                             (render-view *player* camera
-                                          (srend::render-system-image-manager render-system)
+                             (render-view *player* camera render-system
                                           model-manager (game-render-things game)))
                            (when (console-active-p *console*)
-                             (srend:draw-gui-quad 0 0 *rend-width* (* 0.5 *rend-height*))
-                             (console-draw *console*))
+                             (srend:draw-gui-quad 0 0
+                                                  (srend:render-system-rend-width render-system)
+                                                  (* 0.5 (srend:render-system-rend-height render-system)))
+                             (console-draw *console* render-system))
                            (draw-timer-stats frame-timer)
                            (draw-timer-stats
                             (srend::render-system-swap-timer render-system) :y -36))))))))))))
-
-(defun set-gl-attrs ()
-  "Set OpenGL context attributes. This needs to be called before window
-  and context creation."
-  (sdl2:gl-set-attrs
-   :context-major-version 3
-   :context-minor-version 3
-   ;; set CONTEXT_FORWARD_COMPATIBLE
-   :context-flags #x2
-   ;; set CONTEXT_PROFILE_CORE
-   :context-profile-mask #x1))
 
 (defun render-world (camera world-model)
   "Send geometry for rendering, front to back."
@@ -1151,16 +1129,25 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                               (rec front test-p)))))))))
         (rec (smdl:bsp-model-nodes world-model))))))
 
-(defun render-view (player camera image-manager model-manager render-things)
+(defun render-view (player camera render-system model-manager render-things)
   (gl:enable :depth-test)
-  ;; TODO: Enable this when we correctly generate CCW faces for .bsp models.
   (gl:enable :cull-face)
   (gl:cull-face :back)
   (gl:front-face :ccw)
   (gl:depth-func :less)
+  (setf (camera-projection camera)
+        (make-perspective (* deg->rad #.(shiva-float 60d0))
+                          (/ (srend:render-system-rend-width render-system)
+                             (srend:render-system-rend-height render-system))
+                          #.(shiva-float 0.01d0)
+                          #.(shiva-float 100d0)))
   (render-world camera smdl:*world-model*)
   ;; Draw "crosshair"
-  (srend::draw-text "+" :x (floor *win-width* 2) :y (floor *win-height* 2)
-                    :scale 2.0)
-  (player-render-weapon player camera image-manager model-manager)
+  (let ((width (srend:render-system-rend-width render-system))
+        (height (srend:render-system-rend-height render-system)))
+    ;; TODO: This doesn't align with raycast from camera center.
+    (srend:draw-text "+" :x (floor width 2) :y (floor height 2)
+                         :scale 2.0))
+  (let ((image-manager (srend::render-system-image-manager render-system)))
+    (player-render-weapon player camera image-manager model-manager))
   (render-things render-things camera model-manager))

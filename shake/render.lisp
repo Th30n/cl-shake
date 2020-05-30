@@ -37,6 +37,30 @@
 (defun delete-font (font)
   (gl:delete-textures (list (font-texture font))))
 
+(defstruct vid-mode
+  (format 0 :type (unsigned-byte 32) :read-only t)
+  (width 0 :type fixnum :read-only t)
+  (height 0 :type fixnum :read-only t)
+  (refresh-rate 0 :type fixnum :read-only t))
+
+(defun get-modes-for-display (display-index)
+  (check-type display-index (integer 0))
+  (let ((num-modes (sdl2:get-num-display-modes display-index)))
+    (when (< num-modes 0) (error "SDL2:GET-NUM-DISPLAY-MODES failed"))
+    (loop for mode-ix from 0 below num-modes
+          collect (multiple-value-bind (format width height refresh-rate)
+                      (sdl2:get-display-mode display-index mode-ix)
+                    (make-vid-mode :format format :width width :height height :refresh-rate refresh-rate)))))
+
+(defun list-modes ()
+  "List available display modes when fullscreen."
+  (let ((num-displays (sdl2:get-num-video-displays)))
+    (when (< num-displays 0) (error "SDL2:GET-NUM-VIDEO-DISPLAYS failed"))
+    (dotimes (disp-ix num-displays)
+      (loop for mode in (get-modes-for-display disp-ix) and mode-ix from 0 do
+        (shake:printf "Monitor ~A, mode ~A, ~A x ~A @ ~AHz~%" disp-ix mode-ix
+                      (vid-mode-width mode) (vid-mode-height mode) (vid-mode-refresh-rate mode))))))
+
 (defstruct gl-config
   "Stores constants of various capabilities for the initialized GL context."
   (vendor nil :type string :read-only t)
@@ -254,29 +278,106 @@
     (shutdown-image-manager image-manager)
     (shutdown-prog-manager prog-manager)))
 
-(defun call-with-render-system (window render-width render-height fun)
-  (check-type render-width fixnum)
-  (check-type render-height fixnum)
-  (check-type fun function)
-  (sdl2:with-gl-context (context window)
-    (handler-case
-        ;; Turn off V-Sync
-        (sdl2:gl-set-swap-interval 0)
-      (error () ;; sdl2 doesn't export sdl-error
-        (shake:print-error "setting swap interval not supported~%")))
-    (bracket (render-system (init-render-system window render-width render-height)
-                            shutdown-render-system)
-      (shake:add-command
-       'print-memory-usage (lambda () (print-memory-usage render-system)))
-      (shake:add-command
-       'print-gl-info
-       (lambda () (print-gl-info (render-system-gl-config render-system))))
-      (funcall fun render-system))))
+(defun render-system-init-commands (render-system)
+  ;; TODO: FULLSCREEN should be initialized the same as RENDER-SYSTEM-WINDOW.
+  (let ((fullscreen nil)
+        (win-width (render-system-win-width render-system))
+        (win-height (render-system-win-height render-system))
+        (vid-mode 0))
+    (shake:add-command
+     'set-fullscreen
+     (lambda (flag)
+       "Set window to real :FULLSCREEN or to :BORDERLESS to just take the desktop size (i.e. borderless fullscreen).
+Use NIL for windowed mode."
+       (check-type flag (member t :fullscreen :desktop :borderless nil))
+       (setf fullscreen flag)))
+    (shake:add-command
+     'set-win-size
+     (lambda (width height)
+       (check-type width fixnum)
+       (check-type height fixnum)
+       (setf win-width width)
+       (setf win-height height)))
+    (shake:add-command 'set-vid-mode
+                       (lambda (mode-ix)
+                         (check-type mode-ix fixnum)
+                         (assert (>= mode-ix 0))
+                         (setf vid-mode mode-ix)))
+    (shake:add-command
+     'vid-restart
+     (lambda ()
+       (let ((win (render-system-window render-system))
+             (width win-width) (height win-height))
+         (ecase fullscreen
+           ((t :fullscreen)
+            (sdl2:set-window-fullscreen win :fullscreen)
+            (let ((mode (nth vid-mode (get-modes-for-display 0))))
+              (unless mode
+                (shake:printf "Resetting vid-mode from ~A to 0" vid-mode)
+                (setf vid-mode 0)
+                (setf mode (car (get-modes-for-display 0))))
+              (autowrap:with-alloc (mode-ptr 'sdl2-ffi:sdl-display-mode)
+                (sdl2-ffi.functions:sdl-get-display-mode 0 vid-mode mode-ptr)
+                (sdl2-ffi.functions:sdl-set-window-display-mode
+                 win mode-ptr))
+              (setf width (vid-mode-width mode))
+              (setf height (vid-mode-height mode))
+              (shake:printf "Setting mode to ~A x ~A @ ~AHz~%"
+                            width height (vid-mode-refresh-rate mode))))
+           ((:borderless :desktop)
+            (sdl2:set-window-fullscreen win :desktop)
+            (multiple-value-setq (width height)
+              (sdl2:get-window-size win))
+            (shake:printf "Setting borderless fullscreen ~A x ~A~%" width height))
+           ((nil)
+            (sdl2:set-window-fullscreen win nil)
+            (sdl2:set-window-size win win-width win-height)
+            (shake:printf "Setting window ~A x ~A~%" width height)))
+         (free-framebuffer (render-system-framebuffer render-system))
+         (setf (render-system-framebuffer render-system)
+               (init-gl-framebuffer width height))
+         (setf (render-system-rend-width render-system) width)
+         (setf (render-system-win-width render-system) width)
+         (setf (render-system-rend-height render-system) height)
+         (setf (render-system-win-height render-system) height)
+         (shake:printf "VID-RESTART done~%")))))
+  (shake:add-command
+   'print-memory-usage (lambda () (print-memory-usage render-system)))
+  (shake:add-command
+   'print-gl-info
+   (lambda () (print-gl-info (render-system-gl-config render-system))))
+  (shake:add-command 'list-modes #'list-modes))
 
-(defmacro with-render-system ((render-system window render-width render-height)
-                              &body body)
-  `(call-with-render-system ,window ,render-width ,render-height
-                            (lambda (,render-system) ,@body)))
+(defun set-gl-attrs ()
+  "Set OpenGL context attributes. This needs to be called before window
+  and context creation."
+  (sdl2:gl-set-attrs
+   :context-major-version 3
+   :context-minor-version 3
+   ;; set CONTEXT_FORWARD_COMPATIBLE
+   :context-flags #x2
+   ;; set CONTEXT_PROFILE_CORE
+   :context-profile-mask #x1))
+
+(defun call-with-render-system (fun)
+  (check-type fun function)
+  (set-gl-attrs)
+  (sdl2:with-window (window :title "shake" :w 1024 :h 768 :flags '(:opengl))
+    (sdl2:with-gl-context (context window)
+      (handler-case
+          ;; Turn off V-Sync
+          (sdl2:gl-set-swap-interval 0)
+        (error () ;; sdl2 doesn't export sdl-error
+          (shake:print-error "setting swap interval not supported~%")))
+      (bracket (render-system (init-render-system window 1024 768)
+                              shutdown-render-system)
+        (render-system-init-commands render-system)
+        (sdl2:set-relative-mouse-mode 1)
+        (srend:print-gl-info (srend:render-system-gl-config render-system))
+        (funcall fun render-system)))))
+
+(defmacro with-render-system ((render-system) &body body)
+  `(call-with-render-system (lambda (,render-system) ,@body)))
 
 ;; Currently active RENDER-SYSTEM.
 (defvar *rs*)
@@ -559,16 +660,16 @@
           (add-surface-vertex-data surface mvp batch))))))
 
 (defun draw-text (text &key x y (scale 1.0s0))
-  "Draw a single line of text on given window coordinates."
+  "Draw a single line of text on given render buffer coordinates."
   (check-type *rs* render-system)
   (check-type text string)
   (check-type x fixnum)
   (check-type y fixnum)
-  (check-type scale single-float)
+  (check-type scale real)
   ;; TODO: Do we want window or render dimensions?
-  (let ((pos-x (if (minusp x) (+ (render-system-win-width *rs*) x) x))
-        (pos-y (if (minusp y) (+ (render-system-win-height *rs*) y) y)))
-    (push (make-debug-text :char-string text :x pos-x :y pos-y :scale scale)
+  (let ((pos-x (if (minusp x) (+ (render-system-rend-width *rs*) x) x))
+        (pos-y (if (minusp y) (+ (render-system-rend-height *rs*) y) y)))
+    (push (make-debug-text :char-string text :x pos-x :y pos-y :scale (coerce scale 'single-float))
           (render-system-debug-text-list *rs*))))
 
 (defun draw-gui-quad (x y w h)
@@ -597,10 +698,11 @@
 (defun show-debug-text (render-system)
   ;; Try to keep the overhead of drawing debug-text to a minimum.
   (declare (optimize (speed 3) (space 3)))
-  ;; TODO: Do we want window or render dimensions?
-  (with-struct (render-system- debug-text-list win-width win-height) render-system
+  ;; TODO: Do we want window or render dimensions? We should probably use a
+  ;; virtual screen resolution.
+  (with-struct (render-system- debug-text-list rend-width rend-height) render-system
     (let ((progs (render-system-prog-manager render-system))
-          (ortho (ortho 0.0 win-width 0.0 win-height -1.0 1.0)))
+          (ortho (ortho 0.0 rend-width 0.0 rend-height -1.0 1.0)))
       (sdata:res-let (point-renderer font)
         (with-struct (font- texture cell-size) font
           (let ((half-cell (* 0.5 cell-size))
@@ -620,12 +722,12 @@
                       (size (* half-cell (debug-text-scale debug-text))))
                   (gl:uniformf size-loc size)
                   (loop for char across text
-                     and offset of-type single-float from half-cell by half-cell do
+                     and offset of-type single-float from size by size do
                        (multiple-value-bind (x y) (char->font-cell-pos char font)
                          (gl:uniformi char-pos-loc x y)
                          (let ((translation
                                 (translation :x (+ offset pos-x)
-                                             :y (+ pos-y half-cell))))
+                                             :y (+ pos-y size))))
                            (declare (dynamic-extent translation))
                            ;; NOTE: This is consing a lot!
                            (sgl:uniform-matrix-4f mv-loc translation))

@@ -29,6 +29,9 @@ void main(void)
 {
     vec2 inv_uv = vec2(uv.x, 1 - uv.y);
     ivec2 pos = ivec2(floor(inv_uv * cell));
+    // NOTE: `texelFetch` prevents proper interpolation when scaling. On the
+    // other hand, using `texture` when scaling isn't needed causes blurriness
+    // around character edges (due to interpolation with black/empty space).
     color = texelFetch(tex_font, char_pos + pos, 0);
     if (color.rgb == vec3(0.0f))
       discard;

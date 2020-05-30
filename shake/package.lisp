@@ -89,7 +89,9 @@
   (:use #:cl #:alexandria #:shiva #:shake-utils #:shake.debug)
   (:export #:draw-gui-text
            #:draw-gui-quad
+           #:draw-text
            #:load-map-images
+           #:list-modes
            #:gl-config
            #:print-gl-info
            #:print-memory-usage
@@ -97,8 +99,15 @@
            #:render-system
            #:render-system-gl-config
            #:render-system-prog-manager
+           #:render-system-rend-height
+           #:render-system-rend-width
            #:with-render-system
-           #:with-draw-frame))
+           #:with-draw-frame
+           ;; These are just command symbols
+           #:set-fullscreen
+           #:set-vid-mode
+           #:set-win-size
+           #:vid-restart))
 
 (defpackage #:shake
   (:use #:cl #:alexandria #:shiva #:shake-gl #:shake-utils #:shake.data
