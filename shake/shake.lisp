@@ -705,31 +705,6 @@
   (check-type symbol symbol)
   (find symbol *commands* :key #'car))
 
-(defun call-with-init (function)
-  "Initialize everything and run FUNCTION with RENDER-SYSTEM argument."
-  ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
-  ;; executed inside that thread.
-  (sdl2:with-init (:everything)
-    (let* ((*commands* nil)
-           (*console* (make-console))
-           (*last-printed-error* nil)
-           (*last-printed-warning* nil)
-           ;; Make *BASE-DIR* our EXE-DIR in executable images.
-           (*base-dir* (or (sdata:exe-dir) *base-dir*)))
-      (declare (special *commands* *console* *last-printed-error* *last-printed-warning*))
-      (reset-game-keys)
-      (add-command 'base-dir (lambda () (printf "'~A'" *base-dir*)))
-      (add-command 'exe-dir (lambda () (printf "'~A'" (sdata:exe-dir))))
-      (add-command 'pwd (lambda () (printf "'~A'" (uiop:getcwd))))
-      (with-data-dirs *base-dir*
-        (add-command 'data-search-paths
-                     (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
-          (srend:with-render-system (render-system)
-            (funcall function render-system))))))
-
-(defmacro with-init ((render-system) &body body)
-  `(call-with-init (lambda (,render-system) ,@body)))
-
 (defstruct (console (:constructor %make-console))
   (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
   ;; TODO: Set maximum number of stored lines.
@@ -781,19 +756,6 @@
   (check-type console console)
   (setf (console-reversed-lines console) nil)
   (setf (console-display-from-line console) 0))
-
-(defun make-console ()
-  (let ((console (%make-console)))
-    (add-command 'quit #'sdl2:push-quit-event)
-    (add-command 'exit #'sdl2:push-quit-event)
-    (add-command 'echo (lambda (&rest args)
-                         (printf "~{~A~^ ~}~%" args)))
-    (add-command '+ #'+)
-    (add-command '- #'-)
-    (add-command '* #'*)
-    (add-command '/ #'/)
-    (add-command 'clear (lambda () (console-clear console)))
-    console))
 
 (defun console-append (console text)
   (check-type console console)
@@ -893,6 +855,29 @@
                    (error (e) (print-error "~A~%" e)))))
         (when res (printf "~S~%" res))))))
 
+(defun make-console ()
+  (let ((console (%make-console)))
+    (add-command 'quit #'sdl2:push-quit-event)
+    (add-command 'exit #'sdl2:push-quit-event)
+    (add-command 'echo (lambda (&rest args)
+                         (printf "~{~A~^ ~}~%" args)))
+    (add-command '+ #'+)
+    (add-command '- #'-)
+    (add-command '* #'*)
+    (add-command '/ #'/)
+    (add-command 'clear (lambda () (console-clear console)))
+    (add-command 'exec (lambda (filename)
+                         (with-data-file (file filename)
+                           (printf "Execing ~A...~%" filename)
+                           (handler-case
+                               (loop for line = (read-line file) do
+                                 (console-append console line)
+                                 (console-commit console))
+                             (end-of-file ()
+                               (printf "Finished exec of ~A~%" filename))))))
+    console))
+
+
 (defun console-backspace (console)
   (if (/= 0 (length (console-text console)))
       (vector-pop (console-text console))))
@@ -967,6 +952,33 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
     (load-map-textures render-system (smdl:bsp-model-nodes map-model))
     (values map-model
             (restart-map map-model game camera render-system model-manager))))
+
+(defun call-with-init (function)
+  "Initialize everything and run FUNCTION with RENDER-SYSTEM argument."
+  ;; Calling sdl2:with-init will create a SDL2 Main Thread, and the body is
+  ;; executed inside that thread.
+  (sdl2:with-init (:everything)
+    (let* ((*commands* nil)
+           (*console* (make-console))
+           (*last-printed-error* nil)
+           (*last-printed-warning* nil)
+           ;; Make *BASE-DIR* our EXE-DIR in executable images.
+           (*base-dir* (or (sdata:exe-dir) *base-dir*)))
+      (declare (special *commands* *console* *last-printed-error* *last-printed-warning*))
+      (reset-game-keys)
+      (add-command 'base-dir (lambda () (printf "'~A'" *base-dir*)))
+      (add-command 'exe-dir (lambda () (printf "'~A'" (sdata:exe-dir))))
+      (add-command 'pwd (lambda () (printf "'~A'" (uiop:getcwd))))
+      (with-data-dirs *base-dir*
+        (add-command 'data-search-paths
+                     (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
+        (srend:with-render-system (render-system)
+          (console-append *console* "exec \"default.cfg\"")
+          (console-commit *console*)
+          (funcall function render-system))))))
+
+(defmacro with-init ((render-system) &body body)
+  `(call-with-init (lambda (,render-system) ,@body)))
 
 (defun main ()
   (with-init (render-system)
