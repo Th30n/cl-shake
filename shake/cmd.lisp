@@ -81,21 +81,8 @@
   (printf "> ~A~%" (console-text console))
   (setf (console-display-from-line console) 0)
   (let ((form (handler-case
-                  (let ((*package* (find-package :shake))
-                        (*read-eval* nil)
-                        (*readtable* (copy-readtable)))
-                    (set-macro-character #\# nil)
-                    (set-macro-character #\| nil)
-                    ;; Read all of the string so as to allow forms without top
-                    ;; level parentheses. E.g. "echo arg1 arg2" will be valid
-                    ;; as if "(echo arg1 arg2)".
-                    (loop for (form pos) = (multiple-value-list
-                                            (read-from-string (console-text console) nil :eof))
-                       then (multiple-value-list
-                             (read-from-string (console-text console) nil :eof :start pos))
-                       until (eq :eof form) collect form))
+                  (read-command-from-string (console-text console))
                 (error (e) (print-error "~A~%" e)))))
-    (unless (cdr form) (setf form (car form)))
     (setf (fill-pointer (console-text console)) 0)
     (when form
       (let ((res (handler-case (command-eval-form form)
@@ -116,12 +103,10 @@
     (add-command 'exec (lambda (filename)
                          (with-data-file (file filename)
                            (printf "Execing ~A...~%" filename)
-                           (handler-case
-                               (loop for line = (read-line file) do
-                                 (console-append console line)
-                                 (console-commit console))
-                             (end-of-file ()
-                               (printf "Finished exec of ~A~%" filename))))))
+                           (loop for line = (read-line file nil :eof)
+                                 until (eq line :eof) do
+                                   (command-eval-form (read-command-from-string line)))
+                           (printf "Finished exec of ~A~%" filename))))
     console))
 
 
@@ -196,6 +181,25 @@
   (check-type symbol symbol)
   (find symbol *commands* :key #'car))
 
+(defun read-command-from-string (string)
+  "Return a form parsed from STRING."
+  (check-type string string)
+  (let ((form (let ((*package* (find-package :shake))
+                    (*read-eval* nil)
+                    (*readtable* (copy-readtable)))
+                (set-macro-character #\# nil)
+                (set-macro-character #\| nil)
+                ;; Read all of the string so as to allow forms without top
+                ;; level parentheses. E.g. "echo arg1 arg2" will be valid
+                ;; as if "(echo arg1 arg2)".
+                (loop for (form pos) = (multiple-value-list
+                                        (read-from-string string nil :eof))
+                        then (multiple-value-list
+                              (read-from-string string nil :eof :start pos))
+                      until (eq :eof form) collect form))))
+    (unless (cdr form) (setf form (car form)))
+    form))
+
 (defun command-eval-form (form)
   (declare (special *commands*))
   (check-type *commands* list)
@@ -247,3 +251,10 @@
          ((eq 'help form) (help-command))
          ;; Treat other symbols as single argument command.
          (t (apply-command form)))))))
+
+(defmacro command-progn ((&key (errorp nil)) &body body)
+  (let ((forms `(progn ,@(mapcar (lambda (form) `(command-eval-form ',form)) body))))
+    (if errorp
+        forms
+        `(handler-case ,forms
+           (error (e) (print-error "~A~%" e))))))

@@ -738,8 +738,7 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
           (add-command 'data-search-paths
                        (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
           (srend:with-render-system (render-system)
-            (console-append *console* "exec \"default.cfg\"")
-            (console-commit *console*)
+            (command-progn () (exec "default.cfg"))
             (funcall function render-system)))))))
 
 (defmacro with-init ((render-system) &body body)
