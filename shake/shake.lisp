@@ -802,6 +802,20 @@
       (vector-push-extend text (console-text console))
       (loop for c across text do (console-append console c))))
 
+(defun package-shortest-name (package)
+  "Get the shortest name or nickname for PACKAGE. If PACKAGE has no name, returns NIL."
+  (check-type package package)
+  (when-let ((name (package-name package)))
+    (dolist (nick (package-nicknames package) name)
+      (when (< (length nick) (length name))
+        (setf name nick)))))
+
+(defun symbol-exported-p (symbol)
+  (check-type symbol symbol)
+  (do-external-symbols (exported-sym (symbol-package symbol))
+    (when (eq exported-sym symbol)
+      (return-from symbol-exported-p t))))
+
 (defun command-eval-form (console form)
   (declare (special *commands*))
   (check-type *commands* list)
@@ -817,8 +831,25 @@
                (if-let ((cmd (find-command cmd-sym)))
                  (printf "~A" (documentation (cdr cmd) 'function)))
                (let ((*package* (find-package :shake)))
-                 (printf "~{~S~%~}" (stable-sort (mapcar #'car *commands*)
-                                                 #'string<))))))
+                 (flet ((cmd< (cmd1 cmd2)
+                          (let ((pkg1 (symbol-package cmd1))
+                                (pkg2 (symbol-package cmd2)))
+                            (if (eq pkg1 pkg2)
+                                (string< cmd1 cmd2)
+                                (string< (package-shortest-name pkg1)
+                                         (package-shortest-name pkg2))))))
+                   (dolist (cmd (stable-sort (mapcar #'car *commands*) #'cmd<))
+                     (let ((cmd-package (symbol-package cmd))
+                           (cmd-exported-p (symbol-exported-p cmd)))
+                       (cond
+                         ((or (eq *package* cmd-package)
+                              (and cmd-exported-p
+                                   (member cmd-package (package-use-list *package*))))
+                          (printf "~A~%" (symbol-name cmd)))
+                         (cmd-exported-p
+                          (printf "~A:~A~%" (package-shortest-name cmd-package) (symbol-name cmd)))
+                         (t
+                          (printf "~A::~A~%" (package-shortest-name cmd-package) (symbol-name cmd)))))))))))
     (cond
       ((consp form)
        (case (car form)
