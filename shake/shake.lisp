@@ -738,6 +738,20 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
           (add-command 'data-search-paths
                        (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
           (srend:with-render-system (render-system)
+            (when (uiop:os-windows-p)
+              (add-command 'show-console-window
+                           (lambda ()
+                             (cffi:load-foreign-library "User32.dll")
+                             (cffi:defcfun "GetConsoleWindow" :pointer)
+                             (cffi:defcfun "ShowWindow" :bool (hwnd :pointer) (ncmdshow :int))
+                             (showwindow (getconsolewindow) 5)))
+              (add-command 'hide-console-window
+                           (lambda ()
+                             (cffi:load-foreign-library "User32.dll")
+                             (cffi:defcfun "GetConsoleWindow" :pointer)
+                             (cffi:defcfun "ShowWindow" :bool (hwnd :pointer) (ncmdshow :int))
+                             (showwindow (getconsolewindow) 0)))
+              (command-progn () (hide-console-window)))
             (command-progn () (exec "default.cfg"))
             (funcall function render-system)))))))
 
