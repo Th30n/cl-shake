@@ -157,6 +157,15 @@
           (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
      (setf (console-display-from-line console) 0))))
 
+(defstruct cmd
+  (symbol nil :type symbol :read-only t)
+  (function nil :type function :read-only t)
+  (setter nil :type (or null function) :read-only t))
+
+(defun cmd-documentation (cmd)
+  (check-type cmd cmd)
+  (documentation (cmd-function cmd) 'function))
+
 (defun call-with-cmd-system (function)
   (let ((*commands* nil))
     (declare (special *commands*))
@@ -170,16 +179,37 @@
   (check-type *commands* list)
   (check-type symbol symbol)
   (check-type function function)
-  ;; TODO: Issue a warning if already exists
-  (when (find symbol *commands* :key #'car)
+  (when (find symbol *commands* :key #'cmd-symbol)
     (print-warning "redefining command '~S'~%" symbol))
-  (push (cons symbol function) *commands*))
+  (push (make-cmd :symbol symbol :function function) *commands*))
+
+(defun add-variable (symbol &key getter setter (type t) documentation)
+  (declare (special *commands*))
+  (check-type *commands* list)
+  (check-type symbol (and (not null) symbol))
+  (check-type getter (or null function))
+  (check-type setter (or null function))
+  (check-type documentation (or null string))
+  (when (find symbol *commands* :key #'cmd-symbol)
+    (print-warning "redefining command '~S'~%" symbol))
+  (let ((getter (or getter (lambda () (symbol-value symbol)))))
+    (when (and (boundp symbol) (documentation symbol 'variable))
+      (setf (documentation getter 'function) (documentation symbol 'variable)))
+    (when documentation
+      (setf (documentation getter 'function) documentation))
+    (push (make-cmd :symbol symbol
+                    :function getter
+                    :setter (or setter (lambda (val)
+                                         (unless (typep val type)
+                                           (error 'type-error :datum val :expected-type type))
+                                         (setf (symbol-value symbol) val))))
+          *commands*)))
 
 (defun find-command (symbol)
   (declare (special *commands*))
   (check-type *commands* list)
   (check-type symbol symbol)
-  (find symbol *commands* :key #'car))
+  (find symbol *commands* :key #'cmd-symbol))
 
 (defun read-command-from-string (string)
   "Return a form parsed from STRING."
@@ -204,16 +234,21 @@
   (declare (special *commands*))
   (check-type *commands* list)
   (flet ((apply-command (cmd-sym &optional args)
-           (let ((cmd (when (symbolp cmd-sym)
-                        (find-command cmd-sym))))
-             (if cmd
-                 (apply (cdr cmd) (mapcar (lambda (arg)
-                                            (command-eval-form arg)) args))
-                 (error "unkown command '~A'" cmd-sym))))
+           (check-type cmd-sym symbol)
+           (if-let ((cmd (find-command cmd-sym)))
+             (apply (cmd-function cmd) (mapcar #'command-eval-form args))
+             (error "unkown command '~A'" cmd-sym)))
+         (set-command (cmd-sym &rest vals)
+           (check-type cmd-sym symbol)
+           (if-let ((cmd (find-command cmd-sym)))
+             (if (cmd-setter cmd)
+                 (apply (cmd-setter cmd) (mapcar #'command-eval-form vals))
+                 (error "'~A' is not modifiable" cmd-sym))
+             (error "unknown variable '~A'" cmd-sym)))
          (help-command (&optional cmd-sym)
            (if cmd-sym
                (if-let ((cmd (find-command cmd-sym)))
-                 (printf "~A" (documentation (cdr cmd) 'function)))
+                 (printf "~A" (cmd-documentation cmd)))
                (let ((*package* (find-package :shake)))
                  (flet ((cmd< (cmd1 cmd2)
                           (let ((pkg1 (symbol-package cmd1))
@@ -222,7 +257,7 @@
                                 (string< cmd1 cmd2)
                                 (string< (package-shortest-name pkg1)
                                          (package-shortest-name pkg2))))))
-                   (dolist (cmd (stable-sort (mapcar #'car *commands*) #'cmd<))
+                   (dolist (cmd (stable-sort (mapcar #'cmd-symbol *commands*) #'cmd<))
                      (let ((cmd-package (symbol-package cmd))
                            (cmd-exported-p (symbol-exported-p cmd)))
                        (cond
@@ -241,6 +276,7 @@
                   (command-eval-form subform)))
          (quote (cadr form))
          (help (apply #'help-command (cdr form)))
+         (set (apply #'set-command (cdr form)))
          (t
           (apply-command (car form) (cdr form)))))
       ((atom form)

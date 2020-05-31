@@ -278,69 +278,64 @@
     (shutdown-image-manager image-manager)
     (shutdown-prog-manager prog-manager)))
 
+;; cvars
+(defvar *fullscreen* nil
+  "Set window to real :FULLSCREEN or to :BORDERLESS to just take the desktop size (i.e. borderless fullscreen).
+Use NIL for windowed mode.")
+(defvar *vid-mode* 0)
+(defvar *win-width* 1024)
+(defvar *win-height* 768)
+
 (defun render-system-init-commands (render-system)
+  (setf *win-width* (render-system-win-width render-system))
+  (setf *win-height* (render-system-win-height render-system))
   ;; TODO: FULLSCREEN should be initialized the same as RENDER-SYSTEM-WINDOW.
-  (let ((fullscreen nil)
-        (win-width (render-system-win-width render-system))
-        (win-height (render-system-win-height render-system))
-        (vid-mode 0))
-    (shake:add-command
-     'set-fullscreen
-     (lambda (flag)
-       "Set window to real :FULLSCREEN or to :BORDERLESS to just take the desktop size (i.e. borderless fullscreen).
-Use NIL for windowed mode."
-       (check-type flag (member t :fullscreen :desktop :borderless nil))
-       (setf fullscreen flag)))
-    (shake:add-command
-     'set-win-size
-     (lambda (width height)
-       (check-type width fixnum)
-       (check-type height fixnum)
-       (setf win-width width)
-       (setf win-height height)))
-    (shake:add-command 'set-vid-mode
-                       (lambda (mode-ix)
-                         (check-type mode-ix fixnum)
-                         (assert (>= mode-ix 0))
-                         (setf vid-mode mode-ix)))
-    (shake:add-command
-     'vid-restart
-     (lambda ()
-       (let ((win (render-system-window render-system))
-             (width win-width) (height win-height))
-         (ecase fullscreen
-           ((t :fullscreen)
-            (sdl2:set-window-fullscreen win :fullscreen)
-            (let ((mode (nth vid-mode (get-modes-for-display 0))))
-              (unless mode
-                (shake:printf "Resetting vid-mode from ~A to 0" vid-mode)
-                (setf vid-mode 0)
-                (setf mode (car (get-modes-for-display 0))))
-              (autowrap:with-alloc (mode-ptr 'sdl2-ffi:sdl-display-mode)
-                (sdl2-ffi.functions:sdl-get-display-mode 0 vid-mode mode-ptr)
-                (sdl2-ffi.functions:sdl-set-window-display-mode
-                 win mode-ptr))
-              (setf width (vid-mode-width mode))
-              (setf height (vid-mode-height mode))
-              (shake:printf "Setting mode to ~A x ~A @ ~AHz~%"
-                            width height (vid-mode-refresh-rate mode))))
-           ((:borderless :desktop)
-            (sdl2:set-window-fullscreen win :desktop)
-            (multiple-value-setq (width height)
-              (sdl2:get-window-size win))
-            (shake:printf "Setting borderless fullscreen ~A x ~A~%" width height))
-           ((nil)
-            (sdl2:set-window-fullscreen win nil)
-            (sdl2:set-window-size win win-width win-height)
-            (shake:printf "Setting window ~A x ~A~%" width height)))
-         (free-framebuffer (render-system-framebuffer render-system))
-         (setf (render-system-framebuffer render-system)
-               (init-gl-framebuffer width height))
-         (setf (render-system-rend-width render-system) width)
-         (setf (render-system-win-width render-system) width)
-         (setf (render-system-rend-height render-system) height)
-         (setf (render-system-win-height render-system) height)
-         (shake:printf "VID-RESTART done~%")))))
+  (shake:add-variable '*fullscreen* :type '(member t :fullscreen :desktop :borderless nil))
+  (shake:add-variable '*win-width* :type 'fixnum)
+  (shake:add-variable '*win-height* :type 'fixnum)
+  (shake:add-variable '*vid-mode*
+                      :setter (lambda (mode-ix)
+                                (check-type mode-ix fixnum)
+                                (assert (>= mode-ix 0))
+                                (setf *vid-mode* mode-ix)))
+  (shake:add-command
+   'vid-restart
+   (lambda ()
+     (let ((win (render-system-window render-system))
+           (width *win-width*) (height *win-height*))
+       (ecase *fullscreen*
+         ((t :fullscreen)
+          (sdl2:set-window-fullscreen win :fullscreen)
+          (let ((mode (nth *vid-mode* (get-modes-for-display 0))))
+            (unless mode
+              (shake:printf "Resetting vid-mode from ~A to 0" *vid-mode*)
+              (setf *vid-mode* 0)
+              (setf mode (car (get-modes-for-display 0))))
+            (autowrap:with-alloc (mode-ptr 'sdl2-ffi:sdl-display-mode)
+              (sdl2-ffi.functions:sdl-get-display-mode 0 *vid-mode* mode-ptr)
+              (sdl2-ffi.functions:sdl-set-window-display-mode
+               win mode-ptr))
+            (setf width (vid-mode-width mode))
+            (setf height (vid-mode-height mode))
+            (shake:printf "Setting mode to ~A x ~A @ ~AHz~%"
+                          width height (vid-mode-refresh-rate mode))))
+         ((:borderless :desktop)
+          (sdl2:set-window-fullscreen win :desktop)
+          (multiple-value-setq (width height)
+            (sdl2:get-window-size win))
+          (shake:printf "Setting borderless fullscreen ~A x ~A~%" width height))
+         ((nil)
+          (sdl2:set-window-fullscreen win nil)
+          (sdl2:set-window-size win *win-width* *win-height*)
+          (shake:printf "Setting window ~A x ~A~%" width height)))
+       (free-framebuffer (render-system-framebuffer render-system))
+       (setf (render-system-framebuffer render-system)
+             (init-gl-framebuffer width height))
+       (setf (render-system-rend-width render-system) width)
+       (setf (render-system-win-width render-system) width)
+       (setf (render-system-rend-height render-system) height)
+       (setf (render-system-win-height render-system) height)
+       (shake:printf "VID-RESTART done~%"))))
   (shake:add-command
    'print-memory-usage (lambda () (print-memory-usage render-system)))
   (shake:add-command
@@ -362,14 +357,14 @@ Use NIL for windowed mode."
 (defun call-with-render-system (fun)
   (check-type fun function)
   (set-gl-attrs)
-  (sdl2:with-window (window :title "shake" :w 1024 :h 768 :flags '(:opengl))
+  (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height* :flags '(:opengl))
     (sdl2:with-gl-context (context window)
       (handler-case
           ;; Turn off V-Sync
           (sdl2:gl-set-swap-interval 0)
         (error () ;; sdl2 doesn't export sdl-error
           (shake:print-error "setting swap interval not supported~%")))
-      (bracket (render-system (init-render-system window 1024 768)
+      (bracket (render-system (init-render-system window *win-width* *win-height*)
                               shutdown-render-system)
         (render-system-init-commands render-system)
         (sdl2:set-relative-mouse-mode 1)

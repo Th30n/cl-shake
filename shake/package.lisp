@@ -104,9 +104,10 @@
            #:with-render-system
            #:with-draw-frame
            ;; These are just command symbols
-           #:set-fullscreen
-           #:set-vid-mode
-           #:set-win-size
+           #:*fullscreen*
+           #:*vid-mode*
+           #:*win-width*
+           #:*win-height*
            #:vid-restart))
 
 (defpackage #:shake
@@ -125,6 +126,7 @@
            ;; TODO: These should be defined in another file, perhaps another
            ;; package
            #:add-command
+           #:add-variable
            #:print-error
            #:print-warning
            #:printf))
