@@ -966,8 +966,8 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
   ;; Draw "crosshair"
   (let ((width (srend:render-system-rend-width render-system))
         (height (srend:render-system-rend-height render-system)))
-    ;; TODO: This doesn't align with raycast from camera center.
-    (srend:draw-text "+" :x (floor width 2) :y (floor height 2)
+    ;; NOTE: Offset by half-cell size, to make it centered.
+    (srend:draw-text "+" :x (- (floor width 2) 16) :y (- (floor height 2) 16)
                          :scale 2.0))
   (let ((image-manager (srend::render-system-image-manager render-system)))
     (player-render-weapon player camera image-manager model-manager))

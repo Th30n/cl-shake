@@ -89,8 +89,12 @@
                    (error (e) (print-error "~A~%" e)))))
         (when res (printf "~S~%" res))))))
 
+(defvar *console-font-size* :small
+  "Size of console font, may be :SMALL, :MEDIUM or :LARGE")
+
 (defun make-console ()
   (let ((console (%make-console)))
+    (add-variable '*console-font-size* :type '(member :small :medium :large))
     (add-command 'quit #'sdl2:push-quit-event)
     (add-command 'exit #'sdl2:push-quit-event)
     (add-command 'echo (lambda (&rest args)
@@ -116,9 +120,11 @@
 
 ;; TODO: This depends on shake.render, we should probably load it after that.
 (defun console-draw (console render-system)
+  (check-type console console)
+  (check-type *console-font-size* (member :small :medium :large))
   ;; TODO: Use virtual screen height
   (let ((win-height (srend:render-system-rend-height render-system))
-        (scale 1))
+        (scale (ecase *console-font-size* (:small 1) (:medium 2) (:large 4))))
     (let ((start-y (+ (floor win-height 2) (* 16 scale))))
       (when (/= 0 (console-display-from-line console))
         (srend:draw-gui-text "^ ^ ^ SCROLLBACK ^ ^ ^" :x 2 :y start-y)
