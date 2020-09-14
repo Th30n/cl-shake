@@ -2,24 +2,36 @@
 
 (in-package #:shake)
 
+(defconstant +max-console-lines+ 10000)
+(defconstant +max-line-width+ 256)
+
 (defstruct (console (:constructor %make-console))
-  (text (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
-  ;; TODO: Set maximum number of stored lines.
-  (reversed-lines nil)
+  (edit-field (make-array +max-line-width+ :element-type 'character :fill-pointer 0) :type string)
+  (text (make-string (* +max-line-width+ +max-console-lines+) :initial-element #\Space) :type simple-string)
+  (current-ix 0 :type fixnum)
   (active-p nil :type boolean)
   (display-from-line 0 :type fixnum))
 
+(declaim (ftype (function (console) fixnum) console-current-line))
+(defun console-current-line (console)
+  (coerce (nth-value 0 (floor (console-current-ix console) +max-line-width+)) 'fixnum))
+
 (defun console-print (console control-string &rest format-arguments)
   (check-type console console)
-  (let ((string (apply #'format nil control-string format-arguments))
-        (start-pos 0))
-    (loop for c across string and end-pos from 1
-       when (or (= end-pos (length string)) (char= #\Newline c))
-       do (push (subseq string start-pos (if (char= #\Newline c)
-                                             (1- end-pos)
-                                             end-pos))
-                (console-reversed-lines console))
-         (setf start-pos end-pos)))
+  (let ((string (apply #'format nil control-string format-arguments)))
+    (loop for c across string and start-pos from 0 do
+      (if (char= #\Newline c)
+          (progn
+            (setf (console-current-ix console)
+                  (* (mod (1+ (console-current-line console)) +max-console-lines+)
+                     +max-line-width+))
+            (dotimes (i +max-line-width+)
+              (setf (aref (console-text console) (+ i (console-current-ix console))) #\Space)))
+          (progn
+            (setf (aref (console-text console) (console-current-ix console)) c)
+            (zap (lambda (current)
+                   (mod (1+ current) (length (console-text console))))
+                 (console-current-ix console))))))
   ;; Return an empty result as this can be run through GUI console which
   ;; prints the resulting values of evaluated commands.
   nil)
@@ -51,14 +63,16 @@
 
 (defun console-clear (console)
   (check-type console console)
-  (setf (console-reversed-lines console) nil)
+  (dotimes (i (length (console-text console)))
+    (setf (aref (console-text console) i) #\Space))
   (setf (console-display-from-line console) 0))
 
 (defun console-append (console text)
+  "Append text to the current state of edit field if there's room for it."
   (check-type console console)
   (check-type text (or string character))
   (if (characterp text)
-      (vector-push-extend text (console-text console))
+      (vector-push text (console-edit-field console))
       (loop for c across text do (console-append console c))))
 
 ;; TODO: This should be in shake-utils
@@ -78,12 +92,12 @@
       (return-from symbol-exported-p t))))
 
 (defun console-commit (console)
-  (printf "> ~A~%" (console-text console))
+  (printf "> ~A~%" (console-edit-field console))
   (setf (console-display-from-line console) 0)
   (let ((form (handler-case
-                  (read-command-from-string (console-text console))
+                  (read-command-from-string (console-edit-field console))
                 (error (e) (print-error "~A~%" e)))))
-    (setf (fill-pointer (console-text console)) 0)
+    (setf (fill-pointer (console-edit-field console)) 0)
     (when form
       (let ((res (handler-case (command-eval-form form)
                    (error (e) (print-error "~A~%" e)))))
@@ -115,25 +129,34 @@
 
 
 (defun console-backspace (console)
-  (if (/= 0 (length (console-text console)))
-      (vector-pop (console-text console))))
+  (if (/= 0 (length (console-edit-field console)))
+      (vector-pop (console-edit-field console))))
 
 ;; TODO: This depends on shake.render, we should probably load it after that.
 (defun console-draw (console render-system)
   (check-type console console)
+  (check-type render-system srend:render-system)
   (check-type *console-font-size* (member :small :medium :large))
   ;; TODO: Use virtual screen height
-  (let ((win-height (srend:render-system-rend-height render-system))
-        (scale (ecase *console-font-size* (:small 1) (:medium 2) (:large 4))))
-    (let ((start-y (+ (floor win-height 2) (* 16 scale))))
-      (when (/= 0 (console-display-from-line console))
-        (srend:draw-gui-text "^ ^ ^ SCROLLBACK ^ ^ ^" :x 2 :y start-y)
-        (incf start-y (* 16 scale)))
-      (loop for line in (nthcdr (console-display-from-line console)
-                                (console-reversed-lines console))
-            and y from start-y to win-height by (* 16 scale) do
-              (srend:draw-gui-text line :x 2 :y y :scale scale)))
-    (srend:draw-gui-text (format nil "> ~A" (console-text console))
+  (let* ((win-height (srend:render-system-rend-height render-system))
+         (scale (ecase *console-font-size* (:small 1) (:medium 2) (:large 4)))
+         (start-y (+ (floor win-height 2) (* 16 scale)))
+         (current-line (- (console-current-line console) (console-display-from-line console)))
+         (vislines (round (- win-height start-y) (* 16 scale))))
+    (when (/= 0 (console-display-from-line console))
+      (srend:draw-gui-text "^ ^ ^ SCROLLBACK ^ ^ ^" :x 2 :y start-y :scale scale)
+      (incf start-y (* 16 scale)))
+    (dotimes (row vislines)
+      (let ((line-ix (mod (- current-line row) +max-console-lines+)))
+        (when (and (/= 0 row) (= line-ix (console-current-line console)))
+          ;; We have wrapped back to start.
+          (return))
+        (let ((text-ix (* line-ix +max-line-width+))
+              (y (+ start-y (* row 16 scale))))
+          (srend:draw-gui-text (subseq (console-text console)
+                                       text-ix (+ text-ix +max-line-width+))
+                               :x 2 :y y :scale scale))))
+    (srend:draw-gui-text (format nil "> ~A" (console-edit-field console))
                          :x 2 :y (floor win-height 2) :scale scale)))
 
 (defun console-handle-keydown (console keysym)
@@ -147,18 +170,16 @@
     ((eq :scancode-backspace (sdl2:scancode keysym))
      (console-backspace console))
     ((eq :scancode-pageup (sdl2:scancode keysym))
-     (when (console-reversed-lines console)
-       (zap (lambda (line)
-              (min (+ line 2) (1- (list-length (console-reversed-lines console)))))
-            (console-display-from-line console))))
+     (zap (lambda (line)
+            (min (+ line 2) (1- +max-console-lines+)))
+          (console-display-from-line console)))
     ((eq :scancode-pagedown (sdl2:scancode keysym))
      (zap (lambda (line) (max 0 (- line 2)))
           (console-display-from-line console)))
     ((and (eq :scancode-home (sdl2:scancode keysym))
           (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
-     (when (console-reversed-lines console)
-       (setf (console-display-from-line console)
-             (1- (list-length (console-reversed-lines console))))))
+     (setf (console-display-from-line console)
+           (1- +max-console-lines+)))
     ((and (eq :scancode-end (sdl2:scancode keysym))
           (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
      (setf (console-display-from-line console) 0))))
