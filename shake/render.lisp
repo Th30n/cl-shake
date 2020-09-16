@@ -308,7 +308,7 @@ Use NIL for windowed mode.")
           (sdl2:set-window-fullscreen win :fullscreen)
           (let ((mode (nth *vid-mode* (get-modes-for-display 0))))
             (unless mode
-              (shake:printf "Resetting vid-mode from ~A to 0" *vid-mode*)
+              (shake:printf "Resetting vid-mode from ~A to 0~%" *vid-mode*)
               (setf *vid-mode* 0)
               (setf mode (car (get-modes-for-display 0))))
             (autowrap:with-alloc (mode-ptr 'sdl2-ffi:sdl-display-mode)

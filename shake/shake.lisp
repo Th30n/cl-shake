@@ -731,9 +731,9 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
             (*base-dir* (or (sdata:exe-dir) *base-dir*)))
         (declare (special *console* *last-printed-error* *last-printed-warning*))
         (reset-game-keys)
-        (add-command 'base-dir (lambda () (printf "'~A'" *base-dir*)))
-        (add-command 'exe-dir (lambda () (printf "'~A'" (sdata:exe-dir))))
-        (add-command 'pwd (lambda () (printf "'~A'" (uiop:getcwd))))
+        (add-command 'base-dir (lambda () (printf "'~A'~%" *base-dir*)))
+        (add-command 'exe-dir (lambda () (printf "'~A'~%" (sdata:exe-dir))))
+        (add-command 'pwd (lambda () (printf "'~A'~%" (uiop:getcwd))))
         (with-data-dirs *base-dir*
           (add-command 'data-search-paths
                        (lambda () (printf "~{'~A'~%~}" sdata::*search-paths*)))
