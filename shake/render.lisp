@@ -237,6 +237,29 @@
     (gl:draw-arrays :triangles 0 (gui-model-vertex-count gui-model))
     (gl:bind-buffer :array-buffer 0)))
 
+(defstruct batches
+  (array (make-array 320 :element-type 'batch :fill-pointer 0 :adjustable t) :type (vector batch))
+  (length 0 :type fixnum))
+
+(defun batches-current (batches)
+  (check-type batches batches)
+  (when (>= (batches-length batches) 1)
+    (aref (batches-array batches) (1- (batches-length batches)))))
+
+(defun batches-push (batches byte-size &key wireframep)
+  (check-type batches batches)
+  (check-type byte-size fixnum)
+  (check-type wireframep boolean)
+  (aif (batches-current batches)
+       (finish-batch it (render-system-gl-config *rs*)))
+  (if (> (fill-pointer (batches-array batches)) (batches-length batches))
+      ;; Reuse already allocated batch, instead of allocating new one.
+      (reinit-batch (aref (batches-array batches) (batches-length batches))
+                    byte-size :wireframep wireframep)
+      (vector-push-extend (init-batch byte-size :wireframep wireframep) (batches-array batches)))
+  (incf (batches-length batches))
+  (batches-current batches))
+
 (declaim (inline make-render-system))
 (defstruct render-system
   "Rendering related global variables and constants."
@@ -246,7 +269,7 @@
   (rend-height nil :type fixnum)
   window
   (gl-config nil :type gl-config :read-only t)
-  batches
+  (batches (make-batches) :type batches)
   ;; List of `debug-text' to render on the next frame.
   (debug-text-list nil)
   (image-manager nil :type image-manager)
@@ -388,8 +411,6 @@ Use NIL for windowed mode.")
 
 ;; Currently active RENDER-SYSTEM.
 (defvar *rs*)
-;; BATCHES of the currently active RENDER-SYSTEM (*RS*).
-(defvar *batches*)
 
 (defun print-memory-usage (render-system)
   "Print the estimate of used memory in GL."
@@ -403,11 +424,12 @@ Use NIL for windowed mode.")
   shaders.")
 
 (defstruct batch
-  (vertex-array nil :type (unsigned-byte 64) :read-only t)
-  (buffer nil :type (unsigned-byte 64) :read-only t)
-  (buffer-ptr (cffi:null-pointer) :read-only t)
-  (id-buffer nil :type (unsigned-byte 64) :read-only t)
+  (vertex-array nil :type (unsigned-byte 64))
+  (buffer nil :type (unsigned-byte 64))
+  (buffer-ptr (cffi:null-pointer))
   (offset 0 :type fixnum)
+  (mapped-p nil :type boolean)
+  (id-buffer nil :type (unsigned-byte 64))
   (texture nil :type (or null image))
   ;; MVP for each drawn object
   (mvp nil :type (vector (mat 4) #.+max-batch-size+))
@@ -421,8 +443,7 @@ Use NIL for windowed mode.")
   ;; T if this batch should be drawn in wireframe mode.
   (wireframe-p nil :type boolean)
   (free-p nil :type boolean)
-  (ready-p nil :type boolean)
-  (mapped-p nil :type boolean))
+  (ready-p nil :type boolean))
 
 (defun init-batch (byte-size &key wireframep)
   (let ((buffers (gl:gen-buffers 2))
@@ -444,6 +465,31 @@ Use NIL for windowed mode.")
                     :max-bytes byte-size
                     :wireframe-p wireframep)
       (gl:bind-buffer :array-buffer 0))))
+
+;; TODO: Resolve this code duplication.
+(defun reinit-batch (batch byte-size &key wireframep)
+  (let ((buffers (gl:gen-buffers 2))
+        (vertex-array (gl:gen-vertex-array)))
+    (gl:bind-buffer :array-buffer (first buffers))
+    (%gl:buffer-data :array-buffer byte-size (cffi:null-pointer) :static-draw)
+    (setf (batch-vertex-array batch) vertex-array)
+    (setf (batch-buffer batch) (first buffers))
+    (setf (batch-buffer-ptr batch)
+          (sgl:map-buffer :array-buffer (:bytes byte-size) :map-write-bit))
+    (setf (batch-offset batch) 0)
+    (setf (batch-mapped-p batch) t)
+    (setf (batch-id-buffer batch) (second buffers))
+    (setf (batch-texture batch) nil)
+    (setf (fill-pointer (batch-mvp batch)) 0)
+    (setf (fill-pointer (batch-layers batch)) 0)
+    (setf (batch-objects batch) 0)
+    (setf (batch-draw-count batch) 0)
+    (setf (batch-max-bytes batch) byte-size)
+    (setf (batch-wireframe-p batch) wireframep)
+    (setf (batch-free-p batch) nil)
+    (setf (batch-ready-p batch) nil)
+    (gl:bind-buffer :array-buffer 0))
+  batch)
 
 (defun free-batch (batch)
   (declare (optimize (speed 3) (space 3)))
@@ -589,48 +635,28 @@ Use NIL for windowed mode.")
                        -1)))
           (vector-push (cons layer draw-count) (batch-layers batch))))
       (vector-push mvp (batch-mvp batch))
+      (assert (>= (batch-max-bytes batch) (+ byte-size offset)))
       (sgl:memcpy (cffi:inc-pointer (batch-buffer-ptr batch) offset)
                   gl-data byte-size)
       (incf (batch-offset batch) byte-size)
       (incf (batch-draw-count batch) draw-count)
       (incf (batch-objects batch)))))
 
-(defun init-draw-frame (render-system)
-  (or (render-system-batches render-system)
-      (setf (render-system-batches render-system)
-            (make-array 10 :element-type 'batch
-                        :fill-pointer 0 :adjustable t))))
-
 (defun finish-draw-frame (render-system)
   (declare (optimize (speed 3) (space 3)))
   (with-struct (render-system- batches prog-manager) render-system
-    (declare (type (vector batch) batches))
     (let ((shader-prog (get-program prog-manager "pass" "color")))
       (bind-program prog-manager shader-prog)
       (sgl:with-uniform-locations shader-prog (tex-albedo)
         (gl:uniformi tex-albedo-loc 0)
         (gl:active-texture :texture0)
-        (dovector (batch batches)
-          (when (batch-texture batch)
-            (bind-image (batch-texture batch)))
-          (draw-batch batch shader-prog (render-system-gl-config render-system))
-          (free-batch batch))))
-    (setf (fill-pointer batches) 0)))
-
-(defun add-new-batch (byte-size &key wireframep)
-  (declare (optimize (speed 3) (space 3)))
-  (aif (get-current-batch)
-       (finish-batch it (render-system-gl-config *rs*)))
-  ;; TODO: Reuse already allocated batches, instead of allocating new ones.
-  (let ((batch (init-batch byte-size :wireframep wireframep)))
-    (vector-push-extend batch *batches*)
-    batch))
-
-(defun get-current-batch ()
-  (declare (optimize (speed 3) (space 3)))
-  (when (length>= 1 *batches*)
-    (aref (the (vector batch) *batches*)
-          (1- (length (the (vector batch) *batches*))))))
+        (dotimes (i (batches-length batches))
+          (let ((batch (aref (batches-array batches) i)))
+            (when (batch-texture batch)
+              (bind-image (batch-texture batch)))
+            (draw-batch batch shader-prog (render-system-gl-config render-system))
+            (free-batch batch))))
+      (setf (batches-length batches) 0))))
 
 (defun render-surface (surface mvp &key wireframep)
   (declare (optimize (speed 3) (space 3)))
@@ -639,7 +665,7 @@ Use NIL for windowed mode.")
   (check-type wireframep boolean)
   (check-type *rs* render-system)
   (with-struct (render-system- image-manager) *rs*
-    (let ((current-batch (get-current-batch))
+    (let ((current-batch (batches-current (render-system-batches *rs*)))
           (surface-space (smdl::surf-triangles-verts-byte-size surface))
           (surface-image
            (aif (smdl::surf-triangles-tex-name surface)
@@ -661,9 +687,10 @@ Use NIL for windowed mode.")
         (let ((batch
                (if (and current-batch (can-add-p current-batch))
                    current-batch
-                   ;; Each batch contains 100kB of vertex data.
-                   (add-new-batch (max surface-space (* 100 1024))
-                                  :wireframep wireframep))))
+                   (batches-push (render-system-batches *rs*)
+                                 ;; Each batch contains 100kB of vertex data.
+                                 (max surface-space (* 100 1024))
+                                 :wireframep wireframep))))
           (add-surface-vertex-data surface mvp batch))))))
 
 (defun draw-text (text &key x y (scale 1.0s0))
@@ -749,8 +776,7 @@ Use NIL for windowed mode.")
                (render-system-rend-height render-system))
   (sgl:clear-buffer-fv :color 0 0 0 0)
   (sgl:clear-buffer-fv :depth 0 1)
-  (let ((*batches* (init-draw-frame render-system))
-        (*rs* render-system)
+  (let ((*rs* render-system)
         (prog-manager (render-system-prog-manager render-system)))
     (gui-model-reset (render-system-gui-model render-system))
     (multiple-value-prog1 (funcall fun)
