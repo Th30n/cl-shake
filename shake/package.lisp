@@ -105,6 +105,7 @@
            #:with-draw-frame
            ;; These are just command symbols
            #:*fullscreen*
+           #:*v-sync*
            #:*vid-mode*
            #:*win-width*
            #:*win-height*
@@ -127,6 +128,7 @@
            ;; package
            #:add-command
            #:add-variable
+           #:command-progn
            #:print-error
            #:print-warning
            #:printf))

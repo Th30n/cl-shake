@@ -336,6 +336,20 @@ Use NIL for windowed mode.")
        (setf (render-system-rend-height render-system) height)
        (setf (render-system-win-height render-system) height)
        (shake:printf "VID-RESTART done~%"))))
+  (shake:add-variable
+   '*v-sync*
+   :documentation
+   "0 for immediate updates;
+1 for updates synchronized with the vertical retrace;
+-1 for adaptive vsync (if available)"
+   :type '(integer -1 1)
+   :getter #'sdl2:gl-get-swap-interval
+   :setter (lambda (val)
+             (check-type val (integer -1 1) "-1, 0 or 1")
+             (handler-case
+                 (= 0 (sdl2:gl-set-swap-interval val))
+               (error () ;; sdl2 doesn't export sdl-error
+                 (shake:print-error "setting swap interval not supported~%")))))
   (shake:add-command
    'print-memory-usage (lambda () (print-memory-usage render-system)))
   (shake:add-command
@@ -359,16 +373,14 @@ Use NIL for windowed mode.")
   (set-gl-attrs)
   (sdl2:with-window (window :title "shake" :w *win-width* :h *win-height* :flags '(:opengl))
     (sdl2:with-gl-context (context window)
-      (handler-case
-          ;; Turn off V-Sync
-          (sdl2:gl-set-swap-interval 0)
-        (error () ;; sdl2 doesn't export sdl-error
-          (shake:print-error "setting swap interval not supported~%")))
       (bracket (render-system (init-render-system window *win-width* *win-height*)
                               shutdown-render-system)
-        (render-system-init-commands render-system)
         (sdl2:set-relative-mouse-mode 1)
-        (srend:print-gl-info (srend:render-system-gl-config render-system))
+        (render-system-init-commands render-system)
+        (shake:command-progn ()
+          ;; Turn off V-Sync
+          (set *v-sync* 0)
+          (print-gl-info))
         (funcall fun render-system)))))
 
 (defmacro with-render-system ((render-system) &body body)
