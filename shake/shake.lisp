@@ -521,7 +521,8 @@
     (srend::get-program progs "pass" "color"))
   (add-res "font"
            (lambda ()
-             (srend::load-font (data-path "share/font-16.bmp") 16 #\Space))
+             (srend::load-font (data-path "share/font-16.bmp" :if-does-not-exist :error)
+                               16 #\Space))
            #'srend::delete-font))
 
 (defun load-map-textures (render-system bsp)

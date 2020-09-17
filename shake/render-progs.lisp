@@ -20,7 +20,7 @@
 
 (defun shader-path (name &optional ext)
   "Return the data path for shaders of given NAME and file extension EXT."
-  (sdata:data-path (concatenate 'string "shaders/" name ext)))
+  (sdata:data-path (concatenate 'string "shaders/" name ext) :if-does-not-exist :error))
 
 (defstruct prog-manager
   "Manager for shader programs. Loading and using shaders should only be done
