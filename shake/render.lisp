@@ -386,10 +386,10 @@ Use NIL for windowed mode.")
   (sdl2:gl-set-attrs
    :context-major-version 3
    :context-minor-version 3
-   ;; set CONTEXT_FORWARD_COMPATIBLE
-   :context-flags #x2
-   ;; set CONTEXT_PROFILE_CORE
-   :context-profile-mask #x1))
+   ;; set CONTEXT_FORWARD_COMPATIBLE (#x2)
+   :context-flags sdl2-ffi:+sdl-gl-context-forward-compatible-flag+
+   ;; set CONTEXT_PROFILE_CORE (#x1)
+   :context-profile-mask sdl2-ffi:+sdl-gl-context-profile-core+))
 
 (defun call-with-render-system (fun)
   (check-type fun function)
