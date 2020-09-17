@@ -972,3 +972,24 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
   (let ((image-manager (srend::render-system-image-manager render-system)))
     (player-render-weapon player camera image-manager model-manager))
   (render-things render-things camera model-manager))
+
+(defun main-exe ()
+  #+sbcl
+  (if (member "--debug" uiop:*command-line-arguments* :test #'string=)
+      (sb-ext:enable-debugger)
+      (sb-ext:disable-debugger))
+  (when-let ((swank (find-package :swank)))
+    (let ((create-server (find-symbol (string :create-server) swank)))
+      ;; NOTE: swank:create-server will bind to "localhost", so for non-local
+      ;; connection the port needs to be forwarded. Prefer secure forward with
+      ;; SSH, over unsecure like `socat` (or `netsh` on Windows).
+      (funcall create-server :dont-close t)))
+  (sdl2:make-this-thread-main
+   (lambda ()
+     (handler-bind
+         ((error (lambda (e)
+                   (sdl2-ffi.functions:sdl-show-simple-message-box
+                    sdl2-ffi:+sdl-messagebox-error+ "Fatal Error"
+                    (format nil "~A" e)
+                    (cffi:null-pointer)))))
+       (main)))))

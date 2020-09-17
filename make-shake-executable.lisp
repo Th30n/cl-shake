@@ -8,7 +8,7 @@
   (format t "Building...~%")
   (uiop:delete-directory-tree dst-dir :if-does-not-exist :ignore :validate t)
   (uiop:ensure-all-directories-exist (list dst-dir))
-  (uiop:run-program '("sbcl" "--eval" "(progn (asdf:load-system :shiva :force t) (asdf:make :shake/executable))" "--quit"))
+  (uiop:run-program '("sbcl" "--eval" "(progn (asdf:load-system :shiva :force t) (ql:quickload \"swank\") (asdf:make :shake/executable))" "--quit"))
   (uiop:rename-file-overwriting-target built-exe dst-exe)
   (format t "Created: ~A~%" dst-exe)
   (labels ((copy-file (data-path dst-path)

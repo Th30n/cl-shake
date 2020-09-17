@@ -41,5 +41,5 @@
 (defsystem "shake/executable"
   :build-operation program-op
   :build-pathname "shake-command"
-  :entry-point "shake::main"
+  :entry-point "shake::main-exe"
   :depends-on ("shake"))
