@@ -10,7 +10,11 @@
   (text (make-string (* +max-line-width+ +max-console-lines+) :initial-element #\Space) :type simple-string)
   (current-ix 0 :type fixnum)
   (active-p nil :type boolean)
-  (display-from-line 0 :type fixnum))
+  (display-from-line 0 :type fixnum)
+  (ac-prefix nil :type (or null string))
+  (ac-match-suffix nil :type (or null string))
+  (ac-num-matches 0 :type fixnum)
+  (ac-match-ix -1 :type fixnum))
 
 (declaim (ftype (function (console) fixnum) console-current-line))
 (defun console-current-line (console)
@@ -93,6 +97,7 @@
 
 (defun console-commit (console)
   (printf "> ~A~%" (console-edit-field console))
+  (console-autocomplete-clear console)
   (setf (console-display-from-line console) 0)
   (let ((form (handler-case
                   (read-command-from-string (console-edit-field console))
@@ -129,6 +134,7 @@
 
 
 (defun console-backspace (console)
+  (console-autocomplete-clear console)
   (if (/= 0 (length (console-edit-field console)))
       (vector-pop (console-edit-field console))))
 
@@ -156,8 +162,59 @@
           (srend:draw-gui-text (subseq (console-text console)
                                        text-ix (+ text-ix +max-line-width+))
                                :x 2 :y y :scale scale))))
-    (srend:draw-gui-text (format nil "> ~A" (console-edit-field console))
+    (srend:draw-gui-text (format nil "> ~A_" (console-edit-field console))
                          :x 2 :y (floor win-height 2) :scale scale)))
+
+(defun console-autocomplete-clear (console)
+  (setf (console-ac-prefix console) nil)
+  (setf (console-ac-match-suffix console) nil)
+  (setf (console-ac-num-matches console) 0)
+  (setf (console-ac-match-ix console) -1))
+
+(defun console-autocomplete (console)
+  (declare (special *commands*))
+  (check-type *commands* list)
+  (let ((prefix (or (console-ac-prefix console)
+                    (lastcar (ppcre:split "\\s" (console-edit-field console)))))
+        (match nil)
+        (num-matches 0))
+    (when prefix
+      ;; TODO: Cache or store sorted cmd names
+      (let ((sorted-cmd-names (stable-sort (mapcar #'cmd-pretty-name *commands*) #'string<))
+            (next-match-ix (if (zerop (console-ac-num-matches console))
+                               0
+                               (mod (1+ (console-ac-match-ix console))
+                                    (console-ac-num-matches console)))))
+        (dolist (cmd-name sorted-cmd-names)
+          (multiple-value-bind (foundp suffix)
+              ;; NOTE: This only allocates an empty string on exact matches,
+              ;; otherwise it returns a displaced suffix.
+              (starts-with-subseq prefix cmd-name :return-suffix t :test #'string-equal)
+            (when foundp
+              (incf num-matches)
+              (if (console-ac-match-suffix console)
+                  ;; We already did autocompletion, so just move to next full match.
+                  (when (= (1- num-matches) next-match-ix)
+                    (zap (lambda (fp)
+                           (- fp (length (console-ac-match-suffix console))))
+                         (fill-pointer (console-edit-field console)))
+                    (setf (console-ac-match-ix console) next-match-ix)
+                    (setf match suffix))
+                  (if match
+                      ;; Cut to shortest submatch
+                      ;; TODO: Avoid consing with subseq
+                      (setf match (subseq match 0 (string/= match suffix)))
+                      (setf match suffix))))))
+        (when (and (> num-matches 1) (not (console-ac-match-suffix console)))
+          (printf "Completing:~%")
+          (dolist (cmd-name sorted-cmd-names)
+            (when (starts-with-subseq prefix cmd-name :test #'string-equal)
+              (printf "  ~A~%" cmd-name))))
+        (when match
+          (setf (console-ac-prefix console) prefix)
+          (setf (console-ac-match-suffix console) match)
+          (setf (console-ac-num-matches console) num-matches)
+          (console-append console match))))))
 
 (defun console-handle-keydown (console keysym)
   (assert (console-active-p console))
@@ -182,7 +239,9 @@
            (1- +max-console-lines+)))
     ((and (eq :scancode-end (sdl2:scancode keysym))
           (sdl2:mod-value-p (sdl2:mod-value keysym) :lctrl :rctrl))
-     (setf (console-display-from-line console) 0))))
+     (setf (console-display-from-line console) 0))
+    ((eq :scancode-tab (sdl2:scancode keysym))
+     (console-autocomplete console))))
 
 (defstruct cmd
   (symbol nil :type symbol :read-only t)
@@ -192,6 +251,23 @@
 (defun cmd-documentation (cmd)
   (check-type cmd cmd)
   (documentation (cmd-function cmd) 'function))
+
+(defun cmd-pretty-name (cmd)
+  "Pretty name that is expected to be used by the user."
+  (check-type cmd cmd)
+  (let* ((*package* (find-package :shake))
+         (cmd (cmd-symbol cmd))
+         (cmd-package (symbol-package cmd))
+         (cmd-exported-p (symbol-exported-p cmd)))
+    (cond
+      ((or (eq *package* cmd-package)
+           (and cmd-exported-p
+                (member cmd-package (package-use-list *package*))))
+       (symbol-name cmd))
+      (cmd-exported-p
+       (format nil "~A:~A" (package-shortest-name cmd-package) (symbol-name cmd)))
+      (t
+       (format nil "~A::~A" (package-shortest-name cmd-package) (symbol-name cmd))))))
 
 (defun call-with-cmd-system (function)
   (let ((*commands* nil))
@@ -276,26 +352,8 @@
            (if cmd-sym
                (if-let ((cmd (find-command cmd-sym)))
                  (printf "~A" (cmd-documentation cmd)))
-               (let ((*package* (find-package :shake)))
-                 (flet ((cmd< (cmd1 cmd2)
-                          (let ((pkg1 (symbol-package cmd1))
-                                (pkg2 (symbol-package cmd2)))
-                            (if (eq pkg1 pkg2)
-                                (string< cmd1 cmd2)
-                                (string< (package-shortest-name pkg1)
-                                         (package-shortest-name pkg2))))))
-                   (dolist (cmd (stable-sort (mapcar #'cmd-symbol *commands*) #'cmd<))
-                     (let ((cmd-package (symbol-package cmd))
-                           (cmd-exported-p (symbol-exported-p cmd)))
-                       (cond
-                         ((or (eq *package* cmd-package)
-                              (and cmd-exported-p
-                                   (member cmd-package (package-use-list *package*))))
-                          (printf "~A~%" (symbol-name cmd)))
-                         (cmd-exported-p
-                          (printf "~A:~A~%" (package-shortest-name cmd-package) (symbol-name cmd)))
-                         (t
-                          (printf "~A::~A~%" (package-shortest-name cmd-package) (symbol-name cmd)))))))))))
+               (printf "~{~A~%~}"
+                       (stable-sort (mapcar #'cmd-pretty-name *commands*) #'string<)))))
     (cond
       ((consp form)
        (case (car form)

@@ -849,7 +849,8 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
               (:quit () t)
               (:textinput
                (:text utf8-code)
-               (console-append *console* (if (<= 0 utf8-code 255) (code-char utf8-code) #\?)))
+               (console-append *console* (if (<= 0 utf8-code 255) (code-char utf8-code) #\?))
+               (console-autocomplete-clear *console*))
               (:keydown
                (:keysym keysym)
                (when input-focus-p
