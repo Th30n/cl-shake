@@ -759,6 +759,41 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
 (defmacro with-init ((render-system) &body body)
   `(call-with-init (lambda (,render-system) ,@body)))
 
+(defun main-loop (game camera frame-timer minimized-p render-system model-manager)
+  (declare (special *player*))
+  (declare (special *console*))
+  (with-timer (frame-timer)
+    ;; TODO: This is a hack to allow using managers and game in tic logic
+    ;; functions. Managers should probably be part of GAME struct and it
+    ;; should be global.
+    (let ((*image-manager* (srend::render-system-image-manager render-system))
+          (*model-manager*  model-manager)
+          (*game* game)
+          (*camera* camera))
+      (declare (special *image-manager* *model-manager* *game* *camera*))
+      (if (zerop (- (get-time) *last-tic*))
+          ;; Nothing to run, so sleep for a bit to ease off on the CPU.
+          ;; This works great on keeping the laptop cool.
+          (sleep 0)
+          (progn
+            (try-run-tics #'build-ticcmd
+                          (lambda (ticcmd)
+                            (run-tic game camera ticcmd)))
+            (unless minimized-p
+              (srend:with-draw-frame (render-system)
+                (let ((*game* game))
+                  (declare (special *game*))
+                  (render-view *player* camera render-system
+                               model-manager (game-render-things game)))
+                (when (console-active-p *console*)
+                  (srend:draw-gui-quad 0 0
+                                       (srend:render-system-rend-width render-system)
+                                       (* 0.5 (srend:render-system-rend-height render-system)))
+                  (console-draw *console* render-system))
+                (draw-timer-stats frame-timer)
+                (draw-timer-stats
+                 (srend::render-system-swap-timer render-system) :y -36))))))))
+
 (defun main ()
   (with-init (render-system)
     (declare (special *console*))
@@ -838,11 +873,11 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                                    (camera-angles camera)
                                    contents sector))))
           (symbol-macrolet ((input-focus-p
-                             (member :input-focus
-                                     (sdl2:get-window-flags win)))
+                              (member :input-focus
+                                      (sdl2:get-window-flags win)))
                             (minimized-p
-                             (member :minimized
-                                     (sdl2:get-window-flags win))))
+                              (member :minimized
+                                      (sdl2:get-window-flags win))))
             (start-game-loop)
             (sdl2:stop-text-input)
             (sdl2:with-event-loop (:method :poll)
@@ -876,33 +911,12 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                (:button button)
                (release-mouse-button button))
               (:idle ()
-                     (with-timer (frame-timer)
-                       ;; TODO: This is a hack to allow using managers and
-                       ;; game in tic logic functions. Managers should
-                       ;; probably be part of GAME struct and it should be
-                       ;; global.
-                       (let ((*image-manager* (srend::render-system-image-manager render-system))
-                             (*model-manager* model-manager)
-                             (*game* game)
-                             (*camera* camera))
-                         (declare (special *image-manager* *model-manager* *game* *camera*))
-                         (try-run-tics #'build-ticcmd
-                                       (lambda (ticcmd)
-                                         (run-tic game camera ticcmd))))
-                       (unless minimized-p
-                         (srend:with-draw-frame (render-system)
-                           (let ((*game* game))
-                             (declare (special *game*))
-                             (render-view *player* camera render-system
-                                          model-manager (game-render-things game)))
-                           (when (console-active-p *console*)
-                             (srend:draw-gui-quad 0 0
-                                                  (srend:render-system-rend-width render-system)
-                                                  (* 0.5 (srend:render-system-rend-height render-system)))
-                             (console-draw *console* render-system))
-                           (draw-timer-stats frame-timer)
-                           (draw-timer-stats
-                            (srend::render-system-swap-timer render-system) :y -36))))))))))))
+                     (main-loop game
+                                camera
+                                frame-timer
+                                minimized-p
+                                render-system
+                                model-manager)))))))))
 
 (defun render-world (camera world-model)
   "Send geometry for rendering, front to back."
