@@ -1,4 +1,7 @@
 (require 'asdf)
+
+(defvar *sdl2-library-path* nil "path to SDL2.dll")
+
 (let* ((dst-dir (uiop:merge-pathnames* (format nil "./shake-~A-~A/"
                                                (if (uiop:os-windows-p) "win" "linux")
                                                (string-downcase (uiop:architecture)))))
