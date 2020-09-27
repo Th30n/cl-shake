@@ -991,22 +991,32 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
   (render-things render-things camera model-manager))
 
 (defun main-exe ()
-  #+sbcl
-  (if (member "--debug" uiop:*command-line-arguments* :test #'string=)
-      (sb-ext:enable-debugger)
-      (sb-ext:disable-debugger))
-  (when-let ((swank (find-package :swank)))
-    (let ((create-server (find-symbol (string :create-server) swank)))
-      ;; NOTE: swank:create-server will bind to "localhost", so for non-local
-      ;; connection the port needs to be forwarded. Prefer secure forward with
-      ;; SSH, over unsecure like `socat` (or `netsh` on Windows).
-      (funcall create-server :dont-close t)))
-  (sdl2:make-this-thread-main
-   (lambda ()
-     (handler-bind
-         ((error (lambda (e)
-                   (sdl2-ffi.functions:sdl-show-simple-message-box
-                    sdl2-ffi:+sdl-messagebox-error+ "Fatal Error"
-                    (format nil "~A" e)
-                    (cffi:null-pointer)))))
-       (main)))))
+  ;; TODO: Proper argument extraction and parsing.
+  (flet ((get-arg (arg-name)
+           (member arg-name uiop:*command-line-arguments* :test #'string=)))
+    (let ((debugp (get-arg "--debug"))
+          (swank-interface (or (second (get-arg "--swank-interface")) "localhost"))
+          (swank-port (or (let ((*read-eval* nil))
+                            (read-from-string (or (second (get-arg "--swank-port")) "")
+                                              nil nil))
+                          4005)))
+      #+sbcl
+      (if debugp
+          (sb-ext:enable-debugger)
+          (sb-ext:disable-debugger))
+      (check-type swank-port (unsigned-byte 16))
+      (when-let ((swank (find-package :swank)))
+        (let ((create-server (find-symbol (string :create-server) swank)))
+          ;; NOTE: swank:create-server will bind to "localhost", so for non-local
+          ;; connection the port needs to be forwarded. Prefer secure forward with
+          ;; SSH, over unsecure like `socat` (or `netsh` on Windows).
+          (funcall create-server :dont-close t :interface swank-interface :port swank-port)))
+      (sdl2:make-this-thread-main
+       (lambda ()
+         (handler-bind
+             ((error (lambda (e)
+                       (sdl2-ffi.functions:sdl-show-simple-message-box
+                        sdl2-ffi:+sdl-messagebox-error+ "Fatal Error"
+                        (format nil "~A" e)
+                        (cffi:null-pointer)))))
+           (main)))))))
