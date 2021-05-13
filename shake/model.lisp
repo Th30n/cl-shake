@@ -76,11 +76,12 @@
        (vec-to-foreign (l-vertex-data-uv ,vd) uv))))
 
 (defun free-surf-triangles (surf-triangles)
-  (cffi:foreign-free (surf-triangles-verts surf-triangles)))
+  (when surf-triangles
+    (cffi:foreign-free (surf-triangles-verts surf-triangles))))
 
 (defstruct (surface (:include sbsp:sidedef))
   "Extended SIDEDEF which contains 3D faces for rendering."
-  geometry)
+  (geometry nil :type (or null surf-triangles)))
 
 (defstruct (mleaf (:include sbsp:leaf))
   "In memory, model leaf node of model BSP."
@@ -127,24 +128,25 @@
   ;; NOTE: This function conses very little. SB-PROFILE sometimes reports
   ;; consing, because it tracks GC page level allocation, so after multiple
   ;; invocations this will actually be reported as consing.
+  (assert (sbsp:sidedef-back-sector sidedef))
   (with-struct (lineseg- start end) (sbsp:sidedef-lineseg sidedef)
     (let* ((front-sector (sbsp:sidedef-front-sector sidedef))
            (back-sector (sbsp:sidedef-back-sector sidedef))
            (floor-bottom (aif front-sector
                               (sbsp:sector-floor-height it)
                               #.(shiva-float 0)))
-           (floor-top (aif back-sector
-                           (sbsp:sector-floor-height it)
-                           #.(shiva-float 1)))
+           (floor-top (sbsp:sector-floor-height back-sector))
            (ceiling-top (aif front-sector
                              (sbsp:sector-ceiling-height it)
                              #.(shiva-float 1)))
-           (ceiling-bottom (aif back-sector
-                                (sbsp:sector-ceiling-height it)
-                                #.(shiva-float 1)))
+           (ceiling-bottom (sbsp:sector-ceiling-height back-sector))
            (floor-rotated-p nil)
-           (ceiling-rotated-p nil))
-      (assert back-sector)
+           (ceiling-rotated-p nil)
+           (gen-floor-p (not (and front-sector
+                                  (float< (shiva-float floor-top) (shiva-float floor-bottom)))))
+           (gen-ceiling-p (not (and front-sector
+                                    (float< (shiva-float ceiling-top) (shiva-float ceiling-bottom))))))
+      (assert (or gen-floor-p gen-ceiling-p))
       (when (float< (shiva-float floor-top) (shiva-float floor-bottom))
         (setf floor-rotated-p t)
         (rotatef floor-bottom floor-top))
@@ -166,62 +168,84 @@
                    (vf uv u v)
                    ;; NOTE: This conses for some reason
                    (setf (cffi:mem-aref ptr '(:struct vertex-data) index) data))))
-          (let ((start-3d-bot (make-array 3 :element-type 'shiva-float))
-                (end-3d-bot (make-array 3 :element-type 'shiva-float))
-                (start-3d-top (make-array 3 :element-type 'shiva-float))
-                (end-3d-top (make-array 3 :element-type 'shiva-float)))
-            (declare (dynamic-extent start-3d-bot end-3d-bot start-3d-top end-3d-top))
-            (v2->v3f start-3d-bot start floor-bottom)
-            (v2->v3f end-3d-bot end floor-bottom)
-            (v2->v3f start-3d-top start floor-top)
-            (v2->v3f end-3d-top end floor-top)
-            (set-data (if floor-rotated-p 1 0) start-3d-top u-start 0
-                      :rotatedp floor-rotated-p)
-            (set-data (if floor-rotated-p 0 1) end-3d-top u-end 0
-                      :rotatedp floor-rotated-p)
-            (set-data 2 start-3d-bot u-start 1
-                      :rotatedp floor-rotated-p)
-            (set-data (if floor-rotated-p 4 3) start-3d-bot u-start 1
-                      :rotatedp floor-rotated-p)
-            (set-data (if floor-rotated-p 3 4) end-3d-top u-end 0
-                      :rotatedp floor-rotated-p)
-            (set-data 5 end-3d-bot u-end 1 :rotatedp floor-rotated-p))
-          (when (or front-sector back-sector)
+          (when gen-floor-p
             (let ((start-3d-bot (make-array 3 :element-type 'shiva-float))
                   (end-3d-bot (make-array 3 :element-type 'shiva-float))
                   (start-3d-top (make-array 3 :element-type 'shiva-float))
                   (end-3d-top (make-array 3 :element-type 'shiva-float)))
               (declare (dynamic-extent start-3d-bot end-3d-bot start-3d-top end-3d-top))
+              (v2->v3f start-3d-bot start floor-bottom)
+              (v2->v3f end-3d-bot end floor-bottom)
+              (v2->v3f start-3d-top start floor-top)
+              (v2->v3f end-3d-top end floor-top)
+              (set-data (if floor-rotated-p 1 0) start-3d-top u-start 0
+                        :rotatedp floor-rotated-p)
+              (set-data (if floor-rotated-p 0 1) end-3d-top u-end 0
+                        :rotatedp floor-rotated-p)
+              (set-data 2 start-3d-bot u-start 1
+                        :rotatedp floor-rotated-p)
+              (set-data (if floor-rotated-p 4 3) start-3d-bot u-start 1
+                        :rotatedp floor-rotated-p)
+              (set-data (if floor-rotated-p 3 4) end-3d-top u-end 0
+                        :rotatedp floor-rotated-p)
+              (set-data 5 end-3d-bot u-end 1 :rotatedp floor-rotated-p)))
+          (when gen-ceiling-p
+            (let ((start-3d-bot (make-array 3 :element-type 'shiva-float))
+                  (end-3d-bot (make-array 3 :element-type 'shiva-float))
+                  (start-3d-top (make-array 3 :element-type 'shiva-float))
+                  (end-3d-top (make-array 3 :element-type 'shiva-float))
+                  (index-offset (if gen-floor-p 0 -6)))
+              (declare (dynamic-extent start-3d-bot end-3d-bot start-3d-top end-3d-top))
               (v2->v3f start-3d-bot start ceiling-bottom)
               (v2->v3f end-3d-bot end ceiling-bottom)
               (v2->v3f start-3d-top start ceiling-top)
               (v2->v3f end-3d-top end ceiling-top)
-              (set-data (if ceiling-rotated-p 7 6) start-3d-top u-start 0
+              (set-data (+ (if ceiling-rotated-p 7 6) index-offset)
+                        start-3d-top u-start 0
                         :rotatedp ceiling-rotated-p)
-              (set-data (if ceiling-rotated-p 6 7) end-3d-top u-end 0
+              (set-data (+ (if ceiling-rotated-p 6 7) index-offset)
+                        end-3d-top u-end 0
                         :rotatedp ceiling-rotated-p)
-              (set-data 8 start-3d-bot u-start 1
+              (set-data (+ 8 index-offset)
+                        start-3d-bot u-start 1
                         :rotatedp ceiling-rotated-p)
-              (set-data (if ceiling-rotated-p 10 9) start-3d-bot u-start 1
+              (set-data (+ (if ceiling-rotated-p 10 9) index-offset)
+                        start-3d-bot u-start 1
                         :rotatedp ceiling-rotated-p)
-              (set-data (if ceiling-rotated-p 9 10) end-3d-top u-end 0
+              (set-data (+ (if ceiling-rotated-p 9 10) index-offset)
+                        end-3d-top u-end 0
                         :rotatedp ceiling-rotated-p)
-              (set-data 11 end-3d-bot u-end 1 :rotatedp ceiling-rotated-p))))))))
+              (set-data (+ 11 index-offset)
+                        end-3d-bot u-end 1 :rotatedp ceiling-rotated-p))))))))
 
 (defun sidedef->surf-triangles (sidedef)
-  (let* ((tex-name (aif (sbsp:sidedef-texinfo sidedef)
-                        (string-downcase (sbsp:texinfo-name it))))
-         (num-verts (if (or (sbsp:sidedef-front-sector sidedef)
-                            (sbsp:sidedef-back-sector sidedef))
-                        12
-                        6))
-         (verts-ptr (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
-    (sidedef-fill-vertex-data sidedef verts-ptr)
-    (make-surf-triangles :num-verts num-verts
-                         :verts-byte-size (* num-verts (cffi:foreign-type-size
-                                                        '(:struct vertex-data)))
-                         :verts verts-ptr
-                         :tex-name tex-name)))
+  (assert (sbsp:sidedef-back-sector sidedef))
+  (let* ((floor-bottom (aif (sbsp:sidedef-front-sector sidedef)
+                            (sbsp:sector-floor-height it)
+                            #.(shiva-float 0)))
+         (floor-top (sbsp:sector-floor-height (sbsp:sidedef-back-sector sidedef)))
+         (ceiling-top (aif (sbsp:sidedef-front-sector sidedef)
+                           (sbsp:sector-ceiling-height it)
+                           #.(shiva-float 1)))
+         (ceiling-bottom (sbsp:sector-ceiling-height (sbsp:sidedef-back-sector sidedef)))
+         (num-verts (cond
+                      ((and (sbsp:sidedef-front-sector sidedef)
+                            (< floor-top floor-bottom) (< ceiling-top ceiling-bottom))
+                       0)
+                      ((and (sbsp:sidedef-front-sector sidedef)
+                            (or (< floor-top floor-bottom) (< ceiling-top ceiling-bottom)))
+                       6)
+                      (t 12))))
+    (unless (zerop num-verts)
+      (let ((tex-name (aif (sbsp:sidedef-texinfo sidedef)
+                           (string-downcase (sbsp:texinfo-name it))))
+            (verts-ptr (cffi:foreign-alloc '(:struct vertex-data) :count num-verts)))
+        (sidedef-fill-vertex-data sidedef verts-ptr)
+        (make-surf-triangles :num-verts num-verts
+                             :verts-byte-size (* num-verts (cffi:foreign-type-size
+                                                            '(:struct vertex-data)))
+                             :verts verts-ptr
+                             :tex-name tex-name)))))
 
 (defun polygon->surf-triangles (polygon height &key (color (v 1 0 0)) reverse-p)
   (let* ((triangles (sbsp:triangulate (mapcar #'sbsp:linedef->lineseg polygon)))

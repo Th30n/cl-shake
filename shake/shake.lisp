@@ -945,7 +945,8 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
                        (aif (smdl:mleaf-ceiling-geometry node)
                             (srend:render-surface it mvp))
                        (dolist (surf (sbsp:leaf-surfaces node))
-                         (srend:render-surface (smdl:surface-geometry surf) mvp)))
+                         (when-let ((geometry (smdl:surface-geometry surf)))
+                           (srend:render-surface geometry mvp))))
                      ;; split node
                      (let ((front (sbsp:node-front node))
                            (back (sbsp:node-back node)))
