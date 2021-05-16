@@ -23,7 +23,7 @@
     (push thing (game-think-things game))))
 
 (defclass weapon (thing)
-  ((model :initform nil :type smdl::obj-model
+  ((model :type smdl::obj-model
           :initarg :model :accessor weapon-model)
    (position :initform (v 0 0 0) :type (vec 3)
              :initarg :position :accessor weapon-position)
@@ -91,7 +91,7 @@
     (srend:render-surface (smdl::obj-model-verts (weapon-model weapon)) mvp)))
 
 (defclass enemy (thing)
-  ((model :initform nil :type smdl::obj-model
+  ((model :type smdl::obj-model
           :initarg :model :accessor enemy-model)
    (center :initform (v 0 0 0) :type (vec 3)
            :initarg :center :accessor enemy-center)
@@ -239,7 +239,7 @@
     (srend:render-surface (smdl::obj-model-verts (enemy-model enemy)) mvp)))
 
 (defclass projectile (thing)
-  ((model :initform nil :type smdl::obj-model
+  ((model :type smdl::obj-model
           :initarg :model :accessor projectile-model)
    (center :initform (v 0 0 0) :type (vec 3)
            :initarg :center :accessor projectile-center)
@@ -337,19 +337,21 @@
     (srend:render-surface (smdl::obj-model-verts (projectile-model projectile)) mvp)))
 
 (defclass door (thing)
-  ((brush :initform nil :type sbrush:brush
+  ((brush :type sbrush:brush
           :initarg :brush :accessor door-brush)
-   (hull :initform nil :type (or sbsp:node sbsp:leaf)
+   (hull :type (or sbsp:node sbsp:leaf)
          :initarg :hull :accessor door-hull)
    (last-open-time-ms :initform nil :type (or null fixnum)
-                      :initarg :last-open-time-ms :accessor door-last-open-time-ms)))
+                      :initarg :last-open-time-ms :accessor door-last-open-time-ms)
+   (surfs :initform nil :type list :initarg :surfs :accessor door-surfs)))
 
 (defmethod game-add-thing :after (game (door door))
   (push door (game-render-things game)))
 
 (defmethod thing-think :after ((door door))
   (let ((sector (sbsp:sidedef-back-sector
-                 (first (sbrush:brush-surfaces (door-brush door))))))
+                 (first (sbrush:brush-surfaces (door-brush door)))))
+        (max-ceiling-height 0.95))
     (with-accessors ((last-open-time-ms door-last-open-time-ms)) door
       (if (not last-open-time-ms)
           (setf (sbsp:sector-ceiling-height sector) (sbsp:sector-floor-height sector))
@@ -357,10 +359,10 @@
             (cond
               ((<= opened-ms 4000)
                (setf (sbsp:sector-ceiling-height sector)
-                     (shiva-float (min (/ opened-ms 2000.0) 1.0))))
+                     (shiva-float (min (/ opened-ms 2000.0) max-ceiling-height))))
               ((<= 4000 opened-ms 6000)
                (setf (sbsp:sector-ceiling-height sector)
-                     (shiva-float (max (- 1.0 (/ (- opened-ms 4000) 2000.0))
+                     (shiva-float (max (- max-ceiling-height (/ (- opened-ms 4000) 2000.0))
                                        (sbsp:sector-floor-height sector)))))
               (t
                (setf last-open-time-ms nil))))))))
@@ -370,13 +372,18 @@
   ;; Assert is just for testing the plain brush
   (unless (notany #'sbsp:sidedef-back-sector (sbrush:brush-surfaces brush))
     (print-warning "door already has back sector~%"))
-  (let ((sector (sbsp:make-sector :contents :contents-solid)))
+  (let ((sector (sbsp:make-sector :contents :contents-solid
+                                  :ceiling-height #.(shiva-float 0.0))))
     ;; Set the same instance on all sides, so we can mutate them all at once.
     (dolist (sidedef (sbrush:brush-surfaces brush))
       (setf (sbsp:sidedef-back-sector sidedef) sector))
     (let ((hull (sbsp:build-bsp
                  (sbrush:prepare-brushes-for-bsp
-                  (list (sbrush:expand-brush brush :square sbsp::+clip-square+))))))
+                  (list (sbrush:expand-brush brush :square sbsp::+clip-square+)))))
+          (lines (mapcar (lambda (surf)
+                           (sbsp:lineseg-orig-line (sbsp:sidedef-lineseg surf)))
+                         (sbrush:brush-surfaces brush)))
+          (ceiling-height (sbsp:sector-ceiling-height sector)))
       ;; Set the same instance to clip hull, so it's mutated as above.
       (sbsp:bsp-trav hull
                      (lambda (front back)
@@ -388,26 +395,30 @@
                                sector))))
       (make-instance 'door
                      :brush brush
-                     :hull hull))))
+                     :hull hull
+                     ;; TODO: Free these surfaces. We should probably create a
+                     ;; single model and store it in model manager.
+                     :surfs (cons
+                             (smdl::polygon->surf-triangles lines ceiling-height)
+                             (mapcar #'smdl::sidedef->surf-triangles
+                                     (sbrush:brush-surfaces brush)))))))
+
+(defun door-view-transform (door)
+  (check-type door door)
+  (let* ((sector (sbsp:sidedef-back-sector
+                  (first (sbrush:brush-surfaces (door-brush door)))))
+         (y-pos (- (sbsp:sector-ceiling-height sector)
+                   (sbsp:sector-floor-height sector))))
+    (translation :y y-pos)))
 
 (defun door-render (door camera)
   (check-type door door)
   (check-type camera camera)
-  (let ((mvp (m* (camera-projection-matrix camera)
-                 (camera-view-transform camera))))
-    (dolist (surf (sbrush:brush-surfaces (door-brush door)))
-      (let ((geometry (smdl::sidedef->surf-triangles surf)))
-        (srend:render-surface geometry mvp)
-        (smdl::free-surf-triangles geometry)))
-    (let* ((lines (mapcar (lambda (surf)
-                            (sbsp:lineseg-orig-line (sbsp:sidedef-lineseg surf)))
-                          (sbrush:brush-surfaces (door-brush door))))
-           (sector (sbsp:sidedef-back-sector
-                    (first (sbrush:brush-surfaces (door-brush door)))))
-           (ceiling-height (sbsp:sector-ceiling-height sector))
-           (ceiling-geometry (smdl::polygon->surf-triangles lines ceiling-height)))
-      (srend:render-surface ceiling-geometry mvp)
-      (smdl::free-surf-triangles ceiling-geometry))))
+  (let* ((view-project (m* (camera-projection-matrix camera)
+                           (camera-view-transform camera)))
+         (mvp (m* view-project (door-view-transform door))))
+    (dolist (surf (door-surfs door))
+      (srend:render-surface surf mvp))))
 
 (defun door-open (door)
   (check-type door door)
@@ -416,7 +427,7 @@
       (setf last-open-time-ms (get-game-time)))))
 
 (defclass test-model-thing (thing)
-  ((model :initform nil :type smdl::obj-model
+  ((model :type smdl::obj-model
           :initarg :model :accessor test-model-thing-model)
    (center :initform (v 0 0 0) :type (vec 3)
            :initarg :center :accessor test-model-thing-center)
@@ -428,7 +439,7 @@
              :initarg :rotation :accessor test-model-thing-rotation)
    (bounds-scale :initform (v 1 1 1) :type (vec 3)
                  :initarg :bounds-scale :accessor test-model-thing-bounds-scale)
-   (image-file :initform nil :initarg :image-file :type string
+   (image-file :initarg :image-file :type string
                :accessor test-model-thing-image-file)))
 
 (defmethod game-add-thing :after (game (test-model test-model-thing))
