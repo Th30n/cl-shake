@@ -160,13 +160,16 @@
                      (let* ((back-sector (sbsp:sidedef-back-sector sidedef))
                             (sector (edk.forms:editor-data ed))
                             (floor-height (edk.data:value (sector-floor-height sector)))
-                            (ceiling-height (edk.data:value (sector-ceiling-height sector))))
+                            (ceiling-height (edk.data:value (sector-ceiling-height sector)))
+                            (contents (edk.data:value (sector-contents sector))))
                        (if back-sector
                            (setf (sbsp:sector-floor-height back-sector) floor-height
-                                 (sbsp:sector-ceiling-height back-sector) ceiling-height)
+                                 (sbsp:sector-ceiling-height back-sector) ceiling-height
+                                 (sbsp:sector-contents back-sector) contents)
                            (setf (sbsp:sidedef-back-sector sidedef)
                                  (sbsp:make-sector :floor-height floor-height
-                                                   :ceiling-height ceiling-height))))))))))
+                                                   :ceiling-height ceiling-height
+                                                   :contents contents))))))))))
       (observe-slots (edk.forms:editor-data ed) sector-accessors
                      #'sector-changed :tag ed)))
   new-brushes)
