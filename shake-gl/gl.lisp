@@ -23,12 +23,7 @@ and is implementation dependant."
     (ecase foreign-type
       (:float 'single-float))))
 
-;; TODO: Investigate why CFFI "memcpy" conses
-;; (cffi:defcfun "memcpy" :pointer (dest :pointer) (src :pointer) (n :unsigned-int))
-(defun memcpy (dest src n)
-  (declare (optimize (safety 0) (speed 3) (space 3)))
-  (loop for i fixnum from 0 below n do
-    (setf (cffi:mem-aref dest :char i) (cffi:mem-aref src :char i))))
+(cffi:defcfun "memcpy" :pointer (dest :pointer) (src :pointer) (n :unsigned-int))
 
 (defmacro with-gl-array ((gl-array ftype arrays) &body body)
   "Bind GL-ARRAY to a GL:GL-ARRAY containing all the elements from the given
