@@ -423,6 +423,38 @@ Use NIL for windowed mode.")
   "Maximum count of objects in a batch. This should be consistent across
   shaders.")
 
+(declaim (inline make-layers %make-layers))
+(defstruct (layers (:constructor %make-layers))
+  ;; Every 2 elements are (layer-ix, draw-count) pairs.
+  (draw-counts nil :type (vector fixnum #.(* 2 +max-batch-size+))))
+
+(defun make-layers ()
+  (%make-layers :draw-counts (make-array #.(* 2 +max-batch-size+)
+                                         :element-type 'fixnum
+                                         :fill-pointer 0)))
+
+(declaim (ftype (function (layers) fixnum) layers-count))
+(defun layers-count (layers)
+  (coerce (floor (length (layers-draw-counts layers)) 2) 'fixnum))
+
+(defun layers-push (layers layer-ix draw-count)
+  (check-type layers layers)
+  (vector-push layer-ix (layers-draw-counts layers))
+  (vector-push draw-count (layers-draw-counts layers)))
+
+(defun layers-nth (layers i)
+  (check-type layers layers)
+  (check-type i fixnum)
+  (assert (< i (layers-count layers)))
+  (let* ((draw-counts (layers-draw-counts layers))
+         (layer-ix (aref draw-counts (* i 2)))
+         (draw-count (aref draw-counts (1+ (* i 2)))))
+    (values layer-ix draw-count)))
+
+(defun layers-reset (layers)
+  (check-type layers layers)
+  (setf (fill-pointer (layers-draw-counts layers)) 0))
+
 (defstruct batch
   (vertex-array nil :type (unsigned-byte 64))
   (buffer nil :type (unsigned-byte 64))
@@ -435,7 +467,7 @@ Use NIL for windowed mode.")
   (mvp nil :type (vector (mat 4) #.+max-batch-size+))
   ;; Indices into texture array image layer for each object.  The 2nd value is
   ;; the draw-count for object vertices.
-  (layers nil :type (vector (cons fixnum fixnum) #.+max-batch-size+))
+  (layers nil :type layers)
   ;; TODO: objects should always be equal to (length layers), redundant?
   (objects 0 :type fixnum)
   (draw-count 0 :type fixnum)
@@ -459,9 +491,7 @@ Use NIL for windowed mode.")
                     :mvp (make-array +max-batch-size+
                                      :element-type '(mat 4)
                                      :fill-pointer 0)
-                    :layers (make-array +max-batch-size+
-                                        :element-type '(cons fixnum fixnum)
-                                        :fill-pointer 0)
+                    :layers (make-layers)
                     :max-bytes byte-size
                     :wireframe-p wireframep)
       (gl:bind-buffer :array-buffer 0))))
@@ -481,7 +511,7 @@ Use NIL for windowed mode.")
     (setf (batch-id-buffer batch) (second buffers))
     (setf (batch-texture batch) nil)
     (setf (fill-pointer (batch-mvp batch)) 0)
-    (setf (fill-pointer (batch-layers batch)) 0)
+    (layers-reset (batch-layers batch))
     (setf (batch-objects batch) 0)
     (setf (batch-draw-count batch) 0)
     (setf (batch-max-bytes batch) byte-size)
@@ -536,7 +566,7 @@ Use NIL for windowed mode.")
     (with-struct (gl-config- base-instance-p multi-draw-indirect-p) gl-config
       (when (and multi-draw-indirect-p base-instance-p)
         (let ((id-buffer (batch-id-buffer batch))
-              (id-count (length (batch-layers batch))))
+              (id-count (layers-count (batch-layers batch))))
           (assert (<= id-count +max-batch-size+))
           (cffi:with-foreign-object (array-ptr :int +max-batch-size+)
             (dotimes (ix id-count)
@@ -563,20 +593,20 @@ Use NIL for windowed mode.")
     (finish-batch batch gl-config))
   (assert (not (batch-mapped-p batch)))
   (gl:bind-vertex-array (batch-vertex-array batch))
-  (let ((layers (batch-layers batch))
-        (layer-count (length (batch-layers batch)))
-        (mvps (batch-mvp batch))
-        (draw-start 0))
+  (let* ((layers (batch-layers batch))
+         (layer-count (layers-count layers))
+         (mvps (batch-mvp batch))
+         (draw-start 0))
     (assert (< 0 layer-count))
     (assert (= layer-count (batch-objects batch)))
     (assert (= layer-count (length mvps)))
     (sgl:with-uniform-locations shader-prog (tex-layer mvp)
       (cffi:with-foreign-object (layer-array :int (* #.+max-batch-size+ 4))
         (cffi:with-foreign-object (mvp-array :float (* #.+max-batch-size+ 4 4))
-          (loop for layer-pair across layers and object-ix fixnum from 0
-             and mvp across mvps and mvp-offset fixnum from 0 by (* 4 4) do
+          (loop for object-ix fixnum from 0 below layer-count
+                and mvp across mvps and mvp-offset fixnum from 0 by (* 4 4) do
              ;; Set the layer
-               (let ((layer (car layer-pair)))
+               (let ((layer (layers-nth layers object-ix)))
                  (setf (cffi:mem-aref layer-array :int object-ix) layer))
              ;; Set the mvp
                (dotimes (ix (* 4 4))
@@ -591,8 +621,8 @@ Use NIL for windowed mode.")
         ((and multi-draw-indirect-p base-instance-p)
          (cffi:with-foreign-object
              (cmds '(:struct sgl:draw-arrays-indirect-command) layer-count)
-           (loop for layer-pair across layers and ix fixnum from 0 do
-                (let ((draw-count (cdr layer-pair))
+           (loop for ix fixnum from 0 below layer-count do
+                (let ((draw-count (nth-value 1 (layers-nth layers ix)))
                       (cmd (cffi:mem-aptr
                             cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
                   (sgl:set-draw-arrays-command cmd draw-count :first draw-start
@@ -608,8 +638,8 @@ Use NIL for windowed mode.")
              (gl:bind-buffer :draw-indirect-buffer 0)
              (gl:delete-buffers (list cmd-buffer)))))
         (t
-         (loop for layer-pair across layers and ix fixnum from 0 do
-              (let ((draw-count (cdr layer-pair)))
+         (loop for ix fixnum from 0 below layer-count do
+              (let ((draw-count (nth-value 1 (layers-nth layers ix))))
                 (%gl:vertex-attrib-i1i 4 ix)
                 (gl:draw-arrays :triangles draw-start draw-count)
                 (incf draw-start draw-count)))))))
@@ -633,7 +663,7 @@ Use NIL for windowed mode.")
                            (setf (batch-texture batch) image))
                          (get-image-layer image tex-name))
                        -1)))
-          (vector-push (cons layer draw-count) (batch-layers batch))))
+          (layers-push (batch-layers batch) layer draw-count)))
       (vector-push mvp (batch-mvp batch))
       (assert (>= (batch-max-bytes batch) (+ byte-size offset)))
       (sgl:memcpy (cffi:inc-pointer (batch-buffer-ptr batch) offset)
