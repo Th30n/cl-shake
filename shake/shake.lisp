@@ -175,14 +175,20 @@
     (gl:vertex-attrib 0 0 0 0)
     (gl:bind-vertex-array 0)
     (dlambda
-     (:draw () (if deleted
-                   (error "Trying to render with deleted point-renderer.")
-                   (progn (gl:bind-vertex-array vao)
-                          (gl:bind-buffer :array-buffer 0)
-                          (gl:draw-arrays :points 0 1))))
-     (:delete () (unless deleted
-                   (gl:delete-vertex-arrays (list vao))
-                   (setf deleted t))))))
+     (:draw ()
+            (declare (optimize (speed 3) (space 3)))
+            (if deleted
+                (error "Trying to render with deleted point-renderer.")
+                (progn (gl:bind-vertex-array vao)
+                       (gl:bind-buffer :array-buffer 0)
+                       (gl:draw-arrays :points 0 1))))
+     (:delete ()
+              (declare (optimize (speed 3) (space 3)))
+              (unless deleted
+                (let ((arrays (list vao)))
+                  (declare (dynamic-extent arrays))
+                  (gl:delete-vertex-arrays arrays))
+                (setf deleted t))))))
 (defun renderer-draw (renderer) (funcall renderer :draw))
 (defun renderer-delete (renderer) (funcall renderer :delete))
 
