@@ -20,14 +20,18 @@
   (start (v 0 0) :type (vec 2) :read-only t)
   (end (v 0 0) :type (vec 2) :read-only t))
 
+(declaim (inline linedef-vec))
 (defun linedef-vec (linedef)
   (v- (linedef-end linedef) (linedef-start linedef)))
 
+(declaim (inline linedef-normal))
 (defun linedef-normal (linedef)
   (let ((vec (linedef-vec linedef)))
     (rotatef (vx vec) (vy vec))
     (zap #'- (vy vec))
-    (vnormalize vec)))
+    (vnormalizef vec)
+    vec))
+(declaim (notinline linedef-normal))
 
 (defun linedef= (a b)
   (declare (type linedef a))
@@ -291,9 +295,14 @@
 
 (defun dist-line-point (line point)
   "Return the distance between the given LINE and POINT."
-  (declare (type linedef line) (type (vec 2) point))
-  (vdot (linedef-normal line)
-        (v- point (linedef-start line))))
+  (declare (optimize (speed 3) (space 3)))
+  (declare (inline linedef-normal))
+  (check-type line linedef)
+  (check-type point (vec 2))
+  (let ((start-to-point (v- point (linedef-start line)))
+        (normal (linedef-normal line)))
+    (declare (dynamic-extent start-to-point normal))
+    (vdot normal start-to-point)))
 
 (defun determine-side (line point)
   "Determine on which side of a LINE is the given POINT located. Returns
