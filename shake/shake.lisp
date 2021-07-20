@@ -212,6 +212,7 @@
   (floor (* +ticrate+ (- (the (unsigned-byte 32) (sdl2:get-ticks)) *base-time*))
          1000))
 
+(declaim (ftype (function () fixnum) get-game-time))
 (defun get-game-time ()
   "Return milliseconds of elapsed game time"
   (coerce (round (* 1000 *gametic*) +ticrate+) 'fixnum))

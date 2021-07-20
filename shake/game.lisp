@@ -341,31 +341,48 @@
           :initarg :brush :accessor door-brush)
    (hull :type (or sbsp:node sbsp:leaf)
          :initarg :hull :accessor door-hull)
+   (open-height :initform #.(shiva-float 0.95) :type shiva-float
+                :initarg :open-height :accessor door-open-height
+                :documentation "Height of open door relative to floor")
    (last-open-time-ms :initform nil :type (or null fixnum)
                       :initarg :last-open-time-ms :accessor door-last-open-time-ms)
+   (ms-to-open :initform 2000 :type fixnum :initarg :ms-to-open :accessor door-ms-to-open)
+   (ms-to-close :initform 2000 :type fixnum :initarg :ms-to-close :accessor door-ms-to-close)
+   (keep-open-ms :initform 2000 :type fixnum
+                 :initarg :keep-open-ms :accessor door-keep-open-ms)
    (surfs :initform nil :type list :initarg :surfs :accessor door-surfs)))
 
 (defmethod game-add-thing :after (game (door door))
   (push door (game-render-things game)))
 
 (defmethod thing-think :after ((door door))
-  (let ((sector (sbsp:sidedef-back-sector
-                 (first (sbrush:brush-surfaces (door-brush door)))))
-        (max-ceiling-height 0.95))
-    (with-accessors ((last-open-time-ms door-last-open-time-ms)) door
-      (if (not last-open-time-ms)
-          (setf (sbsp:sector-ceiling-height sector) (sbsp:sector-floor-height sector))
-          (let ((opened-ms (- (get-game-time) last-open-time-ms)))
-            (cond
-              ((<= opened-ms 4000)
+  (declare (optimize (speed 3) (space 3)))
+  (let* ((sector (sbsp:sidedef-back-sector
+                  (first (sbrush:brush-surfaces (door-brush door)))))
+         (floor-height (sbsp:sector-floor-height sector)))
+    (flet ((set-height (frac)
+             (let ((open-height (door-open-height door)))
+               (declare (type shiva-float frac open-height))
                (setf (sbsp:sector-ceiling-height sector)
-                     (shiva-float (min (/ opened-ms 2000.0) max-ceiling-height))))
-              ((<= 4000 opened-ms 6000)
-               (setf (sbsp:sector-ceiling-height sector)
-                     (shiva-float (max (- max-ceiling-height (/ (- opened-ms 4000) 2000.0))
-                                       (sbsp:sector-floor-height sector)))))
-              (t
-               (setf last-open-time-ms nil))))))))
+                     (+ floor-height (* frac open-height))))))
+      (with-accessors ((last-open-time-ms door-last-open-time-ms)) door
+        (if (not last-open-time-ms)
+            (setf (sbsp:sector-ceiling-height sector) (sbsp:sector-floor-height sector))
+            (let ((opened-ms (- (get-game-time) (the fixnum last-open-time-ms)))
+                  (ms-to-open (door-ms-to-open door))
+                  (ms-to-close (door-ms-to-close door))
+                  (keep-open-ms (door-keep-open-ms door)))
+              (declare (type fixnum ms-to-open ms-to-close keep-open-ms))
+              (cond
+                ((<= opened-ms (+ ms-to-open keep-open-ms))
+                 (set-height (min (/ (shiva-float opened-ms) ms-to-open) #.(shiva-float 1.0))))
+                ((<= (+ ms-to-open keep-open-ms) opened-ms (+ ms-to-open keep-open-ms ms-to-close))
+                 (set-height
+                  (- #.(shiva-float 1.0)
+                     (min (/ (shiva-float (- opened-ms ms-to-open keep-open-ms)) ms-to-close)
+                          #.(shiva-float 1.0)))))
+                (t
+                 (setf last-open-time-ms nil)))))))))
 
 (defun make-door (brush)
   (check-type brush sbrush:brush)
