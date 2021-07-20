@@ -113,14 +113,23 @@
 (defmacro-vector-apply vmin min)
 (defmacro-vector-apply vmax max)
 
+(declaim (inline vscale))
 (defun vscale (scalar vector &aux (n (1- (array-dimension vector 0))))
   "Scale a VECTOR by given SCALAR."
   (check-type vector (simple-array shiva-float))
-  (check-type scalar real)
   (setf scalar (shiva-float scalar))
   (tensor ((i 0 n)) ((out (1+ n))) (:scalars (scalar) :simple-arrays (vector))
 	  ($ i (setf (out i) (* scalar (vector i))))
-	  out))
+    out))
+(declaim (notinline vscale))
+
+(defun vscalef (scalar vector &aux (n (1- (array-dimension vector 0))))
+  "Scale a VECTOR in-place by given SCALAR."
+  (check-type vector (simple-array shiva-float))
+  (setf scalar (shiva-float scalar))
+  (tensor ((i 0 n)) () (:scalars (scalar) :simple-arrays (vector))
+	  ($ i (setf (vector i) (* scalar (vector i))))
+    vector))
 
 (defun vtransform (matrix vector
 		   &aux (m (1- (array-dimension matrix 0))) (n (1- (array-dimension matrix 1))))
@@ -151,6 +160,7 @@
 (declaim (inline vnorm vnormalize vdist vdistsq))
 (defun vnorm (v) (sqrt (the (shiva-float #.(shiva-float 0.0)) (vdot v v))))
 (defun vnormalize (v) (vscale (/ 1.0 (vnorm v)) v))
+(defun vnormalizef (v) (vscalef (/ 1.0 (vnorm v)) v))
 (defun vdist (v1 v2) (vnorm (v- v1 v2)))
 (defun vdistsq (v1 v2) (let ((d (v- v1 v2))) (vdot d d)))
 (defun angle (v)

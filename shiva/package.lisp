@@ -26,8 +26,8 @@
            #:rad->deg #:deg->rad
            #:vec #:v #:vf #:vx #:vy #:vz #:vw
            #:v3->v2 #:v2->v3 #:v2->v3f
-           #:v- #:v+ #:v= #:vnorm #:vnormalize
-           #:vscale #:vdot #:vcross #:vtransform #:vrotate
+           #:v- #:v+ #:v= #:vnorm #:vnormalize #:vnormalizef
+           #:vscale #:vscalef #:vdot #:vcross #:vtransform #:vrotate
            #:v3dot
            #:vdist #:vdistsq
            #:quat #:q #:q+ #:q* #:qconj #:qrotation #:q->mat #:q->euler-x
