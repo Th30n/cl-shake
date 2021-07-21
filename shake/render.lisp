@@ -442,6 +442,7 @@ Use NIL for windowed mode.")
   (vector-push layer-ix (layers-draw-counts layers))
   (vector-push draw-count (layers-draw-counts layers)))
 
+(declaim (inline layers-nth))
 (defun layers-nth (layers i)
   (check-type layers layers)
   (check-type i fixnum)
@@ -597,21 +598,22 @@ Use NIL for windowed mode.")
          (layer-count (layers-count layers))
          (mvps (batch-mvp batch))
          (draw-start 0))
+    (declare (type fixnum layer-count draw-start))
     (assert (< 0 layer-count))
     (assert (= layer-count (batch-objects batch)))
     (assert (= layer-count (length mvps)))
     (sgl:with-uniform-locations shader-prog (tex-layer mvp)
-      (cffi:with-foreign-object (layer-array :int (* #.+max-batch-size+ 4))
-        (cffi:with-foreign-object (mvp-array :float (* #.+max-batch-size+ 4 4))
+      (cffi:with-foreign-object (layer-array :int (* +max-batch-size+ 4))
+        (cffi:with-foreign-object (mvp-array :float (* +max-batch-size+ 4 4))
           (loop for object-ix fixnum from 0 below layer-count
                 and mvp across mvps and mvp-offset fixnum from 0 by (* 4 4) do
-             ;; Set the layer
-               (let ((layer (layers-nth layers object-ix)))
-                 (setf (cffi:mem-aref layer-array :int object-ix) layer))
-             ;; Set the mvp
-               (dotimes (ix (* 4 4))
-                 (setf (cffi:mem-aref mvp-array :float (+ mvp-offset ix))
-                       (coerce (row-major-aref mvp ix) 'single-float))))
+                  ;; Set the layer
+                  (let ((layer (layers-nth layers object-ix)))
+                    (setf (cffi:mem-aref layer-array :int object-ix) layer))
+                  ;; Set the mvp
+                  (dotimes (ix (* 4 4))
+                    (setf (cffi:mem-aref mvp-array :float (the fixnum (+ mvp-offset ix)))
+                          (coerce (row-major-aref mvp ix) 'single-float))))
           (%gl:uniform-1iv tex-layer-loc layer-count layer-array)
           (%gl:uniform-matrix-4fv mvp-loc layer-count t mvp-array))))
     (when (batch-wireframe-p batch)
@@ -619,30 +621,30 @@ Use NIL for windowed mode.")
     (with-struct (gl-config- multi-draw-indirect-p base-instance-p) gl-config
       (cond
         ((and multi-draw-indirect-p base-instance-p)
-         (cffi:with-foreign-object
-             (cmds '(:struct sgl:draw-arrays-indirect-command) layer-count)
-           (loop for ix fixnum from 0 below layer-count do
-                (let ((draw-count (nth-value 1 (layers-nth layers ix)))
-                      (cmd (cffi:mem-aptr
-                            cmds '(:struct sgl:draw-arrays-indirect-command) ix)))
-                  (sgl:set-draw-arrays-command cmd draw-count :first draw-start
-                                               :base-instance ix)
-                  (incf draw-start draw-count)))
-           (let ((cmd-buffer (first (gl:gen-buffers 1)))
-                 (size (* (cffi:foreign-type-size
-                           '(:struct sgl:draw-arrays-indirect-command))
-                          layer-count)))
-             (gl:bind-buffer :draw-indirect-buffer cmd-buffer)
-             (%gl:buffer-data :draw-indirect-buffer size cmds :static-draw)
-             (%gl:multi-draw-arrays-indirect :triangles (cffi:null-pointer) layer-count 0)
-             (gl:bind-buffer :draw-indirect-buffer 0)
-             (gl:delete-buffers (list cmd-buffer)))))
+         (let ((sizeof-cmd #.(cffi:foreign-type-size
+                              '(:struct sgl:draw-arrays-indirect-command))))
+           (declare (type fixnum sizeof-cmd))
+           (cffi:with-foreign-object
+               (cmds '(:struct sgl:draw-arrays-indirect-command) +max-batch-size+)
+             (loop for ix fixnum from 0 below layer-count do
+               (let ((draw-count (the fixnum (nth-value 1 (layers-nth layers ix))))
+                     (cmd (cffi:inc-pointer cmds (the fixnum (* sizeof-cmd ix)))))
+                 (sgl:set-draw-arrays-command cmd draw-count :first draw-start
+                                                             :base-instance ix)
+                 (incf draw-start draw-count)))
+             (let ((cmd-buffer (first (gl:gen-buffers 1)))
+                   (size (* sizeof-cmd layer-count)))
+               (gl:bind-buffer :draw-indirect-buffer cmd-buffer)
+               (%gl:buffer-data :draw-indirect-buffer size cmds :static-draw)
+               (%gl:multi-draw-arrays-indirect :triangles (cffi:null-pointer) layer-count 0)
+               (gl:bind-buffer :draw-indirect-buffer 0)
+               (gl:delete-buffers (list cmd-buffer))))))
         (t
          (loop for ix fixnum from 0 below layer-count do
-              (let ((draw-count (nth-value 1 (layers-nth layers ix))))
-                (%gl:vertex-attrib-i1i 4 ix)
-                (gl:draw-arrays :triangles draw-start draw-count)
-                (incf draw-start draw-count)))))))
+           (let ((draw-count (the fixnum (nth-value 1 (layers-nth layers ix)))))
+             (%gl:vertex-attrib-i1i 4 ix)
+             (gl:draw-arrays :triangles draw-start draw-count)
+             (incf draw-start draw-count)))))))
   (gl:polygon-mode :front-and-back :fill)
   (gl:bind-vertex-array 0))
 
