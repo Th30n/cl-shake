@@ -491,8 +491,10 @@
     (flet ((hovered-lineitems ()
              (with-finalizing ((scene-pos (q+:scene-pos mouse-event)))
                (loop for item in (items-at map-scene scene-pos)
-                  when (qinstancep item 'qgraphicslineitem)
-                  collect item))))
+                     when (and (qinstancep item 'qgraphicslineitem)
+                               ;; Only lines for brushes are selectable
+                               (brush-for-graphics-item map-scene (q+:parent-item item)))
+                       collect item))))
       (when highlighted-item
         (unhighlight-line highlighted-item selected-items)
         (setf highlighted-item nil))
@@ -513,7 +515,7 @@
                                           (convert-brush mbrush))))))
     (let (hovered-brush)
       (dolist (item (items-at map-scene scene-pos))
-        (let ((mbrush (brush-for-graphics-item map-scene item)))
+        (when-let ((mbrush (brush-for-graphics-item map-scene item)))
           (when (and (qinstancep item 'qgraphicsitemgroup)
                      (point-in-mbrush-p
                       (v (q+:x scene-pos) (q+:y scene-pos))
@@ -625,25 +627,34 @@
      stream)))
 
 (defun make-thing-graphics-item (thing)
-  (flet ((set-item-pos (item)
-           (with-finalizing ((pos (v2->qpoint
-                                   ;; Offset the image to center of half-cell.
-                                   (v- (sbsp:map-thing-pos thing)
-                                       (v 0.25 0.25))))
-                             (size (q+:default-size (q+:renderer item))))
-             (q+:set-pos item pos)
-             ;; Scale the image to fit in half a cell.
-             (q+:set-scale item (/ 0.5 (max (q+:width size)
-                                            (q+:height size))))
-             (q+:set-rotation item (sbsp:map-thing-angle thing)))
-           item))
-    (let ((image-file
-           (concatenate 'string ":/things/"
-                        (ccase (sbsp:map-thing-type thing)
-                          (:player-spawn "player.svg")
-                          (:shotgun "weapon.svg")
-                          (:enemy "enemy.svg")))))
-      (set-item-pos (q+:make-qgraphicssvgitem image-file)))))
+  (if (eq :door (sbsp:map-thing-type thing))
+      (let ((item (make-itemgroup-from-lines
+                   (sbrush:brush-lines (first (sbsp:map-thing-brushes thing))))))
+        (q+:set-flag item (q+:qgraphicsitem.item-is-selectable) nil)
+        (with-finalizing ((pen (make-qpen (map->scene-unit 0.5)
+                                          (q+:qt.yellow))))
+          (dolist (line (q+:child-items item))
+            (setf (q+:pen line) pen)))
+        item)
+      (flet ((set-item-pos (item)
+               (with-finalizing ((pos (v2->qpoint
+                                       ;; Offset the image to center of half-cell.
+                                       (v- (sbsp:map-thing-pos thing)
+                                           (v 0.25 0.25))))
+                                 (size (q+:default-size (q+:renderer item))))
+                 (q+:set-pos item pos)
+                 ;; Scale the image to fit in half a cell.
+                 (q+:set-scale item (/ 0.5 (max (q+:width size)
+                                                (q+:height size))))
+                 (q+:set-rotation item (sbsp:map-thing-angle thing)))
+               item))
+        (let ((image-file
+                (concatenate 'string ":/things/"
+                             (ccase (sbsp:map-thing-type thing)
+                               (:player-spawn "player.svg")
+                               (:shotgun "weapon.svg")
+                               (:enemy "enemy.svg")))))
+          (set-item-pos (q+:make-qgraphicssvgitem image-file))))))
 
 (defun read-map (stream scene)
   (clear-map scene)
@@ -654,9 +665,7 @@
         (q+:add-item scene item)
         (map-scene-add-brush scene item (make-mbrush :brush brush))))
     (dolist (thing (sbsp:map-file-things map-file))
-      (unless (eq :door (sbsp:map-thing-type thing))
-        ;; TODO: Handle doors, i.e. brush based things
-        (add-thing-to-scene scene thing)))))
+      (add-thing-to-scene scene thing))))
 
 (defun sidedef-for-lineitem (scene lineitem)
   (when-let ((mbrush (brush-for-graphics-item scene (q+:parent-item lineitem))))
