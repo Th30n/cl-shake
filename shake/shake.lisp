@@ -889,8 +889,8 @@ the data for GAME, CAMERA, RENDER-SYSTEM and MODEL-MANAGER."
             (sdl2:with-event-loop (:method :poll)
               (:quit () t)
               (:textinput
-               (:text utf8-code)
-               (console-append *console* (if (<= 0 utf8-code 255) (code-char utf8-code) #\?))
+               (:text utf8-string)
+               (console-append *console* utf8-string)
                (console-autocomplete-clear *console*))
               (:keydown
                (:keysym keysym)

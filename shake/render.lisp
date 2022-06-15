@@ -755,7 +755,12 @@ Use NIL for windowed mode.")
 (defun char->font-cell-pos (char font)
   "Returns the char position in pixels for the given font."
   (with-struct (font- cell-size chars-per-line start-char-code) font
-    (let ((char-code (- (char-code char) start-char-code)))
+    (assert (= start-char-code 32))
+    (let ((char-code (if (<= 32 (char-code char) 126)
+                         ;; printable characters
+                         (- (char-code char) start-char-code)
+                         ;; special symbol for non-printable
+                         (- 127 start-char-code))))
       (multiple-value-bind (y x) (floor char-code chars-per-line)
         (values (* x cell-size) (* y cell-size))))))
 
