@@ -14,6 +14,8 @@ common preparation steps for various OSes is:
 
   * Install SBCL (or other Common Lisp compiler)
   * Install quicklisp (from https://www.quicklisp.org)
+    - Add cl-shake as local project (e.g. by linking
+      $HOME/quicklisp/local-projects/cl-shake to repo root)
 
 The required C libraries
 
@@ -23,18 +25,22 @@ The required C libraries
   * For cl-shake-ed map editor:
     - SSL implementation (OpenSSL or LibreSSL, for drakma used by qtools)
     - Qt 4.8 (optional, qtools will download precompiled libraries)
-  
+
 The remaining Common Lisp packages should be handled through quicklisp.
 
-To run the game, start SBCL and type:
+On your first run, you need to setup some initial dependencies, so start SBCL
+and type.
 
-    (ql:quickload "shake")
-    (shake:main)
-    
-To run the map editor, start SBCL and type:
+    (pushnew :shiva-double-float *features*)
+    ;; This will also download initially needed packages for shake.
+    (ql:quickload "shake-bspc")
+    ;; This will compile a level to be used by the game.
+    (sbsp:compile-map-file "shake-ed/e1m1.map" "test.bsp")
+    (quit)
 
-    (ql:quickload "shake-ed")
-    (shake-ed:main)
+To run the game, execute `run-shake`.
+
+To run the map editor, execute `run-shake-ed`.
 
 ## Linux
 
@@ -42,7 +48,7 @@ Simple calls to your favorite package manager should be enough.
 
     # On ArchLinux via pacman
     sudo pacman -S sdl2 openssl qt4
-    
+
     # On systems with APT
     sudo apt-get install libsdl2-dev libssl-dev libqt4-dev
 
